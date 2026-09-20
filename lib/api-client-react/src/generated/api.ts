@@ -660,6 +660,80 @@ export const useAcceptOrganizationInvitation = <TError = ErrorType<ForbiddenResp
       return useMutation(getAcceptOrganizationInvitationMutationOptions(options));
     }
 
+export const getRevokeOrganizationInvitationUrl = (invitationId: string,) => {
+
+
+
+
+  return `/api/organization-invitations/${invitationId}`
+}
+
+/**
+ * @summary Revoke a pending workspace invitation
+ */
+export const revokeOrganizationInvitation = async (invitationId: string, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getRevokeOrganizationInvitationUrl(invitationId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getRevokeOrganizationInvitationMutationKey = () => ['revokeOrganizationInvitation'] as const;
+
+export const getRevokeOrganizationInvitationMutationOptions = <TError = ErrorType<ForbiddenResponse | NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof revokeOrganizationInvitation>>, TError,RevokeOrganizationInvitationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof revokeOrganizationInvitation>>, TError,RevokeOrganizationInvitationMutationVariables, TContext> => {
+
+const mutationKey = getRevokeOrganizationInvitationMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof revokeOrganizationInvitation>>, RevokeOrganizationInvitationMutationVariables> = (props) => {
+          const {invitationId} = props ?? {};
+
+          return  revokeOrganizationInvitation(invitationId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RevokeOrganizationInvitationMutationResult = NonNullable<Awaited<ReturnType<typeof revokeOrganizationInvitation>>>
+
+    export type RevokeOrganizationInvitationMutationError = ErrorType<ForbiddenResponse | NotFoundResponse>
+    export type RevokeOrganizationInvitationMutationVariables = {invitationId: string}
+
+    /**
+ * @summary Revoke a pending workspace invitation
+ */
+export const useRevokeOrganizationInvitation = <TError = ErrorType<ForbiddenResponse | NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof revokeOrganizationInvitation>>, TError,RevokeOrganizationInvitationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof revokeOrganizationInvitation>>,
+        TError,
+        RevokeOrganizationInvitationMutationVariables,
+        TContext
+      > => {
+      return useMutation(getRevokeOrganizationInvitationMutationOptions(options));
+    }
+
 export const getUpdateOrganizationMemberRoleUrl = (userId: string,) => {
 
 
@@ -747,6 +821,80 @@ export const useUpdateOrganizationMemberRole = <TError = ErrorType<ForbiddenResp
         TContext
       > => {
       return useMutation(getUpdateOrganizationMemberRoleMutationOptions(options));
+    }
+
+export const getRemoveOrganizationMemberUrl = (userId: string,) => {
+
+
+
+
+  return `/api/organization-members/${userId}`
+}
+
+/**
+ * @summary Remove a non-owner member from the active workspace
+ */
+export const removeOrganizationMember = async (userId: string, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getRemoveOrganizationMemberUrl(userId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getRemoveOrganizationMemberMutationKey = () => ['removeOrganizationMember'] as const;
+
+export const getRemoveOrganizationMemberMutationOptions = <TError = ErrorType<ForbiddenResponse | NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof removeOrganizationMember>>, TError,RemoveOrganizationMemberMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof removeOrganizationMember>>, TError,RemoveOrganizationMemberMutationVariables, TContext> => {
+
+const mutationKey = getRemoveOrganizationMemberMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof removeOrganizationMember>>, RemoveOrganizationMemberMutationVariables> = (props) => {
+          const {userId} = props ?? {};
+
+          return  removeOrganizationMember(userId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RemoveOrganizationMemberMutationResult = NonNullable<Awaited<ReturnType<typeof removeOrganizationMember>>>
+
+    export type RemoveOrganizationMemberMutationError = ErrorType<ForbiddenResponse | NotFoundResponse>
+    export type RemoveOrganizationMemberMutationVariables = {userId: string}
+
+    /**
+ * @summary Remove a non-owner member from the active workspace
+ */
+export const useRemoveOrganizationMember = <TError = ErrorType<ForbiddenResponse | NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof removeOrganizationMember>>, TError,RemoveOrganizationMemberMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof removeOrganizationMember>>,
+        TError,
+        RemoveOrganizationMemberMutationVariables,
+        TContext
+      > => {
+      return useMutation(getRemoveOrganizationMemberMutationOptions(options));
     }
 
 export const getGetDashboardSummaryUrl = () => {

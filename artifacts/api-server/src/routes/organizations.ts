@@ -16,6 +16,8 @@ import {
   InviteOrganizationMemberBody,
   InviteOrganizationMemberResponse,
   ListOrganizationMembersResponse,
+  RemoveOrganizationMemberParams,
+  RevokeOrganizationInvitationParams,
   UpdateOrganizationMemberRoleBody,
   UpdateOrganizationMemberRoleParams,
   UpdateOrganizationMemberRoleResponse,
@@ -329,6 +331,53 @@ router.post(
   },
 );
 
+router.delete(
+  "/organization-invitations/:invitationId",
+  requireOrganization,
+  requireRole("owner"),
+  async (req, res): Promise<void> => {
+    const params = RevokeOrganizationInvitationParams.safeParse(req.params);
+    if (!params.success) {
+      res.status(400).json({ error: "Undangan tidak valid" });
+      return;
+    }
+
+    const organizationId = req.organizationContext!.organizationId;
+    const [invitation] = await db
+      .select()
+      .from(organizationInvitationsTable)
+      .where(
+        and(
+          eq(organizationInvitationsTable.id, params.data.invitationId),
+          eq(organizationInvitationsTable.organizationId, organizationId),
+          isNull(organizationInvitationsTable.acceptedAt),
+          isNull(organizationInvitationsTable.revokedAt),
+        ),
+      )
+      .limit(1);
+    if (!invitation) {
+      res.status(404).json({ error: "Undangan aktif tidak ditemukan" });
+      return;
+    }
+
+    if (invitation.clerkInvitationId) {
+      await clerkClient.invitations.revokeInvitation(invitation.clerkInvitationId);
+    }
+    await db
+      .update(organizationInvitationsTable)
+      .set({ revokedAt: new Date() })
+      .where(
+        and(
+          eq(organizationInvitationsTable.id, invitation.id),
+          isNull(organizationInvitationsTable.acceptedAt),
+          isNull(organizationInvitationsTable.revokedAt),
+        ),
+      );
+
+    res.sendStatus(204);
+  },
+);
+
 router.patch(
   "/organization-members/:userId",
   requireOrganization,
@@ -389,6 +438,56 @@ router.patch(
         joinedAt: updated.createdAt,
       }),
     );
+  },
+);
+
+router.delete(
+  "/organization-members/:userId",
+  requireOrganization,
+  requireRole("owner"),
+  async (req, res): Promise<void> => {
+    const params = RemoveOrganizationMemberParams.safeParse(req.params);
+    if (!params.success) {
+      res.status(400).json({ error: "Anggota tidak valid" });
+      return;
+    }
+
+    const organizationId = req.organizationContext!.organizationId;
+    const requestingUserId = req.organizationContext!.userId;
+    if (params.data.userId === requestingUserId) {
+      res.status(403).json({ error: "Pemilik tidak dapat menghapus dirinya sendiri" });
+      return;
+    }
+
+    const [membership] = await db
+      .select()
+      .from(organizationMembershipsTable)
+      .where(
+        and(
+          eq(organizationMembershipsTable.organizationId, organizationId),
+          eq(organizationMembershipsTable.userId, params.data.userId),
+        ),
+      )
+      .limit(1);
+    if (!membership) {
+      res.status(404).json({ error: "Anggota tidak ditemukan" });
+      return;
+    }
+    if (membership.role === "owner") {
+      res.status(403).json({ error: "Pemilik ruang kerja tidak dapat dihapus" });
+      return;
+    }
+
+    await db
+      .delete(organizationMembershipsTable)
+      .where(
+        and(
+          eq(organizationMembershipsTable.organizationId, organizationId),
+          eq(organizationMembershipsTable.userId, params.data.userId),
+        ),
+      );
+
+    res.sendStatus(204);
   },
 );
 

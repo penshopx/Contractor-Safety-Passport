@@ -120,6 +120,16 @@ export const AcceptOrganizationInvitationResponse = zod.object({
 
 
 /**
+ * @summary Revoke a pending workspace invitation
+ */
+export const RevokeOrganizationInvitationParams = zod.object({
+  "invitationId": zod.coerce.string().uuid()
+})
+
+export const RevokeOrganizationInvitationResponse = zod.void()
+
+
+/**
  * @summary Change a workspace member role
  */
 export const UpdateOrganizationMemberRoleParams = zod.object({
@@ -137,6 +147,16 @@ export const UpdateOrganizationMemberRoleResponse = zod.object({
   "role": zod.enum(['owner', 'safety_expert', 'field_officer', 'viewer']),
   "joinedAt": zod.coerce.date()
 })
+
+
+/**
+ * @summary Remove a non-owner member from the active workspace
+ */
+export const RemoveOrganizationMemberParams = zod.object({
+  "userId": zod.coerce.string()
+})
+
+export const RemoveOrganizationMemberResponse = zod.void()
 
 
 /**

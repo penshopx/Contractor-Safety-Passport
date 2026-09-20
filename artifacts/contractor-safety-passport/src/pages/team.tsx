@@ -11,13 +11,17 @@ import {
   Eye, 
   UserPlus,
   Mail,
-  Loader2
+  Loader2,
+  Trash2,
+  X
 } from 'lucide-react';
 
 import {
   useGetOrganizationContext,
   useListOrganizationMembers,
   useInviteOrganizationMember,
+  useRemoveOrganizationMember,
+  useRevokeOrganizationInvitation,
   useUpdateOrganizationMemberRole,
   getListOrganizationMembersQueryKey,
 } from '@workspace/api-client-react';
@@ -47,6 +51,17 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import {
   Card,
   CardContent,
@@ -168,6 +183,8 @@ export default function TeamPage() {
 
   const inviteMember = useInviteOrganizationMember();
   const updateRole = useUpdateOrganizationMemberRole();
+  const removeMember = useRemoveOrganizationMember();
+  const revokeInvitation = useRevokeOrganizationInvitation();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -230,6 +247,33 @@ export default function TeamPage() {
       },
       onError: () => {
         toast.error("Gagal memperbarui peran pengguna.");
+      }
+    });
+  };
+
+  const refreshTeam = () =>
+    queryClient.invalidateQueries({ queryKey: getListOrganizationMembersQueryKey() });
+
+  const handleRemoveMember = (userId: string) => {
+    removeMember.mutate({ userId }, {
+      onSuccess: () => {
+        toast.success("Akses anggota berhasil dicabut");
+        refreshTeam();
+      },
+      onError: () => {
+        toast.error("Gagal mencabut akses anggota.");
+      }
+    });
+  };
+
+  const handleRevokeInvitation = (invitationId: string) => {
+    revokeInvitation.mutate({ invitationId }, {
+      onSuccess: () => {
+        toast.success("Undangan berhasil dibatalkan");
+        refreshTeam();
+      },
+      onError: () => {
+        toast.error("Gagal membatalkan undangan.");
       }
     });
   };
@@ -374,35 +418,72 @@ export default function TeamPage() {
                               <span className="text-xs font-semibold text-primary"><RoleLabel role={member.role} /></span>
                             </div>
                           ) : (
-                            <Select 
-                              defaultValue={member.role} 
-                              onValueChange={(val) => handleRoleChange(member.userId, val as AssignableRole)}
-                              disabled={updateRole.isPending && updateRole.variables?.userId === member.userId}
-                            >
-                              <SelectTrigger className="w-[170px] h-9 bg-background/50 border-border/50 shadow-sm">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="safety_expert">
-                                  <div className="flex items-center gap-2">
-                                    <ShieldAlert className="h-4 w-4 text-amber-500" />
-                                    <span>Ahli K3</span>
-                                  </div>
-                                </SelectItem>
-                                <SelectItem value="field_officer">
-                                  <div className="flex items-center gap-2">
-                                    <HardHat className="h-4 w-4 text-emerald-500" />
-                                    <span>Petugas Lapangan</span>
-                                  </div>
-                                </SelectItem>
-                                <SelectItem value="viewer">
-                                  <div className="flex items-center gap-2">
-                                    <Eye className="h-4 w-4 text-blue-500" />
-                                    <span>Pemantau</span>
-                                  </div>
-                                </SelectItem>
-                              </SelectContent>
-                            </Select>
+                            <div className="flex items-center gap-2">
+                              <Select
+                                value={member.role}
+                                onValueChange={(val) => handleRoleChange(member.userId, val as AssignableRole)}
+                                disabled={updateRole.isPending && updateRole.variables?.userId === member.userId}
+                              >
+                                <SelectTrigger
+                                  className="w-[170px] h-9 bg-background/50 border-border/50 shadow-sm"
+                                  data-testid={`select-role-${member.userId}`}
+                                >
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="safety_expert">
+                                    <div className="flex items-center gap-2">
+                                      <ShieldAlert className="h-4 w-4 text-amber-500" />
+                                      <span>Ahli K3</span>
+                                    </div>
+                                  </SelectItem>
+                                  <SelectItem value="field_officer">
+                                    <div className="flex items-center gap-2">
+                                      <HardHat className="h-4 w-4 text-emerald-500" />
+                                      <span>Petugas Lapangan</span>
+                                    </div>
+                                  </SelectItem>
+                                  <SelectItem value="viewer">
+                                    <div className="flex items-center gap-2">
+                                      <Eye className="h-4 w-4 text-blue-500" />
+                                      <span>Pemantau</span>
+                                    </div>
+                                  </SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="text-muted-foreground hover:text-destructive"
+                                    disabled={removeMember.isPending}
+                                    data-testid={`button-remove-member-${member.userId}`}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                    <span className="sr-only">Cabut akses {member.name}</span>
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>Cabut akses anggota?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      {member.name} ({member.email}) tidak akan dapat mengakses workspace ini lagi.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Batal</AlertDialogCancel>
+                                    <AlertDialogAction
+                                      onClick={() => handleRemoveMember(member.userId)}
+                                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                      data-testid={`button-confirm-remove-member-${member.userId}`}
+                                    >
+                                      Cabut Akses
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            </div>
                           )}
                         </div>
                       </div>
@@ -450,14 +531,48 @@ export default function TeamPage() {
                           Pending
                         </Badge>
                       </div>
-                      <div className="flex items-center justify-between">
+                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium bg-accent/30 px-2 py-1 rounded-md">
                           <RoleIcon role={invitation.role} className="h-3 w-3" />
                           <span><RoleLabel role={invitation.role} /></span>
                         </div>
-                        <span className="text-[10px] text-muted-foreground/70">
-                          {formatDate(invitation.createdAt)}
-                        </span>
+                         <div className="flex items-center gap-1">
+                           <span className="text-[10px] text-muted-foreground/70">
+                             {formatDate(invitation.createdAt)}
+                           </span>
+                           <AlertDialog>
+                             <AlertDialogTrigger asChild>
+                               <Button
+                                 variant="ghost"
+                                 size="icon"
+                                 className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                 disabled={revokeInvitation.isPending}
+                                 data-testid={`button-revoke-invitation-${invitation.id}`}
+                               >
+                                 <X className="h-4 w-4" />
+                                 <span className="sr-only">Batalkan undangan {invitation.email}</span>
+                               </Button>
+                             </AlertDialogTrigger>
+                             <AlertDialogContent>
+                               <AlertDialogHeader>
+                                 <AlertDialogTitle>Batalkan undangan?</AlertDialogTitle>
+                                 <AlertDialogDescription>
+                                   Undangan untuk {invitation.email} akan dicabut dan tidak dapat digunakan lagi.
+                                 </AlertDialogDescription>
+                               </AlertDialogHeader>
+                               <AlertDialogFooter>
+                                 <AlertDialogCancel>Kembali</AlertDialogCancel>
+                                 <AlertDialogAction
+                                   onClick={() => handleRevokeInvitation(invitation.id)}
+                                   className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                   data-testid={`button-confirm-revoke-invitation-${invitation.id}`}
+                                 >
+                                   Batalkan Undangan
+                                 </AlertDialogAction>
+                               </AlertDialogFooter>
+                             </AlertDialogContent>
+                           </AlertDialog>
+                         </div>
                       </div>
                     </div>
                   ))}

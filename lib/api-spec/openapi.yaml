@@ -161,6 +161,23 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+  /organization-invitations/{invitationId}:
+    delete:
+      operationId: revokeOrganizationInvitation
+      tags: [organizations]
+      summary: Revoke a pending workspace invitation
+      parameters:
+        - name: invitationId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204":
+          description: Invitation revoked
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /organization-members/{userId}:
     patch:
       operationId: updateOrganizationMemberRole
@@ -184,6 +201,22 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OrganizationMember"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: removeOrganizationMember
+      tags: [organizations]
+      summary: Remove a non-owner member from the active workspace
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204":
+          description: Member removed
         "403":
           $ref: "#/components/responses/Forbidden"
         "404":
