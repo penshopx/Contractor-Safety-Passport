@@ -43,6 +43,10 @@ import {
   requireOrganization,
   requireRole,
 } from "../middlewares/organizationContext";
+import {
+  csmsProfiles,
+  resolveCsmsProfileForTemplate,
+} from "../lib/csmsProfiles";
 
 const router: IRouter = Router();
 router.use(requireOrganization);
@@ -369,6 +373,10 @@ router.get("/document-templates", (_req, res): void => {
   res.json(ListDocumentTemplatesResponse.parse(documentTemplates));
 });
 
+router.get("/csms-profiles", (_req, res): void => {
+  res.json(csmsProfiles);
+});
+
 router.post("/generated-documents", canManage, async (req, res): Promise<void> => {
   const parsed = GenerateDocumentBody.safeParse(req.body);
   if (!parsed.success) {
@@ -390,6 +398,19 @@ router.post("/generated-documents", canManage, async (req, res): Promise<void> =
   );
   if (!template) {
     res.status(400).json({ error: "Template tidak didukung" });
+    return;
+  }
+  const isRkk = parsed.data.template !== "CSMS_PRAKUALIFIKASI";
+  let csmsProfile;
+  try {
+    csmsProfile = resolveCsmsProfileForTemplate(
+      parsed.data.template,
+      parsed.data.csmsProfileId,
+    );
+  } catch (error) {
+    res.status(400).json({
+      error: error instanceof Error ? error.message : "Profil CSMS tidak valid",
+    });
     return;
   }
 
@@ -452,7 +473,6 @@ router.post("/generated-documents", canManage, async (req, res): Promise<void> =
         },
       ];
 
-  const isRkk = parsed.data.template !== "CSMS_PRAKUALIFIKASI";
   const sections = isRkk
     ? [
         {
@@ -561,126 +581,27 @@ router.post("/generated-documents", canManage, async (req, res): Promise<void> =
           ],
           rows: commonRows,
         },
-        {
-          code: "I",
-          title: "Kepemimpinan, Kebijakan, dan Organisasi K3LL",
-          narrative: [
-            "Lampirkan kebijakan yang ditandatangani pimpinan, struktur, uraian tugas, dan bukti keterlibatan manajemen.",
-          ],
+        ...csmsProfile!.stages.map((stage) => ({
+          code: stage.code,
+          title: stage.name,
+          narrative: [stage.purpose],
           rows: [
-            { label: "Pimpinan", value: parsed.data.directorName },
-            { label: "Penanggung jawab K3LL", value: parsed.data.safetyLead },
-            { label: "Pernyataan komitmen", value: valueOrReview(parsed.data.commitment) },
+            { label: "Peran", value: stage.roles.join(", ") },
+            { label: "Pertanyaan", value: stage.questions.map((item, index) => `${index + 1}. ${item}`).join("\n") },
+            { label: "Bukti wajib", value: stage.evidence.join(", ") },
+            { label: "Validasi", value: stage.validations.join("\n") },
           ],
-        },
+        })),
         {
-          code: "II",
-          title: "Kepatuhan Hukum dan Persyaratan Lain",
-          narrative: [
-            "Identifikasi perizinan, regulasi, persyaratan kontrak, dan persyaratan principal yang berlaku.",
-          ],
-          rows: [
-            {
-              label: "Bukti minimum",
-              value:
-                "Daftar regulasi, izin usaha, kepesertaan perlindungan pekerja, dan evaluasi kepatuhan",
-            },
-          ],
-        },
-        {
-          code: "III",
-          title: "Pelatihan dan Kompetensi",
-          narrative: [
-            "Kompetensi harus sesuai jabatan, risiko, peralatan, dan tugas yang dijalankan.",
-          ],
+          code: "L",
+          title: "Lampiran personel dan kompetensi",
+          narrative: ["Personel dan kompetensi berikut harus diverifikasi terhadap kebutuhan setiap tahap."],
           rows: [...personnelRows, ...credentialRows],
-        },
-        {
-          code: "IV",
-          title: "Pengelolaan Subkontraktor",
-          narrative: [
-            "Seleksi, persyaratan kontrak, induksi, pemantauan, dan evaluasi subkontraktor harus terdokumentasi.",
-          ],
-          rows: [
-            {
-              label: "Bukti yang diminta",
-              value:
-                "Kriteria seleksi, klausul K3LL, hasil evaluasi, dan tindak lanjut ketidaksesuaian",
-            },
-          ],
-        },
-        {
-          code: "V",
-          title: "K3LL dalam Desain, Konstruksi, dan Commissioning",
-          narrative: [
-            "Sertakan HSE Plan, HIRADC/JSA, permit to work, APD, higiene industri, dan pengendalian operasional.",
-          ],
-          rows: [
-            { label: "Lingkup", value: parsed.data.scopeOfWork },
-            {
-              label: "Bukti minimum",
-              value:
-                "HSE Plan, penilaian risiko, prosedur kerja, PTW, daftar APD, dan hasil inspeksi",
-            },
-          ],
-        },
-        {
-          code: "VI",
-          title: "Manajemen Perubahan",
-          narrative: [
-            "Perubahan lingkup, metode, organisasi, peralatan, material, atau jadwal harus dinilai risikonya sebelum diterapkan.",
-          ],
-          rows: [],
-        },
-        {
-          code: "VII–VIII",
-          title: "Inspeksi dan Komunikasi",
-          narrative: [
-            "Program inspeksi, toolbox meeting, rapat K3LL, pelaporan bahaya, dan tindak lanjut harus dapat dibuktikan.",
-          ],
-          rows: [],
-        },
-        {
-          code: "IX",
-          title: "Kesiapsiagaan dan Tanggap Darurat",
-          narrative: [
-            "Rencana darurat harus sesuai skenario risiko pekerjaan dan diuji melalui latihan.",
-          ],
-          rows: [
-            {
-              label: "Kontak darurat",
-              value: valueOrReview(parsed.data.emergencyContact),
-            },
-          ],
-        },
-        {
-          code: "XI",
-          title: "Dokumentasi dan Pengendalian Rekaman",
-          narrative: [
-            "Dokumen, revisi, persetujuan, distribusi, masa simpan, dan bukti lapangan harus dikendalikan.",
-          ],
-          rows: [],
-        },
-        {
-          code: "XII",
-          title: "Evaluasi Kinerja",
-          narrative: [
-            "Lampirkan KPI, statistik, audit internal, evaluasi pihak luar, dan tindak lanjut perbaikan.",
-          ],
-          rows: [],
-        },
-        {
-          code: "XIII",
-          title: "Penghargaan dan Konsekuensi K3LL",
-          narrative: [
-            "Jelaskan mekanisme apresiasi kinerja dan konsekuensi atas pelanggaran secara adil dan terdokumentasi.",
-          ],
-          rows: [],
         },
       ];
 
   const generatedAt = new Date();
-  const title = isRkk ? template.name : "Formulir Pra-kualifikasi CSMS";
+  const title = isRkk ? template.name : `CSMS ${csmsProfile!.issuer}`;
   const documentNumber = `${template.standard}-${project.id}-${generatedAt
     .toISOString()
     .slice(0, 10)
@@ -706,9 +627,13 @@ router.post("/generated-documents", canManage, async (req, res): Promise<void> =
       projectName: project.name,
       companyName: parsed.data.companyName,
       generatedAt,
+      issuer: isRkk ? "Kementerian PUPR Republik Indonesia" : csmsProfile!.issuer,
+      guidelineVersion: isRkk ? "Permen PUPR Nomor 10 Tahun 2021" : csmsProfile!.version,
+      source: isRkk ? template.sourceBasis.join("; ") : csmsProfile!.source,
+      draftStatus: "DRAF",
       disclaimer:
         "Dokumen ini merupakan draf berbantuan sistem. Dokumen wajib ditinjau oleh personel K3 yang kompeten, disesuaikan dengan kontrak dan risiko aktual, dilengkapi bukti, ditandatangani, serta disetujui pihak proyek/principal sebelum digunakan.",
-      sources: template.sourceBasis,
+      sources: isRkk ? template.sourceBasis : [csmsProfile!.source],
       sections,
     }),
   );

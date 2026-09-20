@@ -23,6 +23,7 @@ import type {
   Activity,
   Certificate,
   CertificateInput,
+  CsmsProfile,
   DashboardSummary,
   DocumentInput,
   DocumentTemplate,
@@ -1361,6 +1362,83 @@ export function useListDocumentTemplates<TData = Awaited<ReturnType<typeof listD
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getListDocumentTemplatesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListCsmsProfilesUrl = () => {
+
+
+
+
+  return `/api/csms-profiles`
+}
+
+/**
+ * @summary List issuer-specific CSMS profiles and guideline versions
+ */
+export const listCsmsProfiles = async ( options?: Parameters<typeof customFetch>[1]): Promise<CsmsProfile[]> => {
+
+  return customFetch<CsmsProfile[]>(getListCsmsProfilesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListCsmsProfilesQueryKey = () => {
+    return [
+    `/api/csms-profiles`
+    ] as const;
+    }
+
+
+export const getListCsmsProfilesQueryOptions = <TData = Awaited<ReturnType<typeof listCsmsProfiles>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCsmsProfiles>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListCsmsProfilesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listCsmsProfiles>>> = ({ signal }) => listCsmsProfiles({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listCsmsProfiles>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListCsmsProfilesQueryResult = NonNullable<Awaited<ReturnType<typeof listCsmsProfiles>>>
+export type ListCsmsProfilesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List issuer-specific CSMS profiles and guideline versions
+ */
+
+export function useListCsmsProfiles<TData = Awaited<ReturnType<typeof listCsmsProfiles>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCsmsProfiles>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListCsmsProfilesQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

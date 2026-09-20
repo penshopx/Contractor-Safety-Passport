@@ -303,6 +303,33 @@ export interface DocumentTemplate {
   sectionCount: number;
 }
 
+export interface CsmsStage {
+  code: string;
+  name: string;
+  purpose: string;
+  roles: string[];
+  questions: string[];
+  evidence: string[];
+  validations: string[];
+}
+
+export type CsmsProfileId = typeof CsmsProfileId[keyof typeof CsmsProfileId];
+
+
+export const CsmsProfileId = {
+  PERTAMINA_2020: 'PERTAMINA_2020',
+  PLN_2021: 'PLN_2021',
+} as const;
+
+export interface CsmsProfile {
+  id: CsmsProfileId;
+  issuer: string;
+  version: string;
+  title: string;
+  source: string;
+  stages: CsmsStage[];
+}
+
 export type GeneratedDocumentInputTemplate = typeof GeneratedDocumentInputTemplate[keyof typeof GeneratedDocumentInputTemplate];
 
 
@@ -310,6 +337,14 @@ export const GeneratedDocumentInputTemplate = {
   RKK_TENDER: 'RKK_TENDER',
   RKK_PELAKSANAAN: 'RKK_PELAKSANAAN',
   CSMS_PRAKUALIFIKASI: 'CSMS_PRAKUALIFIKASI',
+} as const;
+
+export type GeneratedDocumentInputCsmsProfileId = typeof GeneratedDocumentInputCsmsProfileId[keyof typeof GeneratedDocumentInputCsmsProfileId];
+
+
+export const GeneratedDocumentInputCsmsProfileId = {
+  PERTAMINA_2020: 'PERTAMINA_2020',
+  PLN_2021: 'PLN_2021',
 } as const;
 
 export interface GeneratedDocumentInput {
@@ -326,6 +361,7 @@ export interface GeneratedDocumentInput {
   scopeOfWork: string;
   commitment?: string;
   emergencyContact?: string;
+  csmsProfileId?: GeneratedDocumentInputCsmsProfileId;
 }
 
 export type GeneratedDocumentTemplate = typeof GeneratedDocumentTemplate[keyof typeof GeneratedDocumentTemplate];
@@ -343,6 +379,13 @@ export type GeneratedDocumentStandard = typeof GeneratedDocumentStandard[keyof t
 export const GeneratedDocumentStandard = {
   SMKK: 'SMKK',
   CSMS: 'CSMS',
+} as const;
+
+export type GeneratedDocumentDraftStatus = typeof GeneratedDocumentDraftStatus[keyof typeof GeneratedDocumentDraftStatus];
+
+
+export const GeneratedDocumentDraftStatus = {
+  DRAF: 'DRAF',
 } as const;
 
 export interface GeneratedDocumentRow {
@@ -366,6 +409,10 @@ export interface GeneratedDocument {
   projectName: string;
   companyName: string;
   generatedAt: string;
+  issuer: string;
+  guidelineVersion: string;
+  source: string;
+  draftStatus: GeneratedDocumentDraftStatus;
   disclaimer: string;
   sources: string[];
   sections: GeneratedDocumentSection[];

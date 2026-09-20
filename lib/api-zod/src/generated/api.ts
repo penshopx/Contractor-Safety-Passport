@@ -418,6 +418,28 @@ export const ListDocumentTemplatesResponse = zod.array(ListDocumentTemplatesResp
 
 
 /**
+ * @summary List issuer-specific CSMS profiles and guideline versions
+ */
+export const ListCsmsProfilesResponseItem = zod.object({
+  "id": zod.enum(['PERTAMINA_2020', 'PLN_2021']),
+  "issuer": zod.string(),
+  "version": zod.string(),
+  "title": zod.string(),
+  "source": zod.string(),
+  "stages": zod.array(zod.object({
+  "code": zod.string(),
+  "name": zod.string(),
+  "purpose": zod.string(),
+  "roles": zod.array(zod.string()),
+  "questions": zod.array(zod.string()),
+  "evidence": zod.array(zod.string()),
+  "validations": zod.array(zod.string())
+}))
+})
+export const ListCsmsProfilesResponse = zod.array(ListCsmsProfilesResponseItem)
+
+
+/**
  * @summary Generate an RKK or CSMS document from project data
  */
 
@@ -435,7 +457,8 @@ export const GenerateDocumentBody = zod.object({
   "safetyLead": zod.string().min(1),
   "scopeOfWork": zod.string().min(1),
   "commitment": zod.string().optional(),
-  "emergencyContact": zod.string().optional()
+  "emergencyContact": zod.string().optional(),
+  "csmsProfileId": zod.enum(['PERTAMINA_2020', 'PLN_2021']).optional()
 })
 
 export const GenerateDocumentResponse = zod.object({
@@ -447,6 +470,10 @@ export const GenerateDocumentResponse = zod.object({
   "projectName": zod.string(),
   "companyName": zod.string(),
   "generatedAt": zod.coerce.date(),
+  "issuer": zod.string(),
+  "guidelineVersion": zod.string(),
+  "source": zod.string(),
+  "draftStatus": zod.enum(['DRAF']),
   "disclaimer": zod.string(),
   "sources": zod.array(zod.string()),
   "sections": zod.array(zod.object({

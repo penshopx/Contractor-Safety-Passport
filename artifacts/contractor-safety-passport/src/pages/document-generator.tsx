@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { 
   useListDocumentTemplates, 
+  useListCsmsProfiles,
   useListProjects, 
   useGenerateDocument,
   GeneratedDocument,
   GeneratedDocumentInputTemplate,
+  GeneratedDocumentInputCsmsProfileId,
 } from "@workspace/api-client-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -29,11 +31,21 @@ const generatorSchema = z.object({
   scopeOfWork: z.string().min(10, "Lingkup pekerjaan wajib diisi"),
   commitment: z.string().optional(),
   emergencyContact: z.string().optional(),
+  csmsProfileId: z.nativeEnum(GeneratedDocumentInputCsmsProfileId).optional(),
+}).superRefine((values, context) => {
+  if (values.template === GeneratedDocumentInputTemplate.CSMS_PRAKUALIFIKASI && !values.csmsProfileId) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["csmsProfileId"],
+      message: "Pilih issuer dan versi pedoman CSMS",
+    });
+  }
 });
 
 export default function DocumentGeneratorPage() {
   const { data: projects, isLoading: projectsLoading } = useListProjects();
   const { data: templates, isLoading: templatesLoading } = useListDocumentTemplates();
+  const { data: csmsProfiles, isLoading: profilesLoading } = useListCsmsProfiles();
   const generateDoc = useGenerateDocument();
   
   const [generatedDoc, setGeneratedDoc] = useState<GeneratedDocument | null>(null);
@@ -49,8 +61,13 @@ export default function DocumentGeneratorPage() {
       scopeOfWork: "",
       commitment: "Kami berkomitmen untuk menjalankan semua persyaratan K3 yang berlaku sesuai perundangan.",
       emergencyContact: "",
+      csmsProfileId: undefined,
     }
   });
+  const selectedTemplate = form.watch("template");
+  const selectedProfileId = form.watch("csmsProfileId");
+  const selectedProfile = csmsProfiles?.find((profile) => profile.id === selectedProfileId);
+  const isCsms = selectedTemplate === GeneratedDocumentInputTemplate.CSMS_PRAKUALIFIKASI;
 
   const onSubmit = (values: z.infer<typeof generatorSchema>) => {
     generateDoc.mutate(
@@ -124,7 +141,16 @@ export default function DocumentGeneratorPage() {
                   <FormField control={form.control} name="template" render={({ field }) => (
                     <FormItem>
                       <FormLabel>Template Dokumen</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value ?? ""} disabled={templatesLoading}>
+                      <Select
+                        onValueChange={(value) => {
+                          field.onChange(value);
+                          if (value !== GeneratedDocumentInputTemplate.CSMS_PRAKUALIFIKASI) {
+                            form.setValue("csmsProfileId", undefined);
+                          }
+                        }}
+                        value={field.value ?? ""}
+                        disabled={templatesLoading}
+                      >
                         <FormControl>
                           <SelectTrigger data-testid="select-template">
                             <SelectValue placeholder="Pilih Template" />
@@ -144,6 +170,48 @@ export default function DocumentGeneratorPage() {
                       <FormMessage />
                     </FormItem>
                   )} />
+
+                  {isCsms && (
+                    <FormField control={form.control} name="csmsProfileId" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Issuer & Versi Pedoman</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value ?? ""} disabled={profilesLoading}>
+                          <FormControl>
+                            <SelectTrigger data-testid="select-csms-profile">
+                              <SelectValue placeholder="Pilih profil CSMS" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {csmsProfiles?.map((profile) => (
+                              <SelectItem key={profile.id} value={profile.id}>
+                                <div className="flex flex-col items-start text-left">
+                                  <span>{profile.issuer}</span>
+                                  <span className="text-xs text-muted-foreground">{profile.version}</span>
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+                  )}
+
+                  {isCsms && selectedProfile && (
+                    <div className="rounded-md border border-border/60 bg-background/40 p-3 space-y-2" data-testid="csms-profile-summary">
+                      <div>
+                        <p className="text-sm font-semibold">{selectedProfile.title}</p>
+                        <p className="text-xs text-muted-foreground">{selectedProfile.source}</p>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {selectedProfile.stages.map((stage, index) => (
+                          <span key={stage.code} className="rounded-full border border-primary/30 bg-primary/5 px-2 py-1 text-[11px] text-primary">
+                            {index + 1}. {stage.name}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   <Separator className="my-2 bg-border/50" />
 
@@ -245,6 +313,9 @@ export default function DocumentGeneratorPage() {
                 {/* Document Header */}
                 <div className="border-b-2 border-black pb-6 mb-6">
                   <div className="flex flex-col items-center text-center space-y-2">
+                    <span className="border-2 border-black px-3 py-1 text-xs font-bold tracking-[0.2em]">
+                      {generatedDoc.draftStatus}
+                    </span>
                     <h2 className="text-2xl font-bold uppercase tracking-wider">{generatedDoc.title}</h2>
                     <h3 className="text-lg font-semibold uppercase">{generatedDoc.projectName}</h3>
                     <p className="text-sm font-medium">{generatedDoc.companyName}</p>
@@ -259,6 +330,11 @@ export default function DocumentGeneratorPage() {
                       <span>Standar: {generatedDoc.standard}</span>
                       <span>Template: {generatedDoc.template.replace(/_/g, ' ')}</span>
                     </div>
+                  </div>
+                  <div className="mt-4 grid grid-cols-[110px_1fr] gap-x-3 gap-y-1 border-t border-black/20 pt-3 text-xs">
+                    <span className="font-semibold">Issuer</span><span>{generatedDoc.issuer}</span>
+                    <span className="font-semibold">Versi pedoman</span><span>{generatedDoc.guidelineVersion}</span>
+                    <span className="font-semibold">Sumber</span><span>{generatedDoc.source}</span>
                   </div>
                 </div>
 

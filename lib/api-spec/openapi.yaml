@@ -280,6 +280,20 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/DocumentTemplate"
+  /csms-profiles:
+    get:
+      operationId: listCsmsProfiles
+      tags: [document-generator]
+      summary: List issuer-specific CSMS profiles and guideline versions
+      responses:
+        "200":
+          description: Supported CSMS profiles
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CsmsProfile"
   /generated-documents:
     post:
       operationId: generateDocument
@@ -520,6 +534,38 @@ components:
           items: { type: string }
         sectionCount: { type: integer, minimum: 1 }
       required: [id, name, standard, description, sourceBasis, sectionCount]
+    CsmsStage:
+      type: object
+      properties:
+        code: { type: string }
+        name: { type: string }
+        purpose: { type: string }
+        roles:
+          type: array
+          items: { type: string }
+        questions:
+          type: array
+          items: { type: string }
+        evidence:
+          type: array
+          items: { type: string }
+        validations:
+          type: array
+          items: { type: string }
+      required: [code, name, purpose, roles, questions, evidence, validations]
+    CsmsProfile:
+      type: object
+      properties:
+        id: { type: string, enum: [PERTAMINA_2020, PLN_2021] }
+        issuer: { type: string }
+        version: { type: string }
+        title: { type: string }
+        source: { type: string }
+        stages:
+          type: array
+          items:
+            $ref: "#/components/schemas/CsmsStage"
+      required: [id, issuer, version, title, source, stages]
     GeneratedDocumentInput:
       type: object
       properties:
@@ -533,6 +579,9 @@ components:
         scopeOfWork: { type: string, minLength: 1 }
         commitment: { type: string }
         emergencyContact: { type: string }
+        csmsProfileId:
+          type: string
+          enum: [PERTAMINA_2020, PLN_2021]
       required: [projectId, template, companyName, directorName, safetyLead, scopeOfWork]
     GeneratedDocument:
       type: object
@@ -547,6 +596,10 @@ components:
         projectName: { type: string }
         companyName: { type: string }
         generatedAt: { type: string, format: date-time }
+        issuer: { type: string }
+        guidelineVersion: { type: string }
+        source: { type: string }
+        draftStatus: { type: string, enum: [DRAF] }
         disclaimer: { type: string }
         sources:
           type: array
@@ -555,7 +608,7 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/GeneratedDocumentSection"
-      required: [id, title, documentNumber, template, standard, projectName, companyName, generatedAt, disclaimer, sources, sections]
+      required: [id, title, documentNumber, template, standard, projectName, companyName, generatedAt, issuer, guidelineVersion, source, draftStatus, disclaimer, sources, sections]
     GeneratedDocumentSection:
       type: object
       properties:

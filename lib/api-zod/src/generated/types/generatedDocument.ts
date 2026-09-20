@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { GeneratedDocumentDraftStatus } from './generatedDocumentDraftStatus';
 import type { GeneratedDocumentSection } from './generatedDocumentSection';
 import type { GeneratedDocumentStandard } from './generatedDocumentStandard';
 import type { GeneratedDocumentTemplate } from './generatedDocumentTemplate';
@@ -18,6 +19,10 @@ export interface GeneratedDocument {
   projectName: string;
   companyName: string;
   generatedAt: Date;
+  issuer: string;
+  guidelineVersion: string;
+  source: string;
+  draftStatus: GeneratedDocumentDraftStatus;
   disclaimer: string;
   sources: string[];
   sections: GeneratedDocumentSection[];

@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { GeneratedDocumentInputCsmsProfileId } from './generatedDocumentInputCsmsProfileId';
 import type { GeneratedDocumentInputTemplate } from './generatedDocumentInputTemplate';
 
 export interface GeneratedDocumentInput {
@@ -21,4 +22,5 @@ export interface GeneratedDocumentInput {
   scopeOfWork: string;
   commitment?: string;
   emergencyContact?: string;
+  csmsProfileId?: GeneratedDocumentInputCsmsProfileId;
 }
