@@ -1,5 +1,5 @@
 import { Router, type IRouter, type RequestHandler } from "express";
-import { and, asc, count, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, sql } from "drizzle-orm";
 import {
   db,
   certificatesTable,
@@ -893,8 +893,32 @@ export const createSafetyRouter = (
           organizationId: req.organizationContext!.organizationId,
           createdBy: req.organizationContext!.userId,
         })
+        .onConflictDoNothing({
+          target: [
+            fieldActivitiesTable.organizationId,
+            fieldActivitiesTable.clientId,
+          ],
+          where: sql`${fieldActivitiesTable.clientId} <> 'legacy'`,
+        })
         .returning();
-      res.status(201).json(CreateFieldActivityResponse.parse(activity));
+      if (activity) {
+        res.status(201).json(CreateFieldActivityResponse.parse(activity));
+        return;
+      }
+      const [concurrentExisting] = await db
+        .select()
+        .from(fieldActivitiesTable)
+        .where(
+          and(
+            eq(
+              fieldActivitiesTable.organizationId,
+              req.organizationContext!.organizationId,
+            ),
+            eq(fieldActivitiesTable.clientId, parsed.data.clientId),
+          ),
+        )
+        .limit(1);
+      res.status(200).json(CreateFieldActivityResponse.parse(concurrentExisting));
     },
   );
 

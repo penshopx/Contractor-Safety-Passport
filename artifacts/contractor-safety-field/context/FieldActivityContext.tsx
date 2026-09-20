@@ -12,17 +12,17 @@ import { useQueryClient } from '@tanstack/react-query';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import { fetch as expoFetch } from 'expo/fetch';
+import {
+  recoverQueue,
+  syncQueuedActivities,
+  type QueuedActivity,
+  type QueueStatus,
+} from './fieldActivityQueue';
 
 const STORAGE_PREFIX = 'safety-passport-field-queue-v2';
 const LAST_ORG_PREFIX = 'safety-passport-field-last-org-v1';
 
-export type QueueStatus = 'pending' | 'syncing' | 'synced' | 'failed';
-export type QueuedActivity = FieldActivityInput & {
-  localPhotoUri?: string;
-  photoContentType?: 'image/jpeg' | 'image/png' | 'image/webp';
-  localStatus: QueueStatus;
-  lastError?: string;
-};
+export type { QueuedActivity, QueueStatus } from './fieldActivityQueue';
 export type OfflineFieldActivityInput = FieldActivityInput & {
   localPhotoUri?: string;
   photoContentType?: 'image/jpeg' | 'image/png' | 'image/webp';
@@ -45,7 +45,9 @@ export function FieldActivityProvider({ children }: { children: React.ReactNode 
   const [isReady, setIsReady] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const queueRef = useRef<QueuedActivity[]>([]);
+  const persistChainRef = useRef<Promise<void>>(Promise.resolve());
   const isSyncingRef = useRef(false);
+  const syncRequestedRef = useRef(false);
   const syncNowRef = useRef<() => Promise<void>>(async () => undefined);
   const createActivity = useCreateFieldActivity({
     request: organizationId ? { headers: { 'x-organization-id': organizationId } } : undefined,
@@ -90,31 +92,44 @@ export function FieldActivityProvider({ children }: { children: React.ReactNode 
     AsyncStorage.getItem(storageKey)
       .then((value) => {
         const stored = value ? (JSON.parse(value) as QueuedActivity[]) : [];
-        updateQueue(stored.map((item) => item.localStatus === 'syncing' ? { ...item, localStatus: 'pending' } : item));
+        updateQueue(recoverQueue(stored));
       })
       .finally(() => setIsReady(true));
   }, [storageKey, updateQueue]);
 
-  const persist = useCallback(async (next: QueuedActivity[]) => {
+  const mutateQueue = useCallback(async (
+    updater: (current: QueuedActivity[]) => QueuedActivity[],
+  ) => {
     if (!storageKey) throw new Error('Ruang kerja belum tersedia');
-    updateQueue(next);
-    await AsyncStorage.setItem(storageKey, JSON.stringify(next));
+    let result = queueRef.current;
+    const write = async () => {
+      result = updater(queueRef.current);
+      updateQueue(result);
+      await AsyncStorage.setItem(storageKey, JSON.stringify(result));
+    };
+    const operation = persistChainRef.current.then(write, write);
+    persistChainRef.current = operation.then(
+      () => undefined,
+      () => undefined,
+    );
+    await operation;
+    return result;
   }, [storageKey, updateQueue]);
 
   const syncNow = useCallback(async () => {
-    if (!isReady || !storageKey || isSyncingRef.current) return;
-    const pending = queueRef.current.filter((item) => item.localStatus !== 'synced');
-    if (pending.length === 0) return;
+    if (!isReady || !storageKey) return;
+    if (isSyncingRef.current) {
+      syncRequestedRef.current = true;
+      return;
+    }
+    if (!queueRef.current.some((item) => item.localStatus !== 'synced')) return;
     isSyncingRef.current = true;
     setIsSyncing(true);
-    let next = [...queueRef.current];
     try {
-      for (const item of pending) {
-        next = next.map((entry) =>
-          entry.clientId === item.clientId ? { ...entry, localStatus: 'syncing', lastError: undefined } : entry,
-        );
-        await persist(next);
-        try {
+      await syncQueuedActivities(
+        queueRef.current,
+        mutateQueue,
+        async (item, checkpoint) => {
           let photoObjectPath = item.photoObjectPath;
           const legacyPhotoDataUrl = (item as QueuedActivity & { photoDataUrl?: string }).photoDataUrl;
           const photoSource = item.localPhotoUri ?? legacyPhotoDataUrl;
@@ -140,10 +155,7 @@ export function FieldActivityProvider({ children }: { children: React.ReactNode 
             });
             if (!uploadResponse.ok) throw new Error('Unggahan foto belum berhasil');
             photoObjectPath = target.objectPath;
-            next = next.map((entry) =>
-              entry.clientId === item.clientId ? { ...entry, photoObjectPath } : entry,
-            );
-            await persist(next);
+            await checkpoint({ photoObjectPath });
           }
           const {
             localPhotoUri: _localPhotoUri,
@@ -154,34 +166,30 @@ export function FieldActivityProvider({ children }: { children: React.ReactNode 
             ...activityData
           } = { ...(item as QueuedActivity & { photoDataUrl?: string }), photoObjectPath };
           await createActivity.mutateAsync({ data: activityData });
-          next = next.map((entry) =>
-            entry.clientId === item.clientId ? { ...entry, localStatus: 'synced', lastError: undefined } : entry,
-          );
-        } catch (error) {
-          next = next.map((entry) =>
-            entry.clientId === item.clientId
-              ? { ...entry, localStatus: 'failed', lastError: error instanceof Error ? error.message : 'Belum ada koneksi' }
-              : entry,
-          );
-        }
-        await persist(next);
-      }
+        },
+      );
       await queryClient.invalidateQueries({ queryKey: getListFieldActivitiesQueryKey() });
     } finally {
       isSyncingRef.current = false;
       setIsSyncing(false);
+      if (syncRequestedRef.current) {
+        syncRequestedRef.current = false;
+        void syncNowRef.current();
+      }
     }
-  }, [createActivity, isReady, organizationId, persist, queryClient, storageKey]);
+  }, [createActivity, isReady, mutateQueue, organizationId, queryClient, storageKey]);
 
   useEffect(() => {
     syncNowRef.current = syncNow;
   }, [syncNow]);
 
   const addActivity = useCallback(async (activity: OfflineFieldActivityInput) => {
-    const next: QueuedActivity[] = [{ ...activity, localStatus: 'pending' }, ...queueRef.current];
-    await persist(next);
+    await mutateQueue((current) => [
+      { ...activity, localStatus: 'pending' },
+      ...current,
+    ]);
     await syncNowRef.current();
-  }, [persist]);
+  }, [mutateQueue]);
 
   useEffect(() => {
     if (!isReady) return;

@@ -1,0 +1,1 @@
+- [Mutasi antrean offline](offline-queue-concurrency.md) — serialisasikan penyimpanan dan jadwalkan ulang sync; snapshot lama tidak boleh menimpa item baru.

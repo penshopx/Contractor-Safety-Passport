@@ -6,7 +6,9 @@ import {
   serial,
   text,
   timestamp,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -66,27 +68,36 @@ export const certificatesTable = pgTable("certificates", {
   status: text("status").notNull(),
 });
 
-export const fieldActivitiesTable = pgTable("field_activities", {
-  id: serial("id").primaryKey(),
-  organizationId: text("organization_id").notNull().default("legacy"),
-  createdBy: text("created_by").notNull().default("system"),
-  clientId: text("client_id").notNull().default("legacy"),
-  type: text("type").notNull(),
-  title: text("title").notNull(),
-  project: text("project").notNull(),
-  actor: text("actor").notNull(),
-  status: text("status").notNull(),
-  notes: text("notes"),
-  photoObjectPath: text("photo_object_path"),
-  // Kept temporarily so the startup migration can move existing base64 photos.
-  photoDataUrl: text("photo_data_url"),
-  latitude: real("latitude"),
-  longitude: real("longitude"),
-  locationAccuracy: real("location_accuracy"),
-  signatureSvg: text("signature_svg"),
-  occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull().defaultNow(),
-  syncedAt: timestamp("synced_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const fieldActivitiesTable = pgTable(
+  "field_activities",
+  {
+    id: serial("id").primaryKey(),
+    organizationId: text("organization_id").notNull().default("legacy"),
+    createdBy: text("created_by").notNull().default("system"),
+    clientId: text("client_id").notNull().default("legacy"),
+    type: text("type").notNull(),
+    title: text("title").notNull(),
+    project: text("project").notNull(),
+    actor: text("actor").notNull(),
+    status: text("status").notNull(),
+    notes: text("notes"),
+    photoObjectPath: text("photo_object_path"),
+    // Kept temporarily so the startup migration can move existing base64 photos.
+    photoDataUrl: text("photo_data_url"),
+    latitude: real("latitude"),
+    longitude: real("longitude"),
+    locationAccuracy: real("location_accuracy"),
+    signatureSvg: text("signature_svg"),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull().defaultNow(),
+    syncedAt: timestamp("synced_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("field_activities_organization_client_id_idx").on(
+      table.organizationId,
+      table.clientId,
+    ).where(sql`${table.clientId} <> 'legacy'`),
+  ],
+);
 
 export const insertProjectSchema = createInsertSchema(projectsTable).omit({
   id: true,

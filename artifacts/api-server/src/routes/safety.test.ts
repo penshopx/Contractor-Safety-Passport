@@ -491,4 +491,49 @@ describe("isolasi data antar kontraktor", () => {
       );
     assert.equal(rows.length, 2);
   });
+
+  it("menghasilkan satu aktivitas saat client ID yang sama dikirim ulang", async () => {
+    const clientId = `${runId}-retry-client-id`;
+    const body = {
+      ...activityBody("retry", `Proyek A ${runId}`),
+      clientId,
+    };
+
+    const [first, retry] = await Promise.all([
+      request("/field-activities", {
+        role: "field_officer",
+        method: "POST",
+        body,
+      }),
+      request("/field-activities", {
+        role: "field_officer",
+        method: "POST",
+        body,
+      }),
+    ]);
+
+    assert.deepEqual([first.status, retry.status].sort(), [200, 201]);
+    assert.equal(first.body.id, retry.body.id);
+
+    const rows = await db
+      .select()
+      .from(fieldActivitiesTable)
+      .where(
+        and(
+          eq(fieldActivitiesTable.organizationId, organizationA),
+          eq(fieldActivitiesTable.clientId, clientId),
+        ),
+      );
+    const dashboardActivities = await request("/field-activities", {
+      role: "viewer",
+    });
+
+    assert.equal(rows.length, 1);
+    assert.equal(
+      dashboardActivities.body.filter(
+        (item: { clientId: string }) => item.clientId === clientId,
+      ).length,
+      1,
+    );
+  });
 });
