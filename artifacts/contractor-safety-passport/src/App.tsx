@@ -1,10 +1,14 @@
 import { useEffect, useRef, type ReactNode } from 'react';
-import { ClerkProvider, SignIn, SignUp, Show, useClerk } from '@clerk/react';
+import { ClerkProvider, SignIn, SignUp, Show, useClerk, useUser } from '@clerk/react';
 import { publishableKeyFromHost } from '@clerk/react/internal';
 import { shadcn } from '@clerk/themes';
 import { Switch, Route, useLocation, Router as WouterRouter, Redirect } from 'wouter';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
-import { useGetOrganizationContext } from '@workspace/api-client-react';
+import {
+  getGetOrganizationContextQueryKey,
+  useAcceptOrganizationInvitation,
+  useGetOrganizationContext,
+} from '@workspace/api-client-react';
 
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/sonner';
@@ -28,7 +32,9 @@ import CertificatesPage from '@/pages/certificates';
 import FieldActivitiesPage from '@/pages/field-activities';
 import SmkkReportsPage from '@/pages/smkk-reports';
 import SafetyBoqPage from '@/pages/safety-boq';
+import TeamPage from '@/pages/team';
 import { Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -45,6 +51,7 @@ const clerkPubKey = publishableKeyFromHost(
 
 const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
+const pendingInvitationKey = "safety-passport-pending-invitation";
 
 function stripBase(path: string): string {
   return basePath && path.startsWith(basePath)
@@ -127,6 +134,66 @@ function ClerkQueryClientCacheInvalidator() {
   return null;
 }
 
+function PendingInvitationAcceptor() {
+  const { isSignedIn } = useUser();
+  const queryClient = useQueryClient();
+  const [, setLocation] = useLocation();
+  const attemptedInvitationRef = useRef<string | null>(null);
+  const acceptInvitation = useAcceptOrganizationInvitation();
+
+  useEffect(() => {
+    if (!isSignedIn) return;
+    const invitationId = window.localStorage.getItem(pendingInvitationKey);
+    if (!invitationId || attemptedInvitationRef.current === invitationId) return;
+    attemptedInvitationRef.current = invitationId;
+
+    acceptInvitation.mutate(
+      { invitationId },
+      {
+        onSuccess: (context) => {
+          window.localStorage.removeItem(pendingInvitationKey);
+          queryClient.setQueryData(getGetOrganizationContextQueryKey(), context);
+          toast.success(`Anda telah bergabung dengan ${context.organizationName}`);
+          setLocation("/dashboard");
+        },
+        onError: (error) => {
+          if (error.status === 403 || error.status === 404) {
+            window.localStorage.removeItem(pendingInvitationKey);
+          }
+          toast.error(
+            error.status === 403
+              ? "Undangan ini ditujukan untuk alamat email lain."
+              : "Undangan tidak dapat diterima. Silakan buka kembali tautan undangan.",
+          );
+        },
+      },
+    );
+  }, [acceptInvitation, isSignedIn, queryClient, setLocation]);
+
+  return null;
+}
+
+function InvitationLandingPage() {
+  const { isSignedIn } = useUser();
+
+  useEffect(() => {
+    const invitationId = new URLSearchParams(window.location.search).get("invitation");
+    if (invitationId) {
+      window.localStorage.setItem(pendingInvitationKey, invitationId);
+    }
+    if (!isSignedIn) {
+      window.location.replace(`${basePath}/sign-up${window.location.search}`);
+    }
+  }, [isSignedIn]);
+
+  return (
+    <div className="min-h-[100dvh] flex flex-col items-center justify-center bg-background">
+      <Loader2 className="h-8 w-8 text-primary animate-spin mb-4" />
+      <p className="text-muted-foreground">Menyiapkan undangan ruang kerja...</p>
+    </div>
+  );
+}
+
 function RoutedErrorBoundary({ children }: { children: ReactNode }) {
   const [location] = useLocation();
   return <ErrorBoundary resetKey={location}>{children}</ErrorBoundary>;
@@ -179,6 +246,7 @@ function AuthenticatedApp() {
         <Route path="/field-activities" component={() => <WorkspaceGate><FieldActivitiesPage /></WorkspaceGate>} />
         <Route path="/smkk-reports" component={() => <WorkspaceGate><SmkkReportsPage /></WorkspaceGate>} />
         <Route path="/safety-boq" component={() => <WorkspaceGate><SafetyBoqPage /></WorkspaceGate>} />
+        <Route path="/team" component={() => <WorkspaceGate><TeamPage /></WorkspaceGate>} />
         
         <Route component={() => <WorkspaceGate><NotFound /></WorkspaceGate>} />
       </Switch>
@@ -205,6 +273,7 @@ function Router() {
       <Route path="/" component={HomeRedirect} />
       <Route path="/sign-in/*?" component={SignInPage} />
       <Route path="/sign-up/*?" component={SignUpPage} />
+      <Route path="/accept-invitation" component={InvitationLandingPage} />
       
       {/* Protected routes */}
       <Route path="/:rest*">
@@ -249,6 +318,7 @@ function ClerkProviderWithRoutes() {
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
           <ClerkQueryClientCacheInvalidator />
+          <PendingInvitationAcceptor />
           <Router />
           <Toaster />
         </TooltipProvider>

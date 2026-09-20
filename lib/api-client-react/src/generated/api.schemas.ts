@@ -37,6 +37,61 @@ export interface OrganizationInput {
   name: string;
 }
 
+export interface OrganizationMember {
+  userId: string;
+  email: string;
+  name: string;
+  role: OrganizationRole;
+  joinedAt: string;
+}
+
+export type OrganizationInvitationStatus = typeof OrganizationInvitationStatus[keyof typeof OrganizationInvitationStatus];
+
+
+export const OrganizationInvitationStatus = {
+  pending: 'pending',
+} as const;
+
+export interface OrganizationInvitation {
+  id: string;
+  email: string;
+  role: OrganizationRole;
+  status: OrganizationInvitationStatus;
+  createdAt: string;
+}
+
+export interface OrganizationMembers {
+  members: OrganizationMember[];
+  invitations: OrganizationInvitation[];
+}
+
+export type OrganizationInvitationInputRole = typeof OrganizationInvitationInputRole[keyof typeof OrganizationInvitationInputRole];
+
+
+export const OrganizationInvitationInputRole = {
+  safety_expert: 'safety_expert',
+  field_officer: 'field_officer',
+  viewer: 'viewer',
+} as const;
+
+export interface OrganizationInvitationInput {
+  email: string;
+  role: OrganizationInvitationInputRole;
+}
+
+export type OrganizationMemberRoleUpdateRole = typeof OrganizationMemberRoleUpdateRole[keyof typeof OrganizationMemberRoleUpdateRole];
+
+
+export const OrganizationMemberRoleUpdateRole = {
+  safety_expert: 'safety_expert',
+  field_officer: 'field_officer',
+  viewer: 'viewer',
+} as const;
+
+export interface OrganizationMemberRoleUpdate {
+  role: OrganizationMemberRoleUpdateRole;
+}
+
 export type ProjectStandard = typeof ProjectStandard[keyof typeof ProjectStandard];
 
 
@@ -635,4 +690,14 @@ export type NotFoundResponse = Error;
  * Authentication required
  */
 export type UnauthorizedResponse = Error;
+
+/**
+ * Insufficient workspace permissions
+ */
+export type ForbiddenResponse = Error;
+
+/**
+ * Resource conflict
+ */
+export type ConflictResponse = Error;
 

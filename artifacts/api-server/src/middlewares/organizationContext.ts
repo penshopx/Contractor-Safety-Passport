@@ -1,5 +1,5 @@
 import { getAuth } from "@clerk/express";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import type { NextFunction, Request, Response } from "express";
 import {
   db,
@@ -43,6 +43,7 @@ export const requireOrganization = async (
           )
         : eq(organizationMembershipsTable.userId, userId),
     )
+    .orderBy(desc(organizationMembershipsTable.createdAt))
     .limit(1);
   const membership = memberships[0];
   if (!membership) {

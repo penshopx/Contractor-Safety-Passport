@@ -47,6 +47,78 @@ export const CreateOrganizationResponse = zod.object({
 
 
 /**
+ * @summary List members and pending invitations in the active workspace
+ */
+export const ListOrganizationMembersResponse = zod.object({
+  "members": zod.array(zod.object({
+  "userId": zod.string(),
+  "email": zod.string().email(),
+  "name": zod.string(),
+  "role": zod.enum(['owner', 'safety_expert', 'field_officer', 'viewer']),
+  "joinedAt": zod.coerce.date()
+})),
+  "invitations": zod.array(zod.object({
+  "id": zod.string(),
+  "email": zod.string().email(),
+  "role": zod.enum(['owner', 'safety_expert', 'field_officer', 'viewer']),
+  "status": zod.enum(['pending']),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Invite a member to the active workspace
+ */
+export const InviteOrganizationMemberBody = zod.object({
+  "email": zod.string().email(),
+  "role": zod.enum(['safety_expert', 'field_officer', 'viewer'])
+})
+
+export const InviteOrganizationMemberResponse = zod.object({
+  "id": zod.string(),
+  "email": zod.string().email(),
+  "role": zod.enum(['owner', 'safety_expert', 'field_officer', 'viewer']),
+  "status": zod.enum(['pending']),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Accept a specific workspace invitation for the signed-in user
+ */
+export const AcceptOrganizationInvitationParams = zod.object({
+  "invitationId": zod.coerce.string().uuid()
+})
+
+export const AcceptOrganizationInvitationResponse = zod.object({
+  "organizationId": zod.string(),
+  "organizationName": zod.string(),
+  "role": zod.enum(['owner', 'safety_expert', 'field_officer', 'viewer'])
+})
+
+
+/**
+ * @summary Change a workspace member role
+ */
+export const UpdateOrganizationMemberRoleParams = zod.object({
+  "userId": zod.coerce.string()
+})
+
+export const UpdateOrganizationMemberRoleBody = zod.object({
+  "role": zod.enum(['safety_expert', 'field_officer', 'viewer'])
+})
+
+export const UpdateOrganizationMemberRoleResponse = zod.object({
+  "userId": zod.string(),
+  "email": zod.string().email(),
+  "name": zod.string(),
+  "role": zod.enum(['owner', 'safety_expert', 'field_officer', 'viewer']),
+  "joinedAt": zod.coerce.date()
+})
+
+
+/**
  * @summary Get dashboard summary
  */
 export const getDashboardSummaryResponseReadinessScoreMin = 0;

@@ -16,7 +16,8 @@ import {
   ShieldAlert,
   HardHat,
   Eye,
-  FileSpreadsheet
+  FileSpreadsheet,
+  UserCog
 } from "lucide-react";
 import {
   Sidebar,
@@ -63,6 +64,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     { icon: Award, label: "Certificates", href: "/certificates" },
     { icon: ActivitySquare, label: "Field Activity", href: "/field-activities" },
   ];
+
+  if (orgContext?.role === "owner") {
+    navItems.push({ icon: UserCog, label: "Manajemen Tim", href: "/team" });
+  }
 
   const roleInfo = orgContext?.role ? ROLE_LABELS[orgContext.role] : { label: "Member", icon: User };
   const RoleIcon = roleInfo.icon;

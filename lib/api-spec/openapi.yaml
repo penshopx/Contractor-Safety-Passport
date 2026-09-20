@@ -76,6 +76,90 @@ paths:
                 $ref: "#/components/schemas/OrganizationContext"
         "401":
           $ref: "#/components/responses/Unauthorized"
+  /organization-members:
+    get:
+      operationId: listOrganizationMembers
+      tags: [organizations]
+      summary: List members and pending invitations in the active workspace
+      responses:
+        "200":
+          description: Workspace members and invitations
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganizationMembers"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /organization-invitations:
+    post:
+      operationId: inviteOrganizationMember
+      tags: [organizations]
+      summary: Invite a member to the active workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrganizationInvitationInput"
+      responses:
+        "201":
+          description: Invitation sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganizationInvitation"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /organization-invitations/{invitationId}/accept:
+    post:
+      operationId: acceptOrganizationInvitation
+      tags: [organizations]
+      summary: Accept a specific workspace invitation for the signed-in user
+      parameters:
+        - name: invitationId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Accepted workspace context
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganizationContext"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /organization-members/{userId}:
+    patch:
+      operationId: updateOrganizationMemberRole
+      tags: [organizations]
+      summary: Change a workspace member role
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrganizationMemberRoleUpdate"
+      responses:
+        "200":
+          description: Updated member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganizationMember"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /dashboard/summary:
     get:
       operationId: getDashboardSummary
@@ -398,6 +482,18 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+    Forbidden:
+      description: Insufficient workspace permissions
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Conflict:
+      description: Resource conflict
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
   schemas:
     HealthStatus:
       type: object
@@ -428,6 +524,53 @@ components:
       properties:
         name: { type: string, minLength: 2, maxLength: 120 }
       required: [name]
+    OrganizationMember:
+      type: object
+      properties:
+        userId: { type: string }
+        email: { type: string, format: email }
+        name: { type: string }
+        role:
+          $ref: "#/components/schemas/OrganizationRole"
+        joinedAt: { type: string, format: date-time }
+      required: [userId, email, name, role, joinedAt]
+    OrganizationInvitation:
+      type: object
+      properties:
+        id: { type: string }
+        email: { type: string, format: email }
+        role:
+          $ref: "#/components/schemas/OrganizationRole"
+        status: { type: string, enum: [pending] }
+        createdAt: { type: string, format: date-time }
+      required: [id, email, role, status, createdAt]
+    OrganizationMembers:
+      type: object
+      properties:
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrganizationMember"
+        invitations:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrganizationInvitation"
+      required: [members, invitations]
+    OrganizationInvitationInput:
+      type: object
+      properties:
+        email: { type: string, format: email }
+        role:
+          type: string
+          enum: [safety_expert, field_officer, viewer]
+      required: [email, role]
+    OrganizationMemberRoleUpdate:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [safety_expert, field_officer, viewer]
+      required: [role]
     Project:
       type: object
       properties:

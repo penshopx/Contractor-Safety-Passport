@@ -23,18 +23,25 @@ import type {
   Activity,
   Certificate,
   CertificateInput,
+  ConflictResponse,
   CsmsProfile,
   DashboardSummary,
   DocumentInput,
   DocumentTemplate,
   FieldActivity,
   FieldActivityInput,
+  ForbiddenResponse,
   GeneratedDocument,
   GeneratedDocumentInput,
   HealthStatus,
   NotFoundResponse,
   OrganizationContext,
   OrganizationInput,
+  OrganizationInvitation,
+  OrganizationInvitationInput,
+  OrganizationMember,
+  OrganizationMemberRoleUpdate,
+  OrganizationMembers,
   Person,
   PersonInput,
   PersonUpdate,
@@ -314,6 +321,334 @@ export const useCreateOrganization = <TError = ErrorType<UnauthorizedResponse>,
         TContext
       > => {
       return useMutation(getCreateOrganizationMutationOptions(options));
+    }
+
+export const getListOrganizationMembersUrl = () => {
+
+
+
+
+  return `/api/organization-members`
+}
+
+/**
+ * @summary List members and pending invitations in the active workspace
+ */
+export const listOrganizationMembers = async ( options?: Parameters<typeof customFetch>[1]): Promise<OrganizationMembers> => {
+
+  return customFetch<OrganizationMembers>(getListOrganizationMembersUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListOrganizationMembersQueryKey = () => {
+    return [
+    `/api/organization-members`
+    ] as const;
+    }
+
+
+export const getListOrganizationMembersQueryOptions = <TData = Awaited<ReturnType<typeof listOrganizationMembers>>, TError = ErrorType<ForbiddenResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listOrganizationMembers>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListOrganizationMembersQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listOrganizationMembers>>> = ({ signal }) => listOrganizationMembers({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listOrganizationMembers>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListOrganizationMembersQueryResult = NonNullable<Awaited<ReturnType<typeof listOrganizationMembers>>>
+export type ListOrganizationMembersQueryError = ErrorType<ForbiddenResponse>
+
+
+/**
+ * @summary List members and pending invitations in the active workspace
+ */
+
+export function useListOrganizationMembers<TData = Awaited<ReturnType<typeof listOrganizationMembers>>, TError = ErrorType<ForbiddenResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listOrganizationMembers>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListOrganizationMembersQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getInviteOrganizationMemberUrl = () => {
+
+
+
+
+  return `/api/organization-invitations`
+}
+
+/**
+ * @summary Invite a member to the active workspace
+ */
+export const inviteOrganizationMember = async (organizationInvitationInput: OrganizationInvitationInput, options?: Parameters<typeof customFetch>[1]): Promise<OrganizationInvitation> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<OrganizationInvitation>(getInviteOrganizationMemberUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(organizationInvitationInput)
+  }
+);}
+
+
+
+
+
+export const getInviteOrganizationMemberMutationKey = () => ['inviteOrganizationMember'] as const;
+
+export const getInviteOrganizationMemberMutationOptions = <TError = ErrorType<ForbiddenResponse | ConflictResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof inviteOrganizationMember>>, TError,InviteOrganizationMemberMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof inviteOrganizationMember>>, TError,InviteOrganizationMemberMutationVariables, TContext> => {
+
+const mutationKey = getInviteOrganizationMemberMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof inviteOrganizationMember>>, InviteOrganizationMemberMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  inviteOrganizationMember(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type InviteOrganizationMemberMutationResult = NonNullable<Awaited<ReturnType<typeof inviteOrganizationMember>>>
+    export type InviteOrganizationMemberMutationBody = BodyType<OrganizationInvitationInput>
+    export type InviteOrganizationMemberMutationError = ErrorType<ForbiddenResponse | ConflictResponse>
+    export type InviteOrganizationMemberMutationVariables = {data: BodyType<OrganizationInvitationInput>}
+
+    /**
+ * @summary Invite a member to the active workspace
+ */
+export const useInviteOrganizationMember = <TError = ErrorType<ForbiddenResponse | ConflictResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof inviteOrganizationMember>>, TError,InviteOrganizationMemberMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof inviteOrganizationMember>>,
+        TError,
+        InviteOrganizationMemberMutationVariables,
+        TContext
+      > => {
+      return useMutation(getInviteOrganizationMemberMutationOptions(options));
+    }
+
+export const getAcceptOrganizationInvitationUrl = (invitationId: string,) => {
+
+
+
+
+  return `/api/organization-invitations/${invitationId}/accept`
+}
+
+/**
+ * @summary Accept a specific workspace invitation for the signed-in user
+ */
+export const acceptOrganizationInvitation = async (invitationId: string, options?: Parameters<typeof customFetch>[1]): Promise<OrganizationContext> => {
+
+  return customFetch<OrganizationContext>(getAcceptOrganizationInvitationUrl(invitationId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getAcceptOrganizationInvitationMutationKey = () => ['acceptOrganizationInvitation'] as const;
+
+export const getAcceptOrganizationInvitationMutationOptions = <TError = ErrorType<ForbiddenResponse | NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof acceptOrganizationInvitation>>, TError,AcceptOrganizationInvitationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof acceptOrganizationInvitation>>, TError,AcceptOrganizationInvitationMutationVariables, TContext> => {
+
+const mutationKey = getAcceptOrganizationInvitationMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof acceptOrganizationInvitation>>, AcceptOrganizationInvitationMutationVariables> = (props) => {
+          const {invitationId} = props ?? {};
+
+          return  acceptOrganizationInvitation(invitationId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AcceptOrganizationInvitationMutationResult = NonNullable<Awaited<ReturnType<typeof acceptOrganizationInvitation>>>
+
+    export type AcceptOrganizationInvitationMutationError = ErrorType<ForbiddenResponse | NotFoundResponse>
+    export type AcceptOrganizationInvitationMutationVariables = {invitationId: string}
+
+    /**
+ * @summary Accept a specific workspace invitation for the signed-in user
+ */
+export const useAcceptOrganizationInvitation = <TError = ErrorType<ForbiddenResponse | NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof acceptOrganizationInvitation>>, TError,AcceptOrganizationInvitationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof acceptOrganizationInvitation>>,
+        TError,
+        AcceptOrganizationInvitationMutationVariables,
+        TContext
+      > => {
+      return useMutation(getAcceptOrganizationInvitationMutationOptions(options));
+    }
+
+export const getUpdateOrganizationMemberRoleUrl = (userId: string,) => {
+
+
+
+
+  return `/api/organization-members/${userId}`
+}
+
+/**
+ * @summary Change a workspace member role
+ */
+export const updateOrganizationMemberRole = async (userId: string,
+    organizationMemberRoleUpdate: OrganizationMemberRoleUpdate, options?: Parameters<typeof customFetch>[1]): Promise<OrganizationMember> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<OrganizationMember>(getUpdateOrganizationMemberRoleUrl(userId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(organizationMemberRoleUpdate)
+  }
+);}
+
+
+
+
+
+export const getUpdateOrganizationMemberRoleMutationKey = () => ['updateOrganizationMemberRole'] as const;
+
+export const getUpdateOrganizationMemberRoleMutationOptions = <TError = ErrorType<ForbiddenResponse | NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateOrganizationMemberRole>>, TError,UpdateOrganizationMemberRoleMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateOrganizationMemberRole>>, TError,UpdateOrganizationMemberRoleMutationVariables, TContext> => {
+
+const mutationKey = getUpdateOrganizationMemberRoleMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateOrganizationMemberRole>>, UpdateOrganizationMemberRoleMutationVariables> = (props) => {
+          const {userId,data} = props ?? {};
+
+          return  updateOrganizationMemberRole(userId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateOrganizationMemberRoleMutationResult = NonNullable<Awaited<ReturnType<typeof updateOrganizationMemberRole>>>
+    export type UpdateOrganizationMemberRoleMutationBody = BodyType<OrganizationMemberRoleUpdate>
+    export type UpdateOrganizationMemberRoleMutationError = ErrorType<ForbiddenResponse | NotFoundResponse>
+    export type UpdateOrganizationMemberRoleMutationVariables = {userId: string;data: BodyType<OrganizationMemberRoleUpdate>}
+
+    /**
+ * @summary Change a workspace member role
+ */
+export const useUpdateOrganizationMemberRole = <TError = ErrorType<ForbiddenResponse | NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateOrganizationMemberRole>>, TError,UpdateOrganizationMemberRoleMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateOrganizationMemberRole>>,
+        TError,
+        UpdateOrganizationMemberRoleMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdateOrganizationMemberRoleMutationOptions(options));
     }
 
 export const getGetDashboardSummaryUrl = () => {
