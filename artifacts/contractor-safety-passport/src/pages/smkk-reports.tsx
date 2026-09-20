@@ -6,6 +6,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { downloadPdf, type ProjectDocumentData } from "@/lib/document-generator";
+import {
+  createSmkkDocumentData,
+  selectMonthlyProjectActivities,
+  summarizeSmkkActivities,
+} from "@/lib/smkk-report";
 import { FileSpreadsheet, Loader2, FileDown, Search } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -38,43 +43,25 @@ export default function SmkkReportsPage() {
   const selectedProject = projects?.find(p => p.name === selectedProjectName);
   
   const filteredActivities = useMemo(() => {
-    if (!activities || !selectedProjectName || !selectedMonth) return [];
-    return activities.filter(a => {
-      if (a.project !== selectedProjectName) return false;
-      const actMonth = new Date(a.occurredAt).toISOString().slice(0, 7);
-      return actMonth === selectedMonth;
-    }).sort((a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime());
+    return selectMonthlyProjectActivities(
+      activities,
+      selectedProjectName,
+      selectedMonth,
+    );
   }, [activities, selectedProjectName, selectedMonth]);
 
-  const summary = useMemo(() => {
-    let toolbox = 0;
-    let inspection = 0;
-    let permit = 0;
-    let nearMiss = 0;
-    let openFindings = 0;
-    let closedFindings = 0;
-
-    filteredActivities.forEach(a => {
-      if (a.type === 'Toolbox') toolbox++;
-      else if (a.type === 'Inspection') inspection++;
-      else if (a.type === 'Permit to work') permit++;
-      else if (a.type === 'Near miss') nearMiss++;
-      
-      if (a.status === 'open' || a.status === 'review') openFindings++;
-      else if (a.status === 'complete') closedFindings++;
-    });
-
-    return { toolbox, inspection, permit, nearMiss, openFindings, closedFindings };
-  }, [filteredActivities]);
+  const summary = useMemo(
+    () => summarizeSmkkActivities(filteredActivities),
+    [filteredActivities],
+  );
 
   const handleDownload = async () => {
     if (!selectedProject) return;
     setIsGenerating(true);
 
     try {
-      const docData: ProjectDocumentData = {
-        kind: "smkk-report",
-        project: {
+      const docData: ProjectDocumentData = createSmkkDocumentData(
+        {
           name: selectedProject.name,
           client: selectedProject.client,
           location: selectedProject.location,
@@ -84,26 +71,18 @@ export default function SmkkReportsPage() {
           progress: selectedProject.progress,
           value: selectedProject.value,
         },
-        people: [],
-        certificates: [],
-        activities: filteredActivities.map(a => ({
-          type: a.type,
-          title: a.title,
-          actor: a.actor,
-          status: a.status,
-          occurredAt: a.occurredAt
-        })),
-        extra: {
+        filteredActivities,
+        summary,
+        {
           period: formatDateMonthYear(selectedMonth),
-          providerName: providerName,
-          evaluation: evaluation,
-          notes: notes,
-          preparedBy: preparedBy,
-          reviewedBy: reviewedBy,
-          approvedBy: approvedBy,
-          summary: JSON.stringify(summary)
-        }
-      };
+          providerName,
+          evaluation,
+          notes,
+          preparedBy,
+          reviewedBy,
+          approvedBy,
+        },
+      );
       
       await downloadPdf(docData);
     } finally {
