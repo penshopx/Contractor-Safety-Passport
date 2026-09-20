@@ -9,7 +9,32 @@ export type InvitationAcceptanceDecision =
   | { allowed: true; alreadyAccepted: boolean }
   | { allowed: false; status: 403 | 404; error: string };
 
+export type InvitationCreationDecision =
+  | { allowed: true }
+  | { allowed: false; status: 409; error: string };
+
 export const normalizeEmail = (email: string) => email.trim().toLowerCase();
+
+export const decideInvitationCreation = (
+  hasActiveInvitation: boolean,
+  isExistingMember: boolean,
+): InvitationCreationDecision => {
+  if (hasActiveInvitation) {
+    return {
+      allowed: false,
+      status: 409,
+      error: "Email ini sudah memiliki undangan aktif",
+    };
+  }
+  if (isExistingMember) {
+    return {
+      allowed: false,
+      status: 409,
+      error: "Pengguna ini sudah menjadi anggota ruang kerja",
+    };
+  }
+  return { allowed: true };
+};
 
 const parseTrustedOrigin = (value: string | undefined) => {
   if (!value) return undefined;

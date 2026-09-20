@@ -28,9 +28,11 @@ import {
 } from "../middlewares/organizationContext";
 import {
   decideInvitationAcceptance,
+  decideInvitationCreation,
   getTrustedApplicationOrigin,
   normalizeEmail,
 } from "../lib/organizationInvitations";
+import { decideMemberRoleChange } from "../lib/organizationMemberships";
 
 const router: IRouter = Router();
 
@@ -189,8 +191,14 @@ router.post(
         ),
       )
       .limit(1);
-    if (existingInvitation) {
-      res.status(409).json({ error: "Email ini sudah memiliki undangan aktif" });
+    const invitationDecision = decideInvitationCreation(
+      Boolean(existingInvitation),
+      false,
+    );
+    if (!invitationDecision.allowed) {
+      res
+        .status(invitationDecision.status)
+        .json({ error: invitationDecision.error });
       return;
     }
 
@@ -209,8 +217,14 @@ router.post(
           ),
         )
         .limit(1);
-      if (existingMembership) {
-        res.status(409).json({ error: "Pengguna ini sudah menjadi anggota ruang kerja" });
+      const membershipDecision = decideInvitationCreation(
+        false,
+        Boolean(existingMembership),
+      );
+      if (!membershipDecision.allowed) {
+        res
+          .status(membershipDecision.status)
+          .json({ error: membershipDecision.error });
         return;
       }
     }
@@ -405,8 +419,9 @@ router.patch(
       res.status(404).json({ error: "Anggota tidak ditemukan" });
       return;
     }
-    if (membership.role === "owner") {
-      res.status(403).json({ error: "Peran pemilik tidak dapat diubah" });
+    const roleDecision = decideMemberRoleChange(membership.role);
+    if (!roleDecision.allowed) {
+      res.status(roleDecision.status).json({ error: roleDecision.error });
       return;
     }
 

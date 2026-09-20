@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   decideInvitationAcceptance,
+  decideInvitationCreation,
   getTrustedApplicationOrigin,
 } from "./organizationInvitations.ts";
 
@@ -13,6 +14,26 @@ const pendingInvitation = {
 };
 
 describe("penerimaan undangan organisasi", () => {
+  it("mengizinkan undangan baru untuk email yang belum terdaftar", () => {
+    assert.deepEqual(decideInvitationCreation(false, false), { allowed: true });
+  });
+
+  it("menolak undangan aktif yang duplikat", () => {
+    assert.deepEqual(decideInvitationCreation(true, false), {
+      allowed: false,
+      status: 409,
+      error: "Email ini sudah memiliki undangan aktif",
+    });
+  });
+
+  it("menolak undangan untuk pengguna yang sudah menjadi anggota", () => {
+    assert.deepEqual(decideInvitationCreation(false, true), {
+      allowed: false,
+      status: 409,
+      error: "Pengguna ini sudah menjadi anggota ruang kerja",
+    });
+  });
+
   it("menerima undangan spesifik saat email akun cocok", () => {
     assert.deepEqual(
       decideInvitationAcceptance(

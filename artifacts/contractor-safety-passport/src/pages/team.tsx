@@ -72,6 +72,10 @@ import {
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  getInviteErrorMessage,
+  teamMutationErrorMessages,
+} from '@/lib/team-errors';
 
 const formSchema = z.object({
   email: z.string().email("Format email tidak valid"),
@@ -231,10 +235,7 @@ export default function TeamPage() {
         form.reset();
       },
       onError: (error) => {
-        const msg = error.status === 409
-          ? "Pengguna dengan email ini sudah ada di dalam tim atau sudah diundang."
-          : "Gagal mengirim undangan. Silakan coba lagi.";
-        toast.error(msg);
+        toast.error(getInviteErrorMessage(error));
       }
     });
   };
@@ -246,7 +247,7 @@ export default function TeamPage() {
         queryClient.invalidateQueries({ queryKey: getListOrganizationMembersQueryKey() });
       },
       onError: () => {
-        toast.error("Gagal memperbarui peran pengguna.");
+        toast.error(teamMutationErrorMessages.updateRole);
       }
     });
   };
@@ -261,7 +262,7 @@ export default function TeamPage() {
         refreshTeam();
       },
       onError: () => {
-        toast.error("Gagal mencabut akses anggota.");
+        toast.error(teamMutationErrorMessages.removeMember);
       }
     });
   };
@@ -273,7 +274,7 @@ export default function TeamPage() {
         refreshTeam();
       },
       onError: () => {
-        toast.error("Gagal membatalkan undangan.");
+        toast.error(teamMutationErrorMessages.revokeInvitation);
       }
     });
   };
