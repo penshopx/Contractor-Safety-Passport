@@ -6,6 +6,7 @@ import {
   certificatesTable,
   db,
   fieldActivitiesTable,
+  monthlyReportsTable,
   organizationMembershipsTable,
   organizationsTable,
   peopleTable,
@@ -248,6 +249,9 @@ after(async () => {
     .delete(fieldActivitiesTable)
     .where(inArray(fieldActivitiesTable.organizationId, organizationIds));
   await db
+    .delete(monthlyReportsTable)
+    .where(inArray(monthlyReportsTable.organizationId, organizationIds));
+  await db
     .delete(certificatesTable)
     .where(inArray(certificatesTable.organizationId, organizationIds));
   await db
@@ -271,6 +275,52 @@ after(async () => {
 });
 
 describe("isolasi data antar kontraktor", () => {
+  it("menyimpan, membuka, memperbarui, dan menolak draf bulanan ganda", async () => {
+    const report = {
+      projectId: projectAId,
+      period: "2026-09",
+      status: "draft",
+      evaluation: "Evaluasi awal",
+      notes: "Tindak lanjut",
+      preparedBy: "Petugas K3",
+      reviewedBy: "Konsultan",
+      approvedBy: "Pemberi Tugas",
+    };
+    const created = await request("/monthly-reports", {
+      method: "POST",
+      role: "safety_expert",
+      body: report,
+    });
+    assert.equal(created.status, 201);
+    assert.equal(created.body.projectId, projectAId);
+    assert.equal(created.body.projectName, `Proyek A ${runId}`);
+
+    const duplicate = await request("/monthly-reports", {
+      method: "POST",
+      role: "safety_expert",
+      body: report,
+    });
+    assert.equal(duplicate.status, 409);
+
+    const opened = await request(`/monthly-reports/${created.body.id}`);
+    assert.equal(opened.status, 200);
+    assert.equal(opened.body.evaluation, "Evaluasi awal");
+
+    const updated = await request(`/monthly-reports/${created.body.id}`, {
+      method: "PATCH",
+      role: "safety_expert",
+      body: { status: "final", approvedBy: "Direktur Proyek" },
+    });
+    assert.equal(updated.status, 200);
+    assert.equal(updated.body.status, "final");
+    assert.equal(updated.body.approvedBy, "Direktur Proyek");
+
+    const otherOrganization = await request(`/monthly-reports/${created.body.id}`, {
+      organizationId: organizationB,
+    });
+    assert.equal(otherOrganization.status, 404);
+  });
+
   it("menolak header organisasi yang bukan keanggotaan pengguna", async () => {
     const allowed = await request("/membership/projects", {
       organizationId: organizationA,

@@ -4,6 +4,7 @@ import {
   db,
   certificatesTable,
   fieldActivitiesTable,
+  monthlyReportsTable,
   peopleTable,
   projectsTable,
   safetyDocumentsTable,
@@ -32,6 +33,14 @@ import {
   ListFieldActivitiesResponse,
   ListPeopleResponse,
   ListProjectsResponse,
+  ListMonthlyReportsResponse,
+  CreateMonthlyReportBody,
+  CreateMonthlyReportResponse,
+  GetMonthlyReportParams,
+  GetMonthlyReportResponse,
+  UpdateMonthlyReportBody,
+  UpdateMonthlyReportParams,
+  UpdateMonthlyReportResponse,
   UpdatePersonBody,
   UpdatePersonParams,
   UpdatePersonResponse,
@@ -787,6 +796,161 @@ export const createSafetyRouter = (
           sources: isRkk ? template.sourceBasis : [csmsProfile!.source],
           sections,
         }),
+      );
+    },
+  );
+
+  const monthlyReportSelection = {
+    id: monthlyReportsTable.id,
+    projectId: monthlyReportsTable.projectId,
+    projectName: projectsTable.name,
+    period: monthlyReportsTable.period,
+    status: monthlyReportsTable.status,
+    evaluation: monthlyReportsTable.evaluation,
+    notes: monthlyReportsTable.notes,
+    preparedBy: monthlyReportsTable.preparedBy,
+    reviewedBy: monthlyReportsTable.reviewedBy,
+    approvedBy: monthlyReportsTable.approvedBy,
+    createdAt: monthlyReportsTable.createdAt,
+    updatedAt: monthlyReportsTable.updatedAt,
+  };
+
+  router.get("/monthly-reports", async (req, res): Promise<void> => {
+    const reports = await db
+      .select(monthlyReportSelection)
+      .from(monthlyReportsTable)
+      .innerJoin(projectsTable, eq(monthlyReportsTable.projectId, projectsTable.id))
+      .where(
+        and(
+          eq(monthlyReportsTable.organizationId, req.organizationContext!.organizationId),
+          eq(projectsTable.organizationId, req.organizationContext!.organizationId),
+        ),
+      )
+      .orderBy(desc(monthlyReportsTable.period), desc(monthlyReportsTable.updatedAt));
+    res.json(ListMonthlyReportsResponse.parse(reports));
+  });
+
+  router.post(
+    "/monthly-reports",
+    requireRole("owner", "safety_expert"),
+    async (req, res): Promise<void> => {
+      const parsed = CreateMonthlyReportBody.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.message });
+        return;
+      }
+      const [project] = await db
+        .select({ id: projectsTable.id, name: projectsTable.name })
+        .from(projectsTable)
+        .where(
+          and(
+            eq(projectsTable.id, parsed.data.projectId),
+            eq(projectsTable.organizationId, req.organizationContext!.organizationId),
+          ),
+        );
+      if (!project) {
+        res.status(404).json({ error: "Proyek tidak ditemukan" });
+        return;
+      }
+      try {
+        const [report] = await db
+          .insert(monthlyReportsTable)
+          .values({
+            ...parsed.data,
+            organizationId: req.organizationContext!.organizationId,
+            createdBy: req.organizationContext!.userId,
+          })
+          .returning();
+        res.status(201).json(
+          CreateMonthlyReportResponse.parse({ ...report, projectName: project.name }),
+        );
+      } catch (error) {
+        const cause =
+          typeof error === "object" && error !== null && "cause" in error
+            ? error.cause
+            : undefined;
+        const errorCode =
+          typeof error === "object" && error !== null && "code" in error
+            ? error.code
+            : typeof cause === "object" && cause !== null && "code" in cause
+              ? cause.code
+              : undefined;
+        if (
+          errorCode === "23505"
+        ) {
+          res.status(409).json({
+            error: "Laporan untuk proyek dan periode ini sudah ada. Buka laporan yang tersimpan untuk melanjutkan.",
+          });
+          return;
+        }
+        throw error;
+      }
+    },
+  );
+
+  router.get("/monthly-reports/:id", async (req, res): Promise<void> => {
+    const params = GetMonthlyReportParams.safeParse(req.params);
+    if (!params.success) {
+      res.status(400).json({ error: params.error.message });
+      return;
+    }
+    const [report] = await db
+      .select(monthlyReportSelection)
+      .from(monthlyReportsTable)
+      .innerJoin(projectsTable, eq(monthlyReportsTable.projectId, projectsTable.id))
+      .where(
+        and(
+          eq(monthlyReportsTable.id, params.data.id),
+          eq(monthlyReportsTable.organizationId, req.organizationContext!.organizationId),
+          eq(projectsTable.organizationId, req.organizationContext!.organizationId),
+        ),
+      );
+    if (!report) {
+      res.status(404).json({ error: "Laporan tidak ditemukan" });
+      return;
+    }
+    res.json(GetMonthlyReportResponse.parse(report));
+  });
+
+  router.patch(
+    "/monthly-reports/:id",
+    requireRole("owner", "safety_expert"),
+    async (req, res): Promise<void> => {
+      const params = UpdateMonthlyReportParams.safeParse(req.params);
+      const body = UpdateMonthlyReportBody.safeParse(req.body);
+      if (!params.success || !body.success) {
+        res.status(400).json({ error: "Data laporan tidak valid" });
+        return;
+      }
+      const [report] = await db
+        .update(monthlyReportsTable)
+        .set(body.data)
+        .where(
+          and(
+            eq(monthlyReportsTable.id, params.data.id),
+            eq(monthlyReportsTable.organizationId, req.organizationContext!.organizationId),
+          ),
+        )
+        .returning();
+      if (!report) {
+        res.status(404).json({ error: "Laporan tidak ditemukan" });
+        return;
+      }
+      const [project] = await db
+        .select({ name: projectsTable.name })
+        .from(projectsTable)
+        .where(
+          and(
+            eq(projectsTable.id, report.projectId),
+            eq(projectsTable.organizationId, req.organizationContext!.organizationId),
+          ),
+        );
+      if (!project) {
+        res.status(404).json({ error: "Proyek tidak ditemukan" });
+        return;
+      }
+      res.json(
+        UpdateMonthlyReportResponse.parse({ ...report, projectName: project.name }),
       );
     },
   );

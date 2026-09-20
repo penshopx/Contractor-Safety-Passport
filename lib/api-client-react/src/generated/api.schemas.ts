@@ -608,6 +608,78 @@ export interface FieldActivityInput {
   occurredAt: string;
 }
 
+export type MonthlyReportStatus = typeof MonthlyReportStatus[keyof typeof MonthlyReportStatus];
+
+
+export const MonthlyReportStatus = {
+  draft: 'draft',
+  final: 'final',
+} as const;
+
+export interface MonthlyReport {
+  id: number;
+  projectId: number;
+  projectName: string;
+  /** @pattern ^[0-9]{4}-(0[1-9]|1[0-2])$ */
+  period: string;
+  status: MonthlyReportStatus;
+  evaluation: string;
+  notes: string;
+  preparedBy: string;
+  reviewedBy: string;
+  approvedBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type MonthlyReportInputStatus = typeof MonthlyReportInputStatus[keyof typeof MonthlyReportInputStatus];
+
+
+export const MonthlyReportInputStatus = {
+  draft: 'draft',
+  final: 'final',
+} as const;
+
+export interface MonthlyReportInput {
+  /** @minimum 1 */
+  projectId: number;
+  /** @pattern ^[0-9]{4}-(0[1-9]|1[0-2])$ */
+  period: string;
+  status: MonthlyReportInputStatus;
+  /** @maxLength 10000 */
+  evaluation: string;
+  /** @maxLength 10000 */
+  notes: string;
+  /** @maxLength 200 */
+  preparedBy: string;
+  /** @maxLength 200 */
+  reviewedBy: string;
+  /** @maxLength 200 */
+  approvedBy: string;
+}
+
+export type MonthlyReportUpdateStatus = typeof MonthlyReportUpdateStatus[keyof typeof MonthlyReportUpdateStatus];
+
+
+export const MonthlyReportUpdateStatus = {
+  draft: 'draft',
+  final: 'final',
+} as const;
+
+export interface MonthlyReportUpdate {
+  status?: MonthlyReportUpdateStatus;
+  /** @maxLength 10000 */
+  evaluation?: string;
+  /** @maxLength 10000 */
+  notes?: string;
+  /** @maxLength 200 */
+  preparedBy?: string;
+  /** @maxLength 200 */
+  reviewedBy?: string;
+  /** @maxLength 200 */
+  approvedBy?: string;
+}
+
 export type EvidenceUploadRequestContentType = typeof EvidenceUploadRequestContentType[keyof typeof EvidenceUploadRequestContentType];
 
 

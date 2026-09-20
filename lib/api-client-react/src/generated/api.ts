@@ -36,6 +36,9 @@ import type {
   GeneratedDocument,
   GeneratedDocumentInput,
   HealthStatus,
+  MonthlyReport,
+  MonthlyReportInput,
+  MonthlyReportUpdate,
   NotFoundResponse,
   OrganizationContext,
   OrganizationInput,
@@ -2292,5 +2295,336 @@ export const useCreateFieldActivity = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getCreateFieldActivityMutationOptions(options));
+    }
+
+export const getListMonthlyReportsUrl = () => {
+
+
+
+
+  return `/api/monthly-reports`
+}
+
+/**
+ * @summary List saved monthly SMKK reports
+ */
+export const listMonthlyReports = async ( options?: Parameters<typeof customFetch>[1]): Promise<MonthlyReport[]> => {
+
+  return customFetch<MonthlyReport[]>(getListMonthlyReportsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListMonthlyReportsQueryKey = () => {
+    return [
+    `/api/monthly-reports`
+    ] as const;
+    }
+
+
+export const getListMonthlyReportsQueryOptions = <TData = Awaited<ReturnType<typeof listMonthlyReports>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMonthlyReports>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListMonthlyReportsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listMonthlyReports>>> = ({ signal }) => listMonthlyReports({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listMonthlyReports>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListMonthlyReportsQueryResult = NonNullable<Awaited<ReturnType<typeof listMonthlyReports>>>
+export type ListMonthlyReportsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List saved monthly SMKK reports
+ */
+
+export function useListMonthlyReports<TData = Awaited<ReturnType<typeof listMonthlyReports>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMonthlyReports>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListMonthlyReportsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateMonthlyReportUrl = () => {
+
+
+
+
+  return `/api/monthly-reports`
+}
+
+/**
+ * @summary Save a monthly SMKK report draft
+ */
+export const createMonthlyReport = async (monthlyReportInput: MonthlyReportInput, options?: Parameters<typeof customFetch>[1]): Promise<MonthlyReport> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<MonthlyReport>(getCreateMonthlyReportUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(monthlyReportInput)
+  }
+);}
+
+
+
+
+
+export const getCreateMonthlyReportMutationKey = () => ['createMonthlyReport'] as const;
+
+export const getCreateMonthlyReportMutationOptions = <TError = ErrorType<ConflictResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createMonthlyReport>>, TError,CreateMonthlyReportMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createMonthlyReport>>, TError,CreateMonthlyReportMutationVariables, TContext> => {
+
+const mutationKey = getCreateMonthlyReportMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createMonthlyReport>>, CreateMonthlyReportMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  createMonthlyReport(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateMonthlyReportMutationResult = NonNullable<Awaited<ReturnType<typeof createMonthlyReport>>>
+    export type CreateMonthlyReportMutationBody = BodyType<MonthlyReportInput>
+    export type CreateMonthlyReportMutationError = ErrorType<ConflictResponse>
+    export type CreateMonthlyReportMutationVariables = {data: BodyType<MonthlyReportInput>}
+
+    /**
+ * @summary Save a monthly SMKK report draft
+ */
+export const useCreateMonthlyReport = <TError = ErrorType<ConflictResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createMonthlyReport>>, TError,CreateMonthlyReportMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createMonthlyReport>>,
+        TError,
+        CreateMonthlyReportMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreateMonthlyReportMutationOptions(options));
+    }
+
+export const getGetMonthlyReportUrl = (id: number,) => {
+
+
+
+
+  return `/api/monthly-reports/${id}`
+}
+
+/**
+ * @summary Open a saved monthly SMKK report
+ */
+export const getMonthlyReport = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<MonthlyReport> => {
+
+  return customFetch<MonthlyReport>(getGetMonthlyReportUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMonthlyReportQueryKey = (id: number,) => {
+    return [
+    `/api/monthly-reports/${id}`
+    ] as const;
+    }
+
+
+export const getGetMonthlyReportQueryOptions = <TData = Awaited<ReturnType<typeof getMonthlyReport>>, TError = ErrorType<NotFoundResponse>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMonthlyReport>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMonthlyReportQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMonthlyReport>>> = ({ signal }) => getMonthlyReport(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMonthlyReport>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMonthlyReportQueryResult = NonNullable<Awaited<ReturnType<typeof getMonthlyReport>>>
+export type GetMonthlyReportQueryError = ErrorType<NotFoundResponse>
+
+
+/**
+ * @summary Open a saved monthly SMKK report
+ */
+
+export function useGetMonthlyReport<TData = Awaited<ReturnType<typeof getMonthlyReport>>, TError = ErrorType<NotFoundResponse>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMonthlyReport>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMonthlyReportQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateMonthlyReportUrl = (id: number,) => {
+
+
+
+
+  return `/api/monthly-reports/${id}`
+}
+
+/**
+ * @summary Continue or finalize a saved monthly SMKK report
+ */
+export const updateMonthlyReport = async (id: number,
+    monthlyReportUpdate: MonthlyReportUpdate, options?: Parameters<typeof customFetch>[1]): Promise<MonthlyReport> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<MonthlyReport>(getUpdateMonthlyReportUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(monthlyReportUpdate)
+  }
+);}
+
+
+
+
+
+export const getUpdateMonthlyReportMutationKey = () => ['updateMonthlyReport'] as const;
+
+export const getUpdateMonthlyReportMutationOptions = <TError = ErrorType<NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateMonthlyReport>>, TError,UpdateMonthlyReportMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateMonthlyReport>>, TError,UpdateMonthlyReportMutationVariables, TContext> => {
+
+const mutationKey = getUpdateMonthlyReportMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateMonthlyReport>>, UpdateMonthlyReportMutationVariables> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateMonthlyReport(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateMonthlyReportMutationResult = NonNullable<Awaited<ReturnType<typeof updateMonthlyReport>>>
+    export type UpdateMonthlyReportMutationBody = BodyType<MonthlyReportUpdate>
+    export type UpdateMonthlyReportMutationError = ErrorType<NotFoundResponse>
+    export type UpdateMonthlyReportMutationVariables = {id: number;data: BodyType<MonthlyReportUpdate>}
+
+    /**
+ * @summary Continue or finalize a saved monthly SMKK report
+ */
+export const useUpdateMonthlyReport = <TError = ErrorType<NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateMonthlyReport>>, TError,UpdateMonthlyReportMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateMonthlyReport>>,
+        TError,
+        UpdateMonthlyReportMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdateMonthlyReportMutationOptions(options));
     }
 

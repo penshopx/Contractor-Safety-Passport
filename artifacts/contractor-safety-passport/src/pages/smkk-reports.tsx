@@ -1,5 +1,14 @@
 import { useState, useMemo } from "react";
-import { useListProjects, useListFieldActivities } from "@workspace/api-client-react";
+import {
+  getListMonthlyReportsQueryKey,
+  useCreateMonthlyReport,
+  useListFieldActivities,
+  useListMonthlyReports,
+  useListProjects,
+  useUpdateMonthlyReport,
+  type MonthlyReport,
+} from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,8 +20,10 @@ import {
   selectMonthlyProjectActivities,
   summarizeSmkkActivities,
 } from "@/lib/smkk-report";
-import { FileSpreadsheet, Loader2, FileDown, Search } from "lucide-react";
+import { FileSpreadsheet, Loader2, FileDown, Search, Save, FolderOpen } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
 
 function formatDateMonthYear(monthString: string) {
   if (!monthString) return "-";
@@ -22,6 +33,7 @@ function formatDateMonthYear(monthString: string) {
 }
 
 export default function SmkkReportsPage() {
+  const queryClient = useQueryClient();
   const [selectedProjectName, setSelectedProjectName] = useState<string>("");
   const [selectedMonth, setSelectedMonth] = useState<string>(
     new Date().toISOString().slice(0, 7) // YYYY-MM
@@ -34,11 +46,15 @@ export default function SmkkReportsPage() {
   const [approvedBy, setApprovedBy] = useState("");
   
   const [isGenerating, setIsGenerating] = useState(false);
+  const [openedReportId, setOpenedReportId] = useState<number | null>(null);
 
   const providerName = "Penyedia Jasa";
 
   const { data: projects, isLoading: isLoadingProjects } = useListProjects();
   const { data: activities, isLoading: isLoadingActivities } = useListFieldActivities();
+  const { data: savedReports, isLoading: isLoadingReports } = useListMonthlyReports();
+  const createReport = useCreateMonthlyReport();
+  const updateReport = useUpdateMonthlyReport();
 
   const selectedProject = projects?.find(p => p.name === selectedProjectName);
   
@@ -54,6 +70,51 @@ export default function SmkkReportsPage() {
     () => summarizeSmkkActivities(filteredActivities),
     [filteredActivities],
   );
+
+  const openReport = (report: MonthlyReport) => {
+    setOpenedReportId(report.id);
+    setSelectedProjectName(report.projectName);
+    setSelectedMonth(report.period);
+    setEvaluation(report.evaluation);
+    setNotes(report.notes);
+    setPreparedBy(report.preparedBy);
+    setReviewedBy(report.reviewedBy);
+    setApprovedBy(report.approvedBy);
+    toast.success("Laporan tersimpan dibuka");
+  };
+
+  const saveReport = (status: "draft" | "final") => {
+    if (!selectedProject) return;
+    const data = {
+      status,
+      evaluation,
+      notes,
+      preparedBy,
+      reviewedBy,
+      approvedBy,
+    };
+    const onSuccess = (report: MonthlyReport) => {
+      setOpenedReportId(report.id);
+      queryClient.invalidateQueries({ queryKey: getListMonthlyReportsQueryKey() });
+      toast.success(status === "final" ? "Laporan ditandai final" : "Draf laporan tersimpan");
+    };
+    const onError = (error: unknown) => {
+      const apiError = error as { status?: number; data?: { error?: string } };
+      toast.error(
+        apiError.status === 409
+          ? apiError.data?.error ?? "Laporan periode ini sudah ada. Buka dari daftar arsip."
+          : "Gagal menyimpan laporan",
+      );
+    };
+    if (openedReportId) {
+      updateReport.mutate({ id: openedReportId, data }, { onSuccess, onError });
+    } else {
+      createReport.mutate(
+        { data: { projectId: selectedProject.id, period: selectedMonth, ...data } },
+        { onSuccess, onError },
+      );
+    }
+  };
 
   const handleDownload = async () => {
     if (!selectedProject) return;
@@ -91,7 +152,51 @@ export default function SmkkReportsPage() {
   };
 
   return (
-    <div className="grid lg:grid-cols-12 gap-8 items-start animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <Card className="border-border/50 bg-card/40 backdrop-blur-sm shadow-sm">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <FolderOpen className="h-5 w-5 text-primary" />
+            Arsip Laporan Bulanan
+          </CardTitle>
+          <CardDescription>Buka kembali draf atau unduh ulang laporan final per proyek dan periode.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isLoadingReports ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Memuat arsip laporan...
+            </div>
+          ) : savedReports?.length ? (
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {savedReports.map((report) => (
+                <div key={report.id} className="rounded-lg border border-border/60 bg-background/40 p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-semibold">{report.projectName}</p>
+                      <p className="text-sm text-muted-foreground">{formatDateMonthYear(report.period)}</p>
+                    </div>
+                    <Badge variant={report.status === "final" ? "default" : "secondary"}>
+                      {report.status === "final" ? "Final" : "Draf"}
+                    </Badge>
+                  </div>
+                  <div className="text-xs text-muted-foreground space-y-1">
+                    <p>Disusun: {report.preparedBy || "-"}</p>
+                    <p>Diperiksa: {report.reviewedBy || "-"}</p>
+                    <p>Disetujui: {report.approvedBy || "-"}</p>
+                  </div>
+                  <Button variant="outline" size="sm" className="w-full gap-2" onClick={() => openReport(report)}>
+                    <FolderOpen className="h-4 w-4" /> Buka laporan
+                  </Button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Belum ada laporan yang disimpan.</p>
+          )}
+        </CardContent>
+      </Card>
+
+      <div className="grid lg:grid-cols-12 gap-8 items-start">
       <div className="lg:col-span-5 space-y-6">
         <Card className="border-border/50 bg-card/40 backdrop-blur-sm shadow-sm">
           <CardHeader>
@@ -106,7 +211,10 @@ export default function SmkkReportsPage() {
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="project-select">Proyek</Label>
-              <Select value={selectedProjectName} onValueChange={setSelectedProjectName}>
+              <Select value={selectedProjectName} onValueChange={(value) => {
+                setSelectedProjectName(value);
+                setOpenedReportId(null);
+              }}>
                 <SelectTrigger id="project-select" data-testid="select-project">
                   <SelectValue placeholder={isLoadingProjects ? "Memuat proyek..." : "Pilih proyek..."} />
                 </SelectTrigger>
@@ -126,7 +234,10 @@ export default function SmkkReportsPage() {
                 id="month-select"
                 type="month" 
                 value={selectedMonth} 
-                onChange={(e) => setSelectedMonth(e.target.value)}
+                onChange={(e) => {
+                  setSelectedMonth(e.target.value);
+                  setOpenedReportId(null);
+                }}
                 data-testid="input-month-selector"
                 className="bg-input/50 border-input-border text-foreground focus-visible:ring-primary"
               />
@@ -199,19 +310,37 @@ export default function SmkkReportsPage() {
       
       <div className="lg:col-span-7">
         <Card className="border-border/50 bg-card shadow-lg flex flex-col h-[calc(100vh-10rem)] min-h-[800px]">
-           <div className="p-4 border-b border-border/50 flex justify-between items-center bg-card/50 backdrop-blur-sm sticky top-0 z-10">
+            <div className="p-4 border-b border-border/50 flex flex-wrap justify-between items-center gap-3 bg-card/50 backdrop-blur-sm sticky top-0 z-10">
              <h2 className="font-semibold text-sm flex items-center gap-2">
                <Search className="h-4 w-4 text-muted-foreground" /> Pratinjau Dokumen
              </h2>
-             <Button 
-               onClick={handleDownload} 
-               disabled={!selectedProjectName || isGenerating} 
-               data-testid="button-download-pdf"
-               className="bg-primary text-primary-foreground font-semibold"
-             >
-               {isGenerating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FileDown className="h-4 w-4 mr-2" />}
-               Unduh PDF
-             </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => saveReport("draft")}
+                  disabled={!selectedProjectName || createReport.isPending || updateReport.isPending}
+                  data-testid="button-save-draft"
+                >
+                  <Save className="h-4 w-4 mr-2" /> Simpan Draf
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => saveReport("final")}
+                  disabled={!selectedProjectName || createReport.isPending || updateReport.isPending}
+                  data-testid="button-save-final"
+                >
+                  Simpan Final
+                </Button>
+                <Button
+                  onClick={handleDownload}
+                  disabled={!selectedProjectName || isGenerating}
+                  data-testid="button-download-pdf"
+                  className="bg-primary text-primary-foreground font-semibold"
+                >
+                  {isGenerating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FileDown className="h-4 w-4 mr-2" />}
+                  Unduh PDF
+                </Button>
+              </div>
            </div>
            <ScrollArea className="flex-1 bg-muted/40 p-4 md:p-8">
              {selectedProjectName ? (
@@ -346,6 +475,7 @@ export default function SmkkReportsPage() {
              )}
            </ScrollArea>
         </Card>
+      </div>
       </div>
     </div>
   );

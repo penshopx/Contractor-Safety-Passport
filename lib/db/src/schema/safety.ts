@@ -57,6 +57,35 @@ export const safetyDocumentsTable = pgTable("safety_documents", {
     .$onUpdate(() => new Date()),
 });
 
+export const monthlyReportsTable = pgTable(
+  "monthly_reports",
+  {
+    id: serial("id").primaryKey(),
+    organizationId: text("organization_id").notNull(),
+    createdBy: text("created_by").notNull(),
+    projectId: integer("project_id").notNull(),
+    period: text("period").notNull(),
+    status: text("status").notNull().default("draft"),
+    evaluation: text("evaluation").notNull().default(""),
+    notes: text("notes").notNull().default(""),
+    preparedBy: text("prepared_by").notNull().default(""),
+    reviewedBy: text("reviewed_by").notNull().default(""),
+    approvedBy: text("approved_by").notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex("monthly_reports_organization_project_period_idx").on(
+      table.organizationId,
+      table.projectId,
+      table.period,
+    ),
+  ],
+);
+
 export const certificatesTable = pgTable("certificates", {
   id: serial("id").primaryKey(),
   organizationId: text("organization_id").notNull().default("legacy"),
@@ -117,6 +146,13 @@ export const insertDocumentSchema = createInsertSchema(safetyDocumentsTable).omi
   createdBy: true,
   updatedAt: true,
 });
+export const insertMonthlyReportSchema = createInsertSchema(monthlyReportsTable).omit({
+  id: true,
+  organizationId: true,
+  createdBy: true,
+  createdAt: true,
+  updatedAt: true,
+});
 export const insertCertificateSchema = createInsertSchema(certificatesTable).omit({
   id: true,
   organizationId: true,
@@ -132,5 +168,6 @@ export const insertFieldActivitySchema = createInsertSchema(fieldActivitiesTable
 export type InsertProject = z.infer<typeof insertProjectSchema>;
 export type InsertPerson = z.infer<typeof insertPersonSchema>;
 export type InsertDocument = z.infer<typeof insertDocumentSchema>;
+export type InsertMonthlyReport = z.infer<typeof insertMonthlyReportSchema>;
 export type InsertCertificate = z.infer<typeof insertCertificateSchema>;
 export type InsertFieldActivity = z.infer<typeof insertFieldActivitySchema>;

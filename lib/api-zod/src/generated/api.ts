@@ -703,3 +703,152 @@ export const CreateFieldActivityResponse = zod.object({
 })
 
 
+/**
+ * @summary List saved monthly SMKK reports
+ */
+export const listMonthlyReportsResponsePeriodRegExp = new RegExp('^[0-9]{4}-(0[1-9]|1[0-2])$');
+
+
+export const ListMonthlyReportsResponseItem = zod.object({
+  "id": zod.number().int(),
+  "projectId": zod.number().int(),
+  "projectName": zod.string(),
+  "period": zod.string().regex(listMonthlyReportsResponsePeriodRegExp),
+  "status": zod.enum(['draft', 'final']),
+  "evaluation": zod.string(),
+  "notes": zod.string(),
+  "preparedBy": zod.string(),
+  "reviewedBy": zod.string(),
+  "approvedBy": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListMonthlyReportsResponse = zod.array(ListMonthlyReportsResponseItem)
+
+
+/**
+ * @summary Save a monthly SMKK report draft
+ */
+
+export const createMonthlyReportBodyPeriodRegExp = new RegExp('^[0-9]{4}-(0[1-9]|1[0-2])$');
+export const createMonthlyReportBodyEvaluationMax = 10000;
+
+export const createMonthlyReportBodyNotesMax = 10000;
+
+export const createMonthlyReportBodyPreparedByMax = 200;
+
+export const createMonthlyReportBodyReviewedByMax = 200;
+
+export const createMonthlyReportBodyApprovedByMax = 200;
+
+
+
+export const CreateMonthlyReportBody = zod.object({
+  "projectId": zod.number().int().min(1),
+  "period": zod.string().regex(createMonthlyReportBodyPeriodRegExp),
+  "status": zod.enum(['draft', 'final']),
+  "evaluation": zod.string().max(createMonthlyReportBodyEvaluationMax),
+  "notes": zod.string().max(createMonthlyReportBodyNotesMax),
+  "preparedBy": zod.string().max(createMonthlyReportBodyPreparedByMax),
+  "reviewedBy": zod.string().max(createMonthlyReportBodyReviewedByMax),
+  "approvedBy": zod.string().max(createMonthlyReportBodyApprovedByMax)
+})
+
+export const createMonthlyReportResponsePeriodRegExp = new RegExp('^[0-9]{4}-(0[1-9]|1[0-2])$');
+
+
+export const CreateMonthlyReportResponse = zod.object({
+  "id": zod.number().int(),
+  "projectId": zod.number().int(),
+  "projectName": zod.string(),
+  "period": zod.string().regex(createMonthlyReportResponsePeriodRegExp),
+  "status": zod.enum(['draft', 'final']),
+  "evaluation": zod.string(),
+  "notes": zod.string(),
+  "preparedBy": zod.string(),
+  "reviewedBy": zod.string(),
+  "approvedBy": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Open a saved monthly SMKK report
+ */
+
+
+
+export const GetMonthlyReportParams = zod.object({
+  "id": zod.coerce.number().int().min(1)
+})
+
+export const getMonthlyReportResponsePeriodRegExp = new RegExp('^[0-9]{4}-(0[1-9]|1[0-2])$');
+
+
+export const GetMonthlyReportResponse = zod.object({
+  "id": zod.number().int(),
+  "projectId": zod.number().int(),
+  "projectName": zod.string(),
+  "period": zod.string().regex(getMonthlyReportResponsePeriodRegExp),
+  "status": zod.enum(['draft', 'final']),
+  "evaluation": zod.string(),
+  "notes": zod.string(),
+  "preparedBy": zod.string(),
+  "reviewedBy": zod.string(),
+  "approvedBy": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Continue or finalize a saved monthly SMKK report
+ */
+
+
+
+export const UpdateMonthlyReportParams = zod.object({
+  "id": zod.coerce.number().int().min(1)
+})
+
+export const updateMonthlyReportBodyEvaluationMax = 10000;
+
+export const updateMonthlyReportBodyNotesMax = 10000;
+
+export const updateMonthlyReportBodyPreparedByMax = 200;
+
+export const updateMonthlyReportBodyReviewedByMax = 200;
+
+export const updateMonthlyReportBodyApprovedByMax = 200;
+
+
+
+export const UpdateMonthlyReportBody = zod.object({
+  "status": zod.enum(['draft', 'final']).optional(),
+  "evaluation": zod.string().max(updateMonthlyReportBodyEvaluationMax).optional(),
+  "notes": zod.string().max(updateMonthlyReportBodyNotesMax).optional(),
+  "preparedBy": zod.string().max(updateMonthlyReportBodyPreparedByMax).optional(),
+  "reviewedBy": zod.string().max(updateMonthlyReportBodyReviewedByMax).optional(),
+  "approvedBy": zod.string().max(updateMonthlyReportBodyApprovedByMax).optional()
+})
+
+export const updateMonthlyReportResponsePeriodRegExp = new RegExp('^[0-9]{4}-(0[1-9]|1[0-2])$');
+
+
+export const UpdateMonthlyReportResponse = zod.object({
+  "id": zod.number().int(),
+  "projectId": zod.number().int(),
+  "projectName": zod.string(),
+  "period": zod.string().regex(updateMonthlyReportResponsePeriodRegExp),
+  "status": zod.enum(['draft', 'final']),
+  "evaluation": zod.string(),
+  "notes": zod.string(),
+  "preparedBy": zod.string(),
+  "reviewedBy": zod.string(),
+  "approvedBy": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+

@@ -1,1 +1,2 @@
 - [Mutasi antrean offline](offline-queue-concurrency.md) — serialisasikan penyimpanan dan jadwalkan ulang sync; snapshot lama tidak boleh menimpa item baru.
+- [Ekspor codegen Zod](zod-codegen-esm-exports.md) — setelah codegen, pastikan barrel api-zod tetap memakai path `.ts` yang kompatibel dengan runner Node ESM.
