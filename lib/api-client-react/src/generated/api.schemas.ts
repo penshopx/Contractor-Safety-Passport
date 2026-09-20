@@ -13,6 +13,30 @@ export interface Error {
   error: string;
 }
 
+export type OrganizationRole = typeof OrganizationRole[keyof typeof OrganizationRole];
+
+
+export const OrganizationRole = {
+  owner: 'owner',
+  safety_expert: 'safety_expert',
+  field_officer: 'field_officer',
+  viewer: 'viewer',
+} as const;
+
+export interface OrganizationContext {
+  organizationId: string;
+  organizationName: string;
+  role: OrganizationRole;
+}
+
+export interface OrganizationInput {
+  /**
+     * @minLength 2
+     * @maxLength 120
+     */
+  name: string;
+}
+
 export type ProjectStandard = typeof ProjectStandard[keyof typeof ProjectStandard];
 
 
@@ -521,4 +545,9 @@ export interface ReadinessSummary {
  * Resource not found
  */
 export type NotFoundResponse = Error;
+
+/**
+ * Authentication required
+ */
+export type UnauthorizedResponse = Error;
 

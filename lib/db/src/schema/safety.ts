@@ -12,6 +12,8 @@ import { z } from "zod/v4";
 
 export const projectsTable = pgTable("projects", {
   id: serial("id").primaryKey(),
+  organizationId: text("organization_id").notNull().default("legacy"),
+  createdBy: text("created_by").notNull().default("system"),
   name: text("name").notNull(),
   client: text("client").notNull(),
   location: text("location").notNull(),
@@ -26,6 +28,8 @@ export const projectsTable = pgTable("projects", {
 
 export const peopleTable = pgTable("people", {
   id: serial("id").primaryKey(),
+  organizationId: text("organization_id").notNull().default("legacy"),
+  createdBy: text("created_by").notNull().default("system"),
   name: text("name").notNull(),
   role: text("role").notNull(),
   level: text("level").notNull(),
@@ -38,6 +42,8 @@ export const peopleTable = pgTable("people", {
 
 export const safetyDocumentsTable = pgTable("safety_documents", {
   id: serial("id").primaryKey(),
+  organizationId: text("organization_id").notNull().default("legacy"),
+  createdBy: text("created_by").notNull().default("system"),
   name: text("name").notNull(),
   type: text("type").notNull(),
   standard: text("standard").notNull(),
@@ -51,6 +57,8 @@ export const safetyDocumentsTable = pgTable("safety_documents", {
 
 export const certificatesTable = pgTable("certificates", {
   id: serial("id").primaryKey(),
+  organizationId: text("organization_id").notNull().default("legacy"),
+  createdBy: text("created_by").notNull().default("system"),
   owner: text("owner").notNull(),
   credential: text("credential").notNull(),
   issuer: text("issuer").notNull(),
@@ -60,6 +68,8 @@ export const certificatesTable = pgTable("certificates", {
 
 export const fieldActivitiesTable = pgTable("field_activities", {
   id: serial("id").primaryKey(),
+  organizationId: text("organization_id").notNull().default("legacy"),
+  createdBy: text("created_by").notNull().default("system"),
   type: text("type").notNull(),
   title: text("title").notNull(),
   project: text("project").notNull(),
@@ -70,21 +80,31 @@ export const fieldActivitiesTable = pgTable("field_activities", {
 
 export const insertProjectSchema = createInsertSchema(projectsTable).omit({
   id: true,
+  organizationId: true,
+  createdBy: true,
   createdAt: true,
 });
 export const insertPersonSchema = createInsertSchema(peopleTable).omit({
   id: true,
+  organizationId: true,
+  createdBy: true,
   createdAt: true,
 });
 export const insertDocumentSchema = createInsertSchema(safetyDocumentsTable).omit({
   id: true,
+  organizationId: true,
+  createdBy: true,
   updatedAt: true,
 });
 export const insertCertificateSchema = createInsertSchema(certificatesTable).omit({
   id: true,
+  organizationId: true,
+  createdBy: true,
 });
 export const insertFieldActivitySchema = createInsertSchema(fieldActivitiesTable).omit({
   id: true,
+  organizationId: true,
+  createdBy: true,
   occurredAt: true,
 });
 

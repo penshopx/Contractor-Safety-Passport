@@ -39,8 +39,16 @@ import {
   UpdateProjectParams,
   UpdateProjectResponse,
 } from "@workspace/api-zod";
+import {
+  requireOrganization,
+  requireRole,
+} from "../middlewares/organizationContext";
 
 const router: IRouter = Router();
+router.use(requireOrganization);
+
+const canManage = requireRole("owner", "safety_expert");
+const canRecordFieldWork = requireRole("owner", "safety_expert", "field_officer");
 
 const initialsFor = (name: string) =>
   name
@@ -95,24 +103,25 @@ const documentTemplates = [
 const valueOrReview = (value: string | null | undefined) =>
   value?.trim() || "Belum diisi — wajib ditinjau dan dilengkapi";
 
-router.get("/dashboard/summary", async (_req, res): Promise<void> => {
+router.get("/dashboard/summary", async (req, res): Promise<void> => {
+  const { organizationId } = req.organizationContext!;
   const [[active], [people], [expiring], [open], [ready], [documents]] =
     await Promise.all([
-      db.select({ value: count() }).from(projectsTable).where(eq(projectsTable.status, "active")),
-      db.select({ value: count() }).from(peopleTable),
+      db.select({ value: count() }).from(projectsTable).where(and(eq(projectsTable.organizationId, organizationId), eq(projectsTable.status, "active"))),
+      db.select({ value: count() }).from(peopleTable).where(eq(peopleTable.organizationId, organizationId)),
       db
         .select({ value: count() })
         .from(certificatesTable)
-        .where(inArray(certificatesTable.status, ["expiring", "expired"])),
+        .where(and(eq(certificatesTable.organizationId, organizationId), inArray(certificatesTable.status, ["expiring", "expired"]))),
       db
         .select({ value: count() })
         .from(fieldActivitiesTable)
-        .where(inArray(fieldActivitiesTable.status, ["review", "open"])),
+        .where(and(eq(fieldActivitiesTable.organizationId, organizationId), inArray(fieldActivitiesTable.status, ["review", "open"]))),
       db
         .select({ value: count() })
         .from(safetyDocumentsTable)
-        .where(eq(safetyDocumentsTable.status, "ready")),
-      db.select({ value: count() }).from(safetyDocumentsTable),
+        .where(and(eq(safetyDocumentsTable.organizationId, organizationId), eq(safetyDocumentsTable.status, "ready"))),
+      db.select({ value: count() }).from(safetyDocumentsTable).where(eq(safetyDocumentsTable.organizationId, organizationId)),
     ]);
 
   const documentTotal = documents?.value ?? 0;
@@ -134,9 +143,10 @@ router.get("/dashboard/summary", async (_req, res): Promise<void> => {
   );
 });
 
-router.get("/dashboard/readiness", async (_req, res): Promise<void> => {
-  const documents = await db.select().from(safetyDocumentsTable);
-  const certificates = await db.select().from(certificatesTable);
+router.get("/dashboard/readiness", async (req, res): Promise<void> => {
+  const { organizationId } = req.organizationContext!;
+  const documents = await db.select().from(safetyDocumentsTable).where(eq(safetyDocumentsTable.organizationId, organizationId));
+  const certificates = await db.select().from(certificatesTable).where(eq(certificatesTable.organizationId, organizationId));
   const ready = documents.filter((item) => item.status === "ready").length;
   const smkkDocs = documents.filter((item) => item.standard.includes("SMKK"));
   const csmsDocs = documents.filter((item) => item.standard.includes("CSMS"));
@@ -200,10 +210,12 @@ router.get("/dashboard/readiness", async (_req, res): Promise<void> => {
   );
 });
 
-router.get("/activity", async (_req, res): Promise<void> => {
+router.get("/activity", async (req, res): Promise<void> => {
+  const { organizationId } = req.organizationContext!;
   const activities = await db
     .select()
     .from(fieldActivitiesTable)
+    .where(eq(fieldActivitiesTable.organizationId, organizationId))
     .orderBy(desc(fieldActivitiesTable.occurredAt))
     .limit(8);
   res.json(
@@ -220,12 +232,13 @@ router.get("/activity", async (_req, res): Promise<void> => {
   );
 });
 
-router.get("/projects", async (_req, res): Promise<void> => {
-  const projects = await db.select().from(projectsTable).orderBy(desc(projectsTable.createdAt));
+router.get("/projects", async (req, res): Promise<void> => {
+  const { organizationId } = req.organizationContext!;
+  const projects = await db.select().from(projectsTable).where(eq(projectsTable.organizationId, organizationId)).orderBy(desc(projectsTable.createdAt));
   res.json(ListProjectsResponse.parse(projects));
 });
 
-router.post("/projects", async (req, res): Promise<void> => {
+router.post("/projects", canManage, async (req, res): Promise<void> => {
   const parsed = CreateProjectBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -235,6 +248,8 @@ router.post("/projects", async (req, res): Promise<void> => {
     .insert(projectsTable)
     .values({
       ...parsed.data,
+      organizationId: req.organizationContext!.organizationId,
+      createdBy: req.organizationContext!.userId,
       progress: parsed.data.progress ?? 0,
       startDate: dateOnly(parsed.data.startDate),
       endDate: parsed.data.endDate ? dateOnly(parsed.data.endDate) : null,
@@ -252,7 +267,7 @@ router.get("/projects/:id", async (req, res): Promise<void> => {
   const [project] = await db
     .select()
     .from(projectsTable)
-    .where(eq(projectsTable.id, params.data.id));
+    .where(and(eq(projectsTable.id, params.data.id), eq(projectsTable.organizationId, req.organizationContext!.organizationId)));
   if (!project) {
     res.status(404).json({ error: "Proyek tidak ditemukan" });
     return;
@@ -260,7 +275,7 @@ router.get("/projects/:id", async (req, res): Promise<void> => {
   res.json(GetProjectResponse.parse(project));
 });
 
-router.patch("/projects/:id", async (req, res): Promise<void> => {
+router.patch("/projects/:id", canManage, async (req, res): Promise<void> => {
   const params = UpdateProjectParams.safeParse(req.params);
   const body = UpdateProjectBody.safeParse(req.body);
   if (!params.success || !body.success) {
@@ -278,7 +293,7 @@ router.patch("/projects/:id", async (req, res): Promise<void> => {
   const [project] = await db
     .update(projectsTable)
     .set(update)
-    .where(eq(projectsTable.id, params.data.id))
+    .where(and(eq(projectsTable.id, params.data.id), eq(projectsTable.organizationId, req.organizationContext!.organizationId)))
     .returning();
   if (!project) {
     res.status(404).json({ error: "Proyek tidak ditemukan" });
@@ -287,12 +302,12 @@ router.patch("/projects/:id", async (req, res): Promise<void> => {
   res.json(UpdateProjectResponse.parse(project));
 });
 
-router.get("/people", async (_req, res): Promise<void> => {
-  const people = await db.select().from(peopleTable).orderBy(asc(peopleTable.name));
+router.get("/people", async (req, res): Promise<void> => {
+  const people = await db.select().from(peopleTable).where(eq(peopleTable.organizationId, req.organizationContext!.organizationId)).orderBy(asc(peopleTable.name));
   res.json(ListPeopleResponse.parse(people));
 });
 
-router.post("/people", async (req, res): Promise<void> => {
+router.post("/people", canManage, async (req, res): Promise<void> => {
   const parsed = CreatePersonBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -300,12 +315,12 @@ router.post("/people", async (req, res): Promise<void> => {
   }
   const [person] = await db
     .insert(peopleTable)
-    .values({ ...parsed.data, initials: initialsFor(parsed.data.name) })
+    .values({ ...parsed.data, initials: initialsFor(parsed.data.name), organizationId: req.organizationContext!.organizationId, createdBy: req.organizationContext!.userId })
     .returning();
   res.status(201).json(CreatePersonResponse.parse(person));
 });
 
-router.patch("/people/:id", async (req, res): Promise<void> => {
+router.patch("/people/:id", canManage, async (req, res): Promise<void> => {
   const params = UpdatePersonParams.safeParse(req.params);
   const body = UpdatePersonBody.safeParse(req.body);
   if (!params.success || !body.success) {
@@ -319,7 +334,7 @@ router.patch("/people/:id", async (req, res): Promise<void> => {
   const [person] = await db
     .update(peopleTable)
     .set(update)
-    .where(eq(peopleTable.id, params.data.id))
+    .where(and(eq(peopleTable.id, params.data.id), eq(peopleTable.organizationId, req.organizationContext!.organizationId)))
     .returning();
   if (!person) {
     res.status(404).json({ error: "Personel tidak ditemukan" });
@@ -328,15 +343,16 @@ router.patch("/people/:id", async (req, res): Promise<void> => {
   res.json(UpdatePersonResponse.parse(person));
 });
 
-router.get("/documents", async (_req, res): Promise<void> => {
+router.get("/documents", async (req, res): Promise<void> => {
   const documents = await db
     .select()
     .from(safetyDocumentsTable)
+    .where(eq(safetyDocumentsTable.organizationId, req.organizationContext!.organizationId))
     .orderBy(desc(safetyDocumentsTable.updatedAt));
   res.json(ListDocumentsResponse.parse(documents));
 });
 
-router.post("/documents", async (req, res): Promise<void> => {
+router.post("/documents", canManage, async (req, res): Promise<void> => {
   const parsed = CreateDocumentBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -344,7 +360,7 @@ router.post("/documents", async (req, res): Promise<void> => {
   }
   const [document] = await db
     .insert(safetyDocumentsTable)
-    .values(parsed.data)
+    .values({ ...parsed.data, organizationId: req.organizationContext!.organizationId, createdBy: req.organizationContext!.userId })
     .returning();
   res.status(201).json(CreateDocumentResponse.parse(document));
 });
@@ -353,7 +369,7 @@ router.get("/document-templates", (_req, res): void => {
   res.json(ListDocumentTemplatesResponse.parse(documentTemplates));
 });
 
-router.post("/generated-documents", async (req, res): Promise<void> => {
+router.post("/generated-documents", canManage, async (req, res): Promise<void> => {
   const parsed = GenerateDocumentBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -363,7 +379,7 @@ router.post("/generated-documents", async (req, res): Promise<void> => {
   const [project] = await db
     .select()
     .from(projectsTable)
-    .where(eq(projectsTable.id, parsed.data.projectId));
+    .where(and(eq(projectsTable.id, parsed.data.projectId), eq(projectsTable.organizationId, req.organizationContext!.organizationId)));
   if (!project) {
     res.status(404).json({ error: "Proyek tidak ditemukan" });
     return;
@@ -380,14 +396,14 @@ router.post("/generated-documents", async (req, res): Promise<void> => {
   const personnel = await db
     .select()
     .from(peopleTable)
-    .where(eq(peopleTable.project, project.name))
+    .where(and(eq(peopleTable.organizationId, req.organizationContext!.organizationId), eq(peopleTable.project, project.name)))
     .orderBy(asc(peopleTable.name));
   const personnelNames = personnel.map((person) => person.name);
   const credentials = personnelNames.length
     ? await db
         .select()
         .from(certificatesTable)
-        .where(inArray(certificatesTable.owner, personnelNames))
+        .where(and(eq(certificatesTable.organizationId, req.organizationContext!.organizationId), inArray(certificatesTable.owner, personnelNames)))
     : [];
 
   const commonRows = [
@@ -671,6 +687,8 @@ router.post("/generated-documents", async (req, res): Promise<void> => {
     .replaceAll("-", "")}`;
 
   await db.insert(safetyDocumentsTable).values({
+    organizationId: req.organizationContext!.organizationId,
+    createdBy: req.organizationContext!.userId,
     name: title,
     type: isRkk ? "RKK" : "Pre-qualification",
     standard: template.standard,
@@ -696,15 +714,16 @@ router.post("/generated-documents", async (req, res): Promise<void> => {
   );
 });
 
-router.get("/certificates", async (_req, res): Promise<void> => {
+router.get("/certificates", async (req, res): Promise<void> => {
   const certificates = await db
     .select()
     .from(certificatesTable)
+    .where(eq(certificatesTable.organizationId, req.organizationContext!.organizationId))
     .orderBy(asc(certificatesTable.expiresAt));
   res.json(ListCertificatesResponse.parse(certificates));
 });
 
-router.post("/certificates", async (req, res): Promise<void> => {
+router.post("/certificates", canManage, async (req, res): Promise<void> => {
   const parsed = CreateCertificateBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -714,21 +733,24 @@ router.post("/certificates", async (req, res): Promise<void> => {
     .insert(certificatesTable)
     .values({
       ...parsed.data,
+      organizationId: req.organizationContext!.organizationId,
+      createdBy: req.organizationContext!.userId,
       expiresAt: dateOnly(parsed.data.expiresAt),
     })
     .returning();
   res.status(201).json(CreateCertificateResponse.parse(certificate));
 });
 
-router.get("/field-activities", async (_req, res): Promise<void> => {
+router.get("/field-activities", async (req, res): Promise<void> => {
   const activities = await db
     .select()
     .from(fieldActivitiesTable)
+    .where(eq(fieldActivitiesTable.organizationId, req.organizationContext!.organizationId))
     .orderBy(desc(fieldActivitiesTable.occurredAt));
   res.json(ListFieldActivitiesResponse.parse(activities));
 });
 
-router.post("/field-activities", async (req, res): Promise<void> => {
+router.post("/field-activities", canRecordFieldWork, async (req, res): Promise<void> => {
   const parsed = CreateFieldActivityBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -736,7 +758,7 @@ router.post("/field-activities", async (req, res): Promise<void> => {
   }
   const [activity] = await db
     .insert(fieldActivitiesTable)
-    .values(parsed.data)
+    .values({ ...parsed.data, organizationId: req.organizationContext!.organizationId, createdBy: req.organizationContext!.userId })
     .returning();
   res.status(201).json(CreateFieldActivityResponse.parse(activity));
 });

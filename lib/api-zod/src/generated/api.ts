@@ -18,6 +18,35 @@ export const HealthCheckResponse = zod.object({
 
 
 /**
+ * @summary Get the signed-in user's active contractor workspace
+ */
+export const GetOrganizationContextResponse = zod.union([zod.object({
+  "organizationId": zod.string(),
+  "organizationName": zod.string(),
+  "role": zod.enum(['owner', 'safety_expert', 'field_officer', 'viewer'])
+}),zod.null()])
+
+
+/**
+ * @summary Create the contractor workspace for the signed-in user
+ */
+export const createOrganizationBodyNameMin = 2;
+export const createOrganizationBodyNameMax = 120;
+
+
+
+export const CreateOrganizationBody = zod.object({
+  "name": zod.string().min(createOrganizationBodyNameMin).max(createOrganizationBodyNameMax)
+})
+
+export const CreateOrganizationResponse = zod.object({
+  "organizationId": zod.string(),
+  "organizationName": zod.string(),
+  "role": zod.enum(['owner', 'safety_expert', 'field_officer', 'viewer'])
+})
+
+
+/**
  * @summary Get dashboard summary
  */
 export const getDashboardSummaryResponseReadinessScoreMin = 0;

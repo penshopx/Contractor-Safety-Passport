@@ -24,6 +24,8 @@ tags:
     description: Certificate and expiry tracking
   - name: field-activities
     description: Daily safety activities
+  - name: organizations
+    description: Contractor workspace onboarding and access context
 paths:
   /healthz:
     get:
@@ -38,6 +40,42 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /organization-context:
+    get:
+      operationId: getOrganizationContext
+      tags: [organizations]
+      summary: Get the signed-in user's active contractor workspace
+      responses:
+        "200":
+          description: Workspace context, or null when onboarding is required
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/OrganizationContext"
+                  - type: "null"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /organizations:
+    post:
+      operationId: createOrganization
+      tags: [organizations]
+      summary: Create the contractor workspace for the signed-in user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrganizationInput"
+      responses:
+        "201":
+          description: Created workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganizationContext"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
   /dashboard/summary:
     get:
       operationId: getDashboardSummary
@@ -340,6 +378,12 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
   schemas:
     HealthStatus:
       type: object
@@ -354,6 +398,22 @@ components:
         error:
           type: string
       required: [error]
+    OrganizationRole:
+      type: string
+      enum: [owner, safety_expert, field_officer, viewer]
+    OrganizationContext:
+      type: object
+      properties:
+        organizationId: { type: string }
+        organizationName: { type: string }
+        role:
+          $ref: "#/components/schemas/OrganizationRole"
+      required: [organizationId, organizationName, role]
+    OrganizationInput:
+      type: object
+      properties:
+        name: { type: string, minLength: 2, maxLength: 120 }
+      required: [name]
     Project:
       type: object
       properties:
