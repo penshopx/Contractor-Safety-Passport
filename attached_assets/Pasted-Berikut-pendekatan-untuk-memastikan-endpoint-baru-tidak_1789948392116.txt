@@ -1,0 +1,446 @@
+Berikut pendekatan untuk memastikan endpoint baru tidak lolos tanpa perlindungan organisasi melalui pemeriksaan berbasis inventaris route:
+
+## Konsep Dasar
+
+Buat mekanisme yang membandingkan:
+1. **Inventaris endpoint** yang harus memiliki test isolasi organisasi
+2. **Test isolasi organisasi** yang sudah ada
+3. **Gagal di CI** jika ada endpoint tanpa test isolasi
+
+## Pendekatan 1: Registry Endpoint Statis
+
+### File Inventaris
+
+Buat file yang mendaftarkan semua endpoint yang harus dilindungi:
+
+```typescript
+// tests/organization-isolation/endpoint-registry.ts
+export const PROTECTED_ENDPOINTS = [
+  // Projects
+  { method: 'GET', path: '/api/projects', module: 'projects' },
+  { method: 'POST', path: '/api/projects', module: 'projects' },
+  { method: 'GET', path: '/api/projects/:id', module: 'projects' },
+  { method: 'PUT', path: '/api/projects/:id', module: 'projects' },
+  { method: 'DELETE', path: '/api/projects/:id', module: 'projects' },
+  
+  // People
+  { method: 'GET', path: '/api/people', module: 'people' },
+  { method: 'POST', path: '/api/people', module: 'people' },
+  { method: 'GET', path: '/api/people/:id', module: 'people' },
+  
+  // Safety Documents
+  { method: 'GET', path: '/api/safety-documents', module: 'safety-documents' },
+  { method: 'POST', path: '/api/safety-documents', module: 'safety-documents' },
+  
+  // Field Activities
+  { method: 'GET', path: '/api/field-activities', module: 'field-activities' },
+  { method: 'POST', path: '/api/field-activities', module: 'field-activities' },
+  
+  // Certificates
+  { method: 'GET', path: '/api/certificates', module: 'certificates' },
+  { method: 'POST', path: '/api/certificates', module: 'certificates' },
+  
+  // Monthly Reports
+  { method: 'GET', path: '/api/monthly-reports', module: 'monthly-reports' },
+  { method: 'POST', path: '/api/monthly-reports', module: 'monthly-reports' },
+  
+  // BOQ Items
+  { method: 'GET', path: '/api/safety-boq-items', module: 'safety-boq' },
+  { method: 'POST', path: '/api/safety-boq-items', module: 'safety-boq' },
+  
+  // CSMS
+  { method: 'GET', path: '/api/csms-project-readiness', module: 'csms' },
+  { method: 'PUT', path: '/api/csms-project-readiness/:id', module: 'csms' },
+  
+  // Organization Memberships
+  { method: 'GET', path: '/api/organization-memberships', module: 'organizations' },
+  { method: 'POST', path: '/api/organization-invitations', module: 'organizations' },
+];
+```
+
+### Test Runner
+
+```typescript
+// tests/organization-isolation/coverage-checker.test.ts
+import { PROTECTED_ENDPOINTS } from './endpoint-registry';
+import { readFileSync, readdirSync } from 'fs';
+import { join } from 'path';
+
+describe('Organization Isolation Coverage', () => {
+  it('should have isolation tests for all protected endpoints', () => {
+    const testFiles = getAllTestFiles();
+    const testedEndpoints = extractTestedEndpoints(testFiles);
+    
+    const missingTests: string[] = [];
+    
+    for (const endpoint of PROTECTED_ENDPOINTS) {
+      const key = `${endpoint.method} ${endpoint.path}`;
+      if (!testedEndpoints.has(key)) {
+        missingTests.push(key);
+      }
+    }
+    
+    if (missingTests.length > 0) {
+      throw new Error(
+        `Missing organization isolation tests for endpoints:\n` +
+        missingTests.map(e => `  - ${e}`).join('\n') +
+        `\n\nPlease add isolation tests or update endpoint-registry.ts`
+      );
+    }
+  });
+});
+
+function getAllTestFiles(): string[] {
+  const testDir = join(process.cwd(), 'tests');
+  const files: string[] = [];
+  
+  function scan(dir: string) {
+    const entries = readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        scan(fullPath);
+      } else if (entry.name.endsWith('.test.ts') || entry.name.endsWith('.spec.ts')) {
+        files.push(fullPath);
+      }
+    }
+  }
+  
+  scan(testDir);
+  return files;
+}
+
+function extractTestedEndpoints(testFiles: string[]): Set<string> {
+  const endpoints = new Set<string>();
+  
+  for (const file of testFiles) {
+    const content = readFileSync(file, 'utf-8');
+    
+    // Cari pola test isolasi organisasi
+    // Contoh: test('GET /api/projects - organization isolation', ...)
+    const matches = content.matchAll(
+      /test\(['"](?:GET|POST|PUT|DELETE|PATCH)\s+\/api\/[^\s'"]+\s*-\s*organization isolation/g
+    );
+    
+    for (const match of matches) {
+      const [method, path] = match[0].match(/(GET|POST|PUT|DELETE|PATCH)\s+(\/api\/[^\s'"]+)/)!.slice(1);
+      endpoints.add(`${method} ${path}`);
+    }
+  }
+  
+  return endpoints;
+}
+```
+
+## Pendekatan 2: Scan Route Dinamis
+
+### Auto-Discovery dari Aplikasi
+
+```typescript
+// tests/organization-isolation/route-scanner.ts
+import { app } from '../../src/app'; // Express/Fastify app
+
+export function scanProtectedRoutes(): Array<{method: string, path: string}> {
+  const routes: Array<{method: string, path: string}> = [];
+  
+  // Untuk Express
+  if (app._router && app._router.stack) {
+    app._router.stack.forEach((middleware: any) => {
+      if (middleware.route) {
+        const methods = Object.keys(middleware.route.methods);
+        methods.forEach(method => {
+          if (middleware.route.methods[method]) {
+            routes.push({
+              method: method.toUpperCase(),
+              path: middleware.route.path
+            });
+          }
+        });
+      }
+    });
+  }
+  
+  // Filter hanya route yang perlu isolasi organisasi
+  return routes.filter(route => 
+    route.path.startsWith('/api/') && 
+    !route.path.includes('/auth') &&
+    !route.path.includes('/webhook')
+  );
+}
+```
+
+### Test dengan Auto-Discovery
+
+```typescript
+// tests/organization-isolation/auto-coverage.test.ts
+import { scanProtectedRoutes } from './route-scanner';
+import { getTestedEndpoints } from './test-registry';
+
+describe('Auto Organization Isolation Coverage', () => {
+  it('should test all API routes for organization isolation', () => {
+    const allRoutes = scanProtectedRoutes();
+    const testedEndpoints = getTestedEndpoints();
+    
+    const untestedRoutes = allRoutes.filter(route => {
+      const key = `${route.method} ${route.path}`;
+      return !testedEndpoints.has(key);
+    });
+    
+    if (untestedRoutes.length > 0) {
+      throw new Error(
+        `The following routes lack organization isolation tests:\n` +
+        untestedRoutes.map(r => `  - ${r.method} ${r.path}`).join('\n')
+      );
+    }
+  });
+});
+```
+
+## Pendekatan 3: Metadata-Based (Recommended)
+
+### Decorator/Annotation pada Route
+
+```typescript
+// src/decorators/requires-organization-isolation.ts
+export function RequiresOrganizationIsolation(target: any, propertyKey: string, descriptor: PropertyDescriptor) {
+  // Mark this route as requiring organization isolation test
+  Reflect.defineMetadata('requiresOrgIsolation', true, target, propertyKey);
+  return descriptor;
+}
+
+// src/controllers/projects.controller.ts
+@Controller('/api/projects')
+export class ProjectsController {
+  @Get('/')
+  @RequiresOrganizationIsolation()
+  async listProjects(@Req() req: Request) {
+    // ...
+  }
+  
+  @Post('/')
+  @RequiresOrganizationIsolation()
+  async createProject(@Req() req: Request) {
+    // ...
+  }
+}
+```
+
+### Test Generator
+
+```typescript
+// tests/organization-isolation/metadata-scanner.ts
+import { ProjectsController } from '../../src/controllers/projects.controller';
+import { PeopleController } from '../../src/controllers/people.controller';
+
+export function getRoutesRequiringIsolation(): string[] {
+  const routes: string[] = [];
+  
+  const controllers = [
+    ProjectsController,
+    PeopleController,
+    // ... semua controller
+  ];
+  
+  for (const controller of controllers) {
+    const prototype = controller.prototype;
+    const methods = Object.getOwnPropertyNames(prototype);
+    
+    for (const method of methods) {
+      const requiresIsolation = Reflect.getMetadata('requiresOrgIsolation', prototype, method);
+      if (requiresIsolation) {
+        const route = Reflect.getMetadata('route', prototype, method);
+        if (route) {
+          routes.push(`${route.method} ${route.path}`);
+        }
+      }
+    }
+  }
+  
+  return routes;
+}
+```
+
+## Template Test Isolasi Organisasi
+
+### Standard Test Pattern
+
+```typescript
+// tests/organization-isolation/projects.test.ts
+import { createTestOrganization, createTestUser, createTestApp } from '../helpers';
+
+describe('Projects - Organization Isolation', () => {
+  let orgA: any;
+  let orgB: any;
+  let userA: any;
+  let userB: any;
+  let app: any;
+  
+  beforeAll(async () => {
+    orgA = await createTestOrganization({ name: 'Organization A' });
+    orgB = await createTestOrganization({ name: 'Organization B' });
+    userA = await createTestUser({ organizationId: orgA.id });
+    userB = await createTestUser({ organizationId: orgB.id });
+    app = createTestApp();
+  });
+  
+  describe('GET /api/projects - organization isolation', () => {
+    it('should only return projects from user organization', async () => {
+      // Create project in orgA
+      const projectA = await createProject(orgA.id, { name: 'Project A' });
+      
+      // Create project in orgB
+      const projectB = await createProject(orgB.id, { name: 'Project B' });
+      
+      // User A requests projects
+      const response = await app
+        .get('/api/projects')
+        .set('Authorization', `Bearer ${userA.token}`);
+      
+      expect(response.status).toBe(200);
+      expect(response.body.projects).toHaveLength(1);
+      expect(response.body.projects[0].id).toBe(projectA.id);
+      expect(response.body.projects[0].name).toBe('Project A');
+    });
+  });
+  
+  describe('GET /api/projects/:id - organization isolation', () => {
+    it('should reject access to project from different organization', async () => {
+      const projectB = await createProject(orgB.id, { name: 'Project B' });
+      
+      const response = await app
+        .get(`/api/projects/${projectB.id}`)
+        .set('Authorization', `Bearer ${userA.token}`);
+      
+      expect(response.status).toBe(404); // or 403
+    });
+  });
+  
+  describe('POST /api/projects - organization isolation', () => {
+    it('should create project in user organization only', async () => {
+      const response = await app
+        .post('/api/projects')
+        .set('Authorization', `Bearer ${userA.token}`)
+        .send({ name: 'New Project' });
+      
+      expect(response.status).toBe(201);
+      expect(response.body.project.organization_id).toBe(orgA.id);
+    });
+  });
+});
+```
+
+## CI Integration
+
+### GitHub Actions Example
+
+```yaml
+# .github/workflows/test.yml
+name: Test Organization Isolation Coverage
+
+on: [push, pull_request]
+
+jobs:
+  isolation-coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run organization isolation coverage check
+        run: npm run test:isolation-coverage
+      
+      - name: Fail if coverage is incomplete
+        if: failure()
+        run: |
+          echo "::error::Organization isolation tests are incomplete"
+          echo "Please add isolation tests for all protected endpoints"
+          exit 1
+```
+
+### Package.json Scripts
+
+```json
+{
+  "scripts": {
+    "test:isolation-coverage": "jest tests/organization-isolation/coverage-checker.test.ts",
+    "test:isolation": "jest tests/organization-isolation/",
+    "test": "npm run test:isolation-coverage && jest"
+  }
+}
+```
+
+## Dokumentasi untuk Developer
+
+### README untuk Test Isolasi
+
+```markdown
+# Organization Isolation Tests
+
+## Mengapa Test Ini Penting
+
+Setiap endpoint yang mengakses data harus memastikan data hanya bisa diakses oleh user dari organisasi yang sama. Test isolasi organisasi mencegah kebocoran data antar workspace.
+
+## Cara Menambah Endpoint Baru
+
+1. **Tambahkan endpoint di registry** (jika pakai pendekatan statis):
+   ```typescript
+   // tests/organization-isolation/endpoint-registry.ts
+   export const PROTECTED_ENDPOINTS = [
+     // ...
+     { method: 'GET', path: '/api/new-endpoint', module: 'new-module' },
+   ];
+   ```
+
+2. **Buat test isolasi**:
+   ```typescript
+   // tests/organization-isolation/new-module.test.ts
+   describe('New Module - Organization Isolation', () => {
+     describe('GET /api/new-endpoint - organization isolation', () => {
+       it('should only return data from user organization', async () => {
+         // Test implementation
+       });
+     });
+   });
+   ```
+
+3. **Jalankan test coverage**:
+   ```bash
+   npm run test:isolation-coverage
+   ```
+
+## Pola Test yang Harus Ada
+
+Untuk setiap endpoint, minimal test:
+
+- **GET list**: Hanya return data dari organisasi user
+- **GET detail**: Reject akses ke data organisasi lain (404/403)
+- **POST**: Data baru dibuat di organisasi user
+- **PUT/PATCH**: Hanya bisa update data dari organisasi user
+- **DELETE**: Hanya bisa delete data dari organisasi user
+
+## Jika Test Gagal di CI
+
+1. Cek error message untuk melihat endpoint mana yang belum ada test
+2. Tambah test isolasi untuk endpoint tersebut
+3. Atau jika endpoint tidak perlu isolasi (public endpoint), hapus dari registry
+```
+
+## Rekomendasi
+
+**Pendekatan terbaik**: Kombinasi **Pendekatan 1 (Registry Statis)** + **Template Test Standard**
+
+**Alasan**:
+- Eksplisit dan mudah dipahami
+- Tidak bergantung pada introspeksi runtime
+- Mudah di-maintain
+- CI check cepat dan deterministik
+- Developer bisa langsung lihat endpoint mana yang perlu test
+
+Apakah pendekatan ini sesuai dengan kebutuhan, atau ada aspek lain yang perlu ditambahkan?
