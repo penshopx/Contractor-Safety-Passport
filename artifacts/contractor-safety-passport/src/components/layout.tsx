@@ -14,7 +14,8 @@ import {
   User,
   ShieldAlert,
   HardHat,
-  Eye
+  Eye,
+  FileSpreadsheet
 } from "lucide-react";
 import {
   Sidebar,
@@ -55,6 +56,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     { icon: CheckSquare, label: "Readiness", href: "/readiness" },
     { icon: FileText, label: "Safety Docs", href: "/documents" },
     { icon: FileCog, label: "Doc Generator", href: "/document-generator" },
+    { icon: FileSpreadsheet, label: "SMKK Reports", href: "/smkk-reports" },
     { icon: Users, label: "Personnel", href: "/people" },
     { icon: Award, label: "Certificates", href: "/certificates" },
     { icon: ActivitySquare, label: "Field Activity", href: "/field-activities" },

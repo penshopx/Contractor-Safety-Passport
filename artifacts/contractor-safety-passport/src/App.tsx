@@ -26,6 +26,7 @@ import DocumentGeneratorPage from '@/pages/document-generator';
 import PeoplePage from '@/pages/people';
 import CertificatesPage from '@/pages/certificates';
 import FieldActivitiesPage from '@/pages/field-activities';
+import SmkkReportsPage from '@/pages/smkk-reports';
 import { Loader2 } from 'lucide-react';
 
 const queryClient = new QueryClient({
@@ -175,6 +176,7 @@ function AuthenticatedApp() {
         <Route path="/people" component={() => <WorkspaceGate><PeoplePage /></WorkspaceGate>} />
         <Route path="/certificates" component={() => <WorkspaceGate><CertificatesPage /></WorkspaceGate>} />
         <Route path="/field-activities" component={() => <WorkspaceGate><FieldActivitiesPage /></WorkspaceGate>} />
+        <Route path="/smkk-reports" component={() => <WorkspaceGate><SmkkReportsPage /></WorkspaceGate>} />
         
         <Route component={() => <WorkspaceGate><NotFound /></WorkspaceGate>} />
       </Switch>

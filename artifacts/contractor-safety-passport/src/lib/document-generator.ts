@@ -2,7 +2,7 @@ import { Document, HeadingLevel, Packer, Paragraph, Table, TableCell, TableRow, 
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 
-export type TemplateKind = "rkk" | "csms" | "hse-plan" | "periodic-report";
+export type TemplateKind = "rkk" | "csms" | "hse-plan" | "periodic-report" | "smkk-report";
 
 export interface ProjectDocumentData {
   kind: TemplateKind;
@@ -43,6 +43,11 @@ export const TEMPLATE_META: Record<TemplateKind, { title: string; version: strin
     version: "HSE-REPORT v1.0 · 2026",
     basis: "Permen PUPR No. 10 Tahun 2021 dan praktik pemantauan kinerja HSE/CSMS",
   },
+  "smkk-report": {
+    title: "Laporan Bulanan Pelaksanaan SMKK",
+    version: "SMKK-REPORT v1.0 · 2026",
+    basis: "Permen PUPR No. 10 Tahun 2021 tentang Pedoman Sistem Manajemen Keselamatan Konstruksi",
+  },
 };
 
 const labels: Record<string, string> = {
@@ -61,10 +66,11 @@ export function buildSections(data: ProjectDocumentData) {
   const identity = [
     ["Paket pekerjaan", data.project.name],
     ["Pemberi tugas", data.project.client],
-    ["Penyedia jasa", data.extra.providerName],
+    ["Penyedia jasa", data.extra.providerName || "-"],
     ["Lokasi", data.project.location],
-    ["Nomor kontrak", data.extra.contractNumber],
+    ["Nomor kontrak", data.extra.contractNumber || "-"],
     ["Periode", data.extra.period || `${formatDate(data.project.startDate)} – ${formatDate(data.project.endDate)}`],
+    ["Capaian program", `${data.project.progress}%`],
     ["Nilai proyek", formatCurrency(data.project.value)],
   ];
   const people = data.people.length
@@ -82,6 +88,36 @@ export function buildSections(data: ProjectDocumentData) {
     { title: "Organisasi dan Kompetensi", headers: ["Nama", "Jabatan", "Kompetensi", "Status"], rows: people },
     { title: "Sertifikasi Personel", headers: ["Pemilik", "Sertifikat", "Penerbit", "Masa berlaku"], rows: certificates },
   ];
+
+  if (data.kind === "smkk-report") {
+    const summary = data.extra.summary ? JSON.parse(data.extra.summary) : {};
+    return {
+      meta,
+      sections: [
+        { title: "Identitas Proyek", headers: ["Data", "Keterangan"], rows: identity },
+        textSection("1. Evaluasi Kinerja Keselamatan", data.extra.evaluation || "-"),
+        {
+          title: "2. Rekapitulasi Aktivitas Lapangan",
+          headers: ["Jenis Aktivitas", "Jumlah", "Keterangan"],
+          rows: [
+            ["Toolbox Meeting", String(summary.toolbox || 0), "-"],
+            ["Inspeksi / Patrol", String(summary.inspection || 0), "-"],
+            ["Izin Kerja (PTW)", String(summary.permit || 0), "-"],
+            ["Laporan Near Miss / Insiden", String(summary.nearMiss || 0), "-"],
+            ["Temuan Terbuka (Open/Review)", String(summary.openFindings || 0), "-"],
+            ["Temuan Selesai (Closed)", String(summary.closedFindings || 0), "-"],
+          ],
+        },
+        { title: "3. Daftar Rincian Aktivitas", headers: ["Tanggal", "Jenis", "Kegiatan", "Pelaksana / Status"], rows: activities },
+        textSection("4. Catatan Dokumentasi", data.extra.notes || "-"),
+        {
+          title: "5. Pengesahan",
+          headers: ["Disusun Oleh", "Diperiksa Oleh", "Disetujui Oleh"],
+          rows: [[data.extra.preparedBy || "-", data.extra.reviewedBy || "-", data.extra.approvedBy || "-"]],
+        },
+      ],
+    };
+  }
 
   if (data.kind === "rkk") {
     return {
