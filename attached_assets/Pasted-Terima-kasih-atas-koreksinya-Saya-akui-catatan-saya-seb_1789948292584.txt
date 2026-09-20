@@ -1,0 +1,270 @@
+Terima kasih atas koreksinya. Saya akui catatan saya sebelumnya menggunakan nama tabel generik yang tidak sesuai dengan skema aktual, dan contoh placeholder UUID tidak kompatibel dengan sistem identitas Clerk.
+
+Berikut panduan pendekatan yang lebih akurat untuk Task #21:
+
+## Strategi Audit Data Yatim
+
+### 1. Temukan Semua Tabel dengan `organization_id`
+
+```sql
+-- Query untuk menemukan semua tabel yang memiliki kolom organization_id
+SELECT table_name, column_name, data_type
+FROM information_schema.columns
+WHERE column_name = 'organization_id'
+    AND table_schema = 'public'
+ORDER BY table_name;
+```
+
+### 2. Audit Data Yatim per Tabel
+
+Berdasarkan koreksi, tabel yang perlu diaudit:
+
+```sql
+-- Tabel utama
+SELECT 'projects' AS table_name, COUNT(*) AS orphaned_count
+FROM projects p
+LEFT JOIN organizations o ON p.organization_id = o.id
+WHERE o.id IS NULL OR p.organization_id IS NULL
+
+UNION ALL
+
+SELECT 'people', COUNT(*)
+FROM people p
+LEFT JOIN organizations o ON p.organization_id = o.id
+WHERE o.id IS NULL OR p.organization_id IS NULL
+
+UNION ALL
+
+SELECT 'safety_documents', COUNT(*)
+FROM safety_documents d
+LEFT JOIN organizations o ON d.organization_id = o.id
+WHERE o.id IS NULL OR d.organization_id IS NULL
+
+UNION ALL
+
+SELECT 'certificates', COUNT(*)
+FROM certificates c
+LEFT JOIN organizations o ON c.organization_id = o.id
+WHERE o.id IS NULL OR c.organization_id IS NULL
+
+UNION ALL
+
+SELECT 'field_activities', COUNT(*)
+FROM field_activities a
+LEFT JOIN organizations o ON a.organization_id = o.id
+WHERE o.id IS NULL OR a.organization_id IS NULL
+
+-- Tabel tambahan
+UNION ALL
+
+SELECT 'monthly_reports', COUNT(*)
+FROM monthly_reports r
+LEFT JOIN organizations o ON r.organization_id = o.id
+WHERE o.id IS NULL OR r.organization_id IS NULL
+
+UNION ALL
+
+SELECT 'safety_boq_items', COUNT(*)
+FROM safety_boq_items b
+LEFT JOIN organizations o ON b.organization_id = o.id
+WHERE o.id IS NULL OR b.organization_id IS NULL
+
+UNION ALL
+
+SELECT 'csms_project_readiness', COUNT(*)
+FROM csms_project_readiness c
+LEFT JOIN organizations o ON c.organization_id = o.id
+WHERE o.id IS NULL OR c.organization_id IS NULL
+
+UNION ALL
+
+SELECT 'csms_profile_versions', COUNT(*)
+FROM csms_profile_versions v
+LEFT JOIN organizations o ON v.organization_id = o.id
+WHERE o.id IS NULL OR v.organization_id IS NULL
+
+UNION ALL
+
+SELECT 'organization_memberships', COUNT(*)
+FROM organization_memberships m
+LEFT JOIN organizations o ON m.organization_id = o.id
+WHERE o.id IS NULL OR m.organization_id IS NULL
+
+UNION ALL
+
+SELECT 'organization_invitations', COUNT(*)
+FROM organization_invitations i
+LEFT JOIN organizations o ON i.organization_id = o.id
+WHERE o.id IS NULL OR i.organization_id IS NULL;
+```
+
+### 3. Audit Nilai Spesifik
+
+Cek juga nilai-nilai khusus yang mungkin bermasalah:
+
+```sql
+-- Cek nilai kosong atau 'legacy'
+SELECT table_name, organization_id, COUNT(*) as count
+FROM (
+    SELECT 'projects' as table_name, organization_id FROM projects
+    UNION ALL
+    SELECT 'people', organization_id FROM people
+    UNION ALL
+    SELECT 'safety_documents', organization_id FROM safety_documents
+    -- ... tambahkan tabel lainnya
+) all_data
+WHERE organization_id IS NULL 
+    OR organization_id = ''
+    OR organization_id = 'legacy'
+    OR organization_id = 'placeholder'
+GROUP BY table_name, organization_id
+ORDER BY table_name, count DESC;
+```
+
+## Panduan Penanganan Data Lama
+
+### Prinsip Utama
+
+**Jangan otomatis menghapus atau memindahkan data** tanpa bukti migrasi yang jelas.
+
+### Langkah Investigasi
+
+Untuk setiap data yatim yang ditemukan:
+
+1. **Cek metadata data**:
+   ```sql
+   SELECT id, organization_id, created_at, created_by, updated_at
+   FROM projects
+   WHERE organization_id NOT IN (SELECT id FROM organizations)
+   ORDER BY created_at;
+   ```
+
+2. **Cek log aktivitas** (jika ada):
+   - Siapa yang membuat data ini?
+   - Kapan dibuat?
+   - Apakah ada context tentang organization yang dimaksud?
+
+3. **Cek relasi dengan data lain**:
+   - Apakah data ini terhubung dengan user tertentu?
+   - Apakah user tersebut masih aktif di organization mana?
+
+### Opsi Penanganan
+
+**Opsi A: Hapus data yatim**
+- Hanya jika data tersebut tidak penting dan tidak ada referensi bisnis
+- Dokumentasikan alasan penghapusan
+
+**Opsi B: Assign ke organization yang valid**
+- Hanya jika ada bukti jelas siapa pemilik data
+- Contoh: user yang membuat data masih aktif di organization tertentu
+
+**Opsi C: Biarkan sementara**
+- Jika tidak ada bukti yang cukup
+- Tandai dengan flag `needs_review`
+- Tangani secara manual setelah investigasi lebih lanjut
+
+## Panduan Foreign Key
+
+### Nama Tabel Aktual
+
+```sql
+-- Contoh migration untuk tabel aktual
+ALTER TABLE projects
+ADD CONSTRAINT fk_projects_organization
+FOREIGN KEY (organization_id) 
+REFERENCES organizations(id)
+ON DELETE RESTRICT
+ON UPDATE CASCADE;
+
+ALTER TABLE people
+ADD CONSTRAINT fk_people_organization
+FOREIGN KEY (organization_id) 
+REFERENCES organizations(id)
+ON DELETE RESTRICT
+ON UPDATE CASCADE;
+
+ALTER TABLE safety_documents
+ADD CONSTRAINT fk_safety_documents_organization
+FOREIGN KEY (organization_id) 
+REFERENCES organizations(id)
+ON DELETE RESTRICT
+ON UPDATE CASCADE;
+
+ALTER TABLE field_activities
+ADD CONSTRAINT fk_field_activities_organization
+FOREIGN KEY (organization_id) 
+REFERENCES organizations(id)
+ON DELETE RESTRICT
+ON UPDATE CASCADE;
+
+-- Tambahkan untuk tabel lainnya:
+-- certificates, monthly_reports, safety_boq_items, 
+-- csms_project_readiness, csms_profile_versions,
+-- organization_memberships, organization_invitations
+```
+
+### Index untuk Performa
+
+```sql
+-- Tambahkan index di setiap tabel
+CREATE INDEX IF NOT EXISTS idx_projects_organization_id ON projects(organization_id);
+CREATE INDEX IF NOT EXISTS idx_people_organization_id ON people(organization_id);
+CREATE INDEX IF NOT EXISTS idx_safety_documents_organization_id ON safety_documents(organization_id);
+CREATE INDEX IF NOT EXISTS idx_field_activities_organization_id ON field_activities(organization_id);
+-- ... untuk tabel lainnya
+```
+
+## Verifikasi Isolasi Per Workspace
+
+### Test Query Isolasi
+
+```sql
+-- Pastikan setiap query memfilter berdasarkan organization_id
+-- Contoh query yang BENAR:
+SELECT * FROM projects 
+WHERE organization_id = $1;  -- $1 dari context user
+
+-- Contoh query yang SALAH:
+SELECT * FROM projects;  -- Tidak ada filter organization_id!
+```
+
+### Audit API Endpoints
+
+Cek semua endpoint yang mengakses data:
+
+```sql
+-- Contoh: endpoint untuk list projects
+-- Pastikan ada middleware yang memfilter berdasarkan organization_id user
+
+-- Test: User dari organization A tidak boleh melihat data organization B
+SELECT p.* 
+FROM projects p
+JOIN organization_memberships m ON p.organization_id = m.organization_id
+WHERE m.user_id = $1;  -- $1 = current user
+```
+
+## Checklist Penyelesaian Task #21
+
+- [ ] Audit semua tabel dengan `organization_id`
+- [ ] Identifikasi data yatim (NULL, kosong, 'legacy', atau tidak ditemukan)
+- [ ] Investigasi setiap data yatim untuk menentukan pemilik
+- [ ] Dokumentasikan keputusan untuk setiap data yatim
+- [ ] Tambahkan FK constraint dengan `ON DELETE RESTRICT`
+- [ ] Tambahkan index pada `organization_id`
+- [ ] Test insert dengan `organization_id` tidak valid → harus error
+- [ ] Test delete organization yang masih punya data → harus error
+- [ ] Verifikasi semua API endpoint memfilter berdasarkan `organization_id`
+- [ ] Test isolasi: user organization A tidak bisa akses data organization B
+- [ ] Update dokumentasi error response untuk invalid organization
+
+## Catatan Penting
+
+1. **Sistem identitas Clerk**: Organization ID menggunakan identifier teks dari Clerk, bukan UUID. Pastikan validasi sesuai dengan format yang digunakan Clerk.
+
+2. **Jangan gunakan placeholder organization**: Karena sistem identitas terintegrasi dengan Clerk, membuat organization placeholder bisa menyebabkan inkonsistensi.
+
+3. **Prioritas keamanan**: Lebih baik menolak operasi jika `organization_id` tidak valid daripada menyimpan data yatim.
+
+4. **Testing menyeluruh**: Setelah FK ditambahkan, test semua operasi CRUD di semua modul untuk memastikan tidak ada breaking changes.
+
+Apakah panduan ini sudah sesuai dengan kebutuhan Task #21, atau ada aspek lain yang perlu ditambahkan?
