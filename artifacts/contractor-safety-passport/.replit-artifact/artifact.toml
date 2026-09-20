@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Contractor Safety Passport"
+description = "Aplikasi manajemen keselamatan konstruksi untuk UKM kontraktor dan profesional K3, membantu menyiapkan dokumen SMKK, menjalankan aktivitas lapangan, dan memenuhi kebutuhan CSMS."
+version = "1.0.0"
+id = "artifacts/contractor-safety-passport"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 21330
+
+[services.development]
+run = "pnpm --filter @workspace/contractor-safety-passport run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/contractor-safety-passport", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/contractor-safety-passport/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "21330"
+BASE_PATH = "/"

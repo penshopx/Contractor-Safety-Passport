@@ -10,6 +10,18 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: dashboard
+    description: Dashboard and readiness summaries
+  - name: projects
+    description: Construction project management
+  - name: people
+    description: K3 personnel and roles
+  - name: documents
+    description: SMKK and CSMS document tracking
+  - name: certificates
+    description: Certificate and expiry tracking
+  - name: field-activities
+    description: Daily safety activities
 paths:
   /healthz:
     get:
@@ -24,7 +36,274 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Get dashboard summary
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+  /dashboard/readiness:
+    get:
+      operationId: getReadinessSummary
+      tags: [dashboard]
+      summary: Get SMKK and CSMS readiness
+      responses:
+        "200":
+          description: Readiness summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadinessSummary"
+  /activity:
+    get:
+      operationId: listActivity
+      tags: [dashboard]
+      summary: List recent activity
+      responses:
+        "200":
+          description: Recent activity
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Activity"
+  /projects:
+    get:
+      operationId: listProjects
+      tags: [projects]
+      summary: List projects
+      responses:
+        "200":
+          description: Projects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Project"
+    post:
+      operationId: createProject
+      tags: [projects]
+      summary: Create a project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectInput"
+      responses:
+        "201":
+          description: Created project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+  /projects/{id}:
+    get:
+      operationId: getProject
+      tags: [projects]
+      summary: Get a project
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: updateProject
+      tags: [projects]
+      summary: Update a project
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectUpdate"
+      responses:
+        "200":
+          description: Updated project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /people:
+    get:
+      operationId: listPeople
+      tags: [people]
+      summary: List K3 personnel
+      responses:
+        "200":
+          description: Personnel
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Person"
+    post:
+      operationId: createPerson
+      tags: [people]
+      summary: Add K3 personnel
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PersonInput"
+      responses:
+        "201":
+          description: Created person
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Person"
+  /people/{id}:
+    patch:
+      operationId: updatePerson
+      tags: [people]
+      summary: Update K3 personnel
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PersonUpdate"
+      responses:
+        "200":
+          description: Updated person
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Person"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /documents:
+    get:
+      operationId: listDocuments
+      tags: [documents]
+      summary: List safety documents
+      responses:
+        "200":
+          description: Safety documents
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SafetyDocument"
+    post:
+      operationId: createDocument
+      tags: [documents]
+      summary: Add safety document
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DocumentInput"
+      responses:
+        "201":
+          description: Created document
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SafetyDocument"
+  /certificates:
+    get:
+      operationId: listCertificates
+      tags: [certificates]
+      summary: List certificates
+      responses:
+        "200":
+          description: Certificates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Certificate"
+    post:
+      operationId: createCertificate
+      tags: [certificates]
+      summary: Add certificate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CertificateInput"
+      responses:
+        "201":
+          description: Created certificate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Certificate"
+  /field-activities:
+    get:
+      operationId: listFieldActivities
+      tags: [field-activities]
+      summary: List field activities
+      responses:
+        "200":
+          description: Field activities
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FieldActivity"
+    post:
+      operationId: createFieldActivity
+      tags: [field-activities]
+      summary: Record a field activity
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FieldActivityInput"
+      responses:
+        "201":
+          description: Created field activity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FieldActivity"
 components:
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+  responses:
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
   schemas:
     HealthStatus:
       type: object
@@ -33,4 +312,182 @@ components:
           type: string
       required:
         - status
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
+    Project:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        client: { type: string }
+        location: { type: string }
+        standard: { type: string, enum: [SMKK, CSMS, "SMKK + CSMS"] }
+        status: { type: string, enum: [active, tender, completed] }
+        progress: { type: integer, minimum: 0, maximum: 100 }
+        startDate: { type: string, format: date }
+        endDate: { type: ["string", "null"], format: date }
+        value: { type: number }
+        createdAt: { type: string, format: date-time }
+      required: [id, name, client, location, standard, status, progress, startDate, endDate, value, createdAt]
+    ProjectInput:
+      type: object
+      properties:
+        name: { type: string, minLength: 1 }
+        client: { type: string, minLength: 1 }
+        location: { type: string, minLength: 1 }
+        standard: { type: string, enum: [SMKK, CSMS, "SMKK + CSMS"] }
+        status: { type: string, enum: [active, tender, completed] }
+        progress: { type: integer, minimum: 0, maximum: 100 }
+        startDate: { type: string, format: date }
+        endDate: { type: ["string", "null"], format: date }
+        value: { type: number, minimum: 0 }
+      required: [name, client, location, standard, status, startDate, value]
+    ProjectUpdate:
+      type: object
+      properties:
+        name: { type: string, minLength: 1 }
+        client: { type: string, minLength: 1 }
+        location: { type: string, minLength: 1 }
+        standard: { type: string, enum: [SMKK, CSMS, "SMKK + CSMS"] }
+        status: { type: string, enum: [active, tender, completed] }
+        progress: { type: integer, minimum: 0, maximum: 100 }
+        startDate: { type: string, format: date }
+        endDate: { type: ["string", "null"], format: date }
+        value: { type: number, minimum: 0 }
+    Person:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        role: { type: string }
+        level: { type: string }
+        skkni: { type: string }
+        project: { type: string }
+        status: { type: string, enum: [active, expiring, missing] }
+        initials: { type: string }
+        createdAt: { type: string, format: date-time }
+      required: [id, name, role, level, skkni, project, status, initials, createdAt]
+    PersonInput:
+      type: object
+      properties:
+        name: { type: string, minLength: 1 }
+        role: { type: string, minLength: 1 }
+        level: { type: string, minLength: 1 }
+        skkni: { type: string, minLength: 1 }
+        project: { type: string, minLength: 1 }
+        status: { type: string, enum: [active, expiring, missing] }
+      required: [name, role, level, skkni, project, status]
+    PersonUpdate:
+      type: object
+      properties:
+        name: { type: string, minLength: 1 }
+        role: { type: string, minLength: 1 }
+        level: { type: string, minLength: 1 }
+        skkni: { type: string, minLength: 1 }
+        project: { type: string, minLength: 1 }
+        status: { type: string, enum: [active, expiring, missing] }
+    SafetyDocument:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        type: { type: string }
+        standard: { type: string, enum: [SMKK, CSMS, "SMKK + CSMS"] }
+        project: { type: string }
+        status: { type: string, enum: [ready, review, missing] }
+        updatedAt: { type: string, format: date-time }
+      required: [id, name, type, standard, project, status, updatedAt]
+    DocumentInput:
+      type: object
+      properties:
+        name: { type: string, minLength: 1 }
+        type: { type: string, minLength: 1 }
+        standard: { type: string, enum: [SMKK, CSMS, "SMKK + CSMS"] }
+        project: { type: string, minLength: 1 }
+        status: { type: string, enum: [ready, review, missing] }
+      required: [name, type, standard, project, status]
+    Certificate:
+      type: object
+      properties:
+        id: { type: integer }
+        owner: { type: string }
+        credential: { type: string }
+        issuer: { type: string }
+        expiresAt: { type: string, format: date }
+        status: { type: string, enum: [valid, expiring, expired] }
+      required: [id, owner, credential, issuer, expiresAt, status]
+    CertificateInput:
+      type: object
+      properties:
+        owner: { type: string, minLength: 1 }
+        credential: { type: string, minLength: 1 }
+        issuer: { type: string, minLength: 1 }
+        expiresAt: { type: string, format: date }
+        status: { type: string, enum: [valid, expiring, expired] }
+      required: [owner, credential, issuer, expiresAt, status]
+    FieldActivity:
+      type: object
+      properties:
+        id: { type: integer }
+        type: { type: string, enum: [Toolbox, Inspection, "Near miss", "Permit to work"] }
+        title: { type: string }
+        project: { type: string }
+        actor: { type: string }
+        status: { type: string, enum: [complete, review, open] }
+        occurredAt: { type: string, format: date-time }
+      required: [id, type, title, project, actor, status, occurredAt]
+    FieldActivityInput:
+      type: object
+      properties:
+        type: { type: string, enum: [Toolbox, Inspection, "Near miss", "Permit to work"] }
+        title: { type: string, minLength: 1 }
+        project: { type: string, minLength: 1 }
+        actor: { type: string, minLength: 1 }
+        status: { type: string, enum: [complete, review, open] }
+      required: [type, title, project, actor, status]
+    Activity:
+      type: object
+      properties:
+        id: { type: integer }
+        type: { type: string }
+        title: { type: string }
+        description: { type: string }
+        actor: { type: string }
+        timestamp: { type: string, format: date-time }
+      required: [id, type, title, description, actor, timestamp]
+    DashboardSummary:
+      type: object
+      properties:
+        readinessScore: { type: integer, minimum: 0, maximum: 100 }
+        activeProjects: { type: integer, minimum: 0 }
+        peopleTracked: { type: integer, minimum: 0 }
+        expiringSoon: { type: integer, minimum: 0 }
+        openActions: { type: integer, minimum: 0 }
+        documentReady: { type: integer, minimum: 0 }
+        documentTotal: { type: integer, minimum: 0 }
+      required: [readinessScore, activeProjects, peopleTracked, expiringSoon, openActions, documentReady, documentTotal]
+    ReadinessSummary:
+      type: object
+      properties:
+        overall: { type: integer, minimum: 0, maximum: 100 }
+        smkk: { type: integer, minimum: 0, maximum: 100 }
+        csms: { type: integer, minimum: 0, maximum: 100 }
+        checks:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReadinessCheck"
+      required: [overall, smkk, csms, checks]
+    ReadinessCheck:
+      type: object
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        detail: { type: string }
+        standard: { type: string, enum: [SMKK, CSMS] }
+        status: { type: string, enum: [done, attention, missing] }
+      required: [id, title, detail, standard, status]
 
