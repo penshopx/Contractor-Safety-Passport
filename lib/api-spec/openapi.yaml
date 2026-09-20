@@ -1020,6 +1020,10 @@ components:
         volume: { type: number, exclusiveMinimum: 0 }
         unit: { type: string }
         unitPrice: { type: number, minimum: 0 }
+        catalogItemId: { type: string, nullable: true }
+        priceRegion: { type: string, nullable: true }
+        priceSource: { type: string, nullable: true }
+        priceUpdatedAt: { type: string, format: date, nullable: true }
         risk: { type: string }
         stage: { type: string }
         controlNeed: { type: string }
@@ -1034,6 +1038,10 @@ components:
         volume: { type: number, exclusiveMinimum: 0 }
         unit: { type: string, minLength: 1, maxLength: 50 }
         unitPrice: { type: number, minimum: 0 }
+        catalogItemId: { type: string, maxLength: 100, nullable: true }
+        priceRegion: { type: string, maxLength: 200, nullable: true }
+        priceSource: { type: string, maxLength: 500, nullable: true }
+        priceUpdatedAt: { type: string, format: date, nullable: true }
         risk: { type: string, minLength: 1, maxLength: 100 }
         stage: { type: string, minLength: 1, maxLength: 100 }
         controlNeed: { type: string, minLength: 1, maxLength: 4000 }

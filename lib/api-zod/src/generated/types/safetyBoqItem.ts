@@ -21,6 +21,10 @@ export interface SafetyBoqItem {
   unit: string;
   /** @minimum 0 */
   unitPrice: number;
+  catalogItemId?: string | null;
+  priceRegion?: string | null;
+  priceSource?: string | null;
+  priceUpdatedAt?: Date | null;
   risk: string;
   stage: string;
   controlNeed: string;

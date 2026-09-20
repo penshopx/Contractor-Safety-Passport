@@ -308,6 +308,10 @@ export const GetProjectSafetyBoqResponseItem = zod.object({
   "volume": zod.number().gt(getProjectSafetyBoqResponseVolumeExclusiveMin),
   "unit": zod.string(),
   "unitPrice": zod.number().min(getProjectSafetyBoqResponseUnitPriceMin),
+  "catalogItemId": zod.string().nullish(),
+  "priceRegion": zod.string().nullish(),
+  "priceSource": zod.string().nullish(),
+  "priceUpdatedAt": zod.coerce.date().nullish(),
   "risk": zod.string(),
   "stage": zod.string(),
   "controlNeed": zod.string(),
@@ -338,6 +342,12 @@ export const replaceProjectSafetyBoqBodyItemsItemUnitMax = 50;
 
 export const replaceProjectSafetyBoqBodyItemsItemUnitPriceMin = 0;
 
+export const replaceProjectSafetyBoqBodyItemsItemCatalogItemIdMax = 100;
+
+export const replaceProjectSafetyBoqBodyItemsItemPriceRegionMax = 200;
+
+export const replaceProjectSafetyBoqBodyItemsItemPriceSourceMax = 500;
+
 export const replaceProjectSafetyBoqBodyItemsItemRiskMax = 100;
 
 export const replaceProjectSafetyBoqBodyItemsItemStageMax = 100;
@@ -356,6 +366,10 @@ export const ReplaceProjectSafetyBoqBody = zod.object({
   "volume": zod.number().gt(replaceProjectSafetyBoqBodyItemsItemVolumeExclusiveMin),
   "unit": zod.string().min(1).max(replaceProjectSafetyBoqBodyItemsItemUnitMax),
   "unitPrice": zod.number().min(replaceProjectSafetyBoqBodyItemsItemUnitPriceMin),
+  "catalogItemId": zod.string().max(replaceProjectSafetyBoqBodyItemsItemCatalogItemIdMax).nullish(),
+  "priceRegion": zod.string().max(replaceProjectSafetyBoqBodyItemsItemPriceRegionMax).nullish(),
+  "priceSource": zod.string().max(replaceProjectSafetyBoqBodyItemsItemPriceSourceMax).nullish(),
+  "priceUpdatedAt": zod.coerce.date().nullish(),
   "risk": zod.string().min(1).max(replaceProjectSafetyBoqBodyItemsItemRiskMax),
   "stage": zod.string().min(1).max(replaceProjectSafetyBoqBodyItemsItemStageMax),
   "controlNeed": zod.string().min(1).max(replaceProjectSafetyBoqBodyItemsItemControlNeedMax)
@@ -379,6 +393,10 @@ export const ReplaceProjectSafetyBoqResponseItem = zod.object({
   "volume": zod.number().gt(replaceProjectSafetyBoqResponseVolumeExclusiveMin),
   "unit": zod.string(),
   "unitPrice": zod.number().min(replaceProjectSafetyBoqResponseUnitPriceMin),
+  "catalogItemId": zod.string().nullish(),
+  "priceRegion": zod.string().nullish(),
+  "priceSource": zod.string().nullish(),
+  "priceUpdatedAt": zod.coerce.date().nullish(),
   "risk": zod.string(),
   "stage": zod.string(),
   "controlNeed": zod.string(),

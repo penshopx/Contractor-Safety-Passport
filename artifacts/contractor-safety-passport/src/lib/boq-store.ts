@@ -7,11 +7,29 @@ export interface SafetyBoqItem {
   volume: number;
   unit: string;
   unitPrice: number;
+  catalogItemId?: string | null;
+  priceRegion?: string | null;
+  priceSource?: string | null;
+  priceUpdatedAt?: string | null;
   risk: string;
   stage: string;
   controlNeed: string;
   projectId?: number | null;
   updatedAt?: string;
+}
+
+export interface SafetyPriceCatalogItem {
+  id: string;
+  description: string;
+  category: string;
+  unit: string;
+  referencePrice: number;
+  region: string;
+  source: string;
+  priceUpdatedAt: string;
+  risk: string;
+  stage: string;
+  controlNeed: string;
 }
 
 export const CATEGORIES = [
@@ -70,6 +88,21 @@ const SEED_BOQ_ITEMS: SafetyBoqItem[] = [
 ];
 
 const STORAGE_KEY = 'safety_passport_boq_v1';
+const CATALOG_STORAGE_KEY = 'safety_passport_price_catalog_v1';
+
+const SEED_CATALOG_ITEMS: SafetyPriceCatalogItem[] = SEED_BOQ_ITEMS.map((item) => ({
+  id: `catalog-${item.id}`,
+  description: item.description,
+  category: item.category,
+  unit: item.unit,
+  referencePrice: item.unitPrice,
+  region: "Nasional",
+  source: "Katalog awal Safety Passport",
+  priceUpdatedAt: "2026-01-01",
+  risk: item.risk,
+  stage: item.stage,
+  controlNeed: item.controlNeed,
+}));
 
 export function useLocalSafetyBoqStore() {
   const [items, setItems] = useState<SafetyBoqItem[]>([]);
@@ -115,4 +148,46 @@ export function useLocalSafetyBoqStore() {
   }, []);
 
   return { items, addItem, updateItem, removeItem, removeItems, isLoaded };
+}
+
+export function useLocalSafetyPriceCatalog() {
+  const [catalogItems, setCatalogItems] = useState<SafetyPriceCatalogItem[]>([]);
+  const [isCatalogLoaded, setIsCatalogLoaded] = useState(false);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(CATALOG_STORAGE_KEY);
+      setCatalogItems(stored ? JSON.parse(stored) : SEED_CATALOG_ITEMS);
+    } catch (error) {
+      console.error("Failed to load safety price catalog", error);
+      setCatalogItems(SEED_CATALOG_ITEMS);
+    }
+    setIsCatalogLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    if (isCatalogLoaded) {
+      localStorage.setItem(CATALOG_STORAGE_KEY, JSON.stringify(catalogItems));
+    }
+  }, [catalogItems, isCatalogLoaded]);
+
+  const addCatalogItem = useCallback((item: Omit<SafetyPriceCatalogItem, "id">) => {
+    setCatalogItems((previous) => [...previous, { ...item, id: crypto.randomUUID() }]);
+  }, []);
+
+  const updateCatalogItem = useCallback((id: string, updates: Omit<SafetyPriceCatalogItem, "id">) => {
+    setCatalogItems((previous) => previous.map((item) => item.id === id ? { ...item, ...updates } : item));
+  }, []);
+
+  const removeCatalogItem = useCallback((id: string) => {
+    setCatalogItems((previous) => previous.filter((item) => item.id !== id));
+  }, []);
+
+  return {
+    catalogItems,
+    addCatalogItem,
+    updateCatalogItem,
+    removeCatalogItem,
+    isCatalogLoaded,
+  };
 }

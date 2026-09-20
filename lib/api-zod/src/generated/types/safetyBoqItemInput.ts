@@ -31,6 +31,13 @@ export interface SafetyBoqItemInput {
   unit: string;
   /** @minimum 0 */
   unitPrice: number;
+  /** @maxLength 100 */
+  catalogItemId?: string | null;
+  /** @maxLength 200 */
+  priceRegion?: string | null;
+  /** @maxLength 500 */
+  priceSource?: string | null;
+  priceUpdatedAt?: Date | null;
   /**
      * @minLength 1
      * @maxLength 100

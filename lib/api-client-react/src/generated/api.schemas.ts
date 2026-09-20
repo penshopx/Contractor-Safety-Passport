@@ -695,6 +695,10 @@ export interface SafetyBoqItem {
   unit: string;
   /** @minimum 0 */
   unitPrice: number;
+  catalogItemId?: string | null;
+  priceRegion?: string | null;
+  priceSource?: string | null;
+  priceUpdatedAt?: string | null;
   risk: string;
   stage: string;
   controlNeed: string;
@@ -726,6 +730,13 @@ export interface SafetyBoqItemInput {
   unit: string;
   /** @minimum 0 */
   unitPrice: number;
+  /** @maxLength 100 */
+  catalogItemId?: string | null;
+  /** @maxLength 200 */
+  priceRegion?: string | null;
+  /** @maxLength 500 */
+  priceSource?: string | null;
+  priceUpdatedAt?: string | null;
   /**
      * @minLength 1
      * @maxLength 100

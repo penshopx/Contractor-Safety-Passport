@@ -13,6 +13,10 @@ import {
   ClipboardList
   ,CloudUpload
   ,Loader2
+  ,BookOpen
+  ,MapPin
+  ,Database
+  ,CalendarDays
 } from 'lucide-react';
 import { 
   Card, 
@@ -39,7 +43,9 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import { 
   useLocalSafetyBoqStore,
+  useLocalSafetyPriceCatalog,
   SafetyBoqItem, 
+  SafetyPriceCatalogItem,
   CATEGORIES, 
   RISKS, 
   STAGES 
@@ -78,6 +84,128 @@ const boqSchema = z.object({
 });
 
 type BoqFormValues = z.infer<typeof boqSchema>;
+
+const catalogSchema = boqSchema.omit({ volume: true }).extend({
+  referencePrice: z.coerce.number().min(0, "Harga acuan tidak boleh negatif"),
+  region: z.string().min(1, "Wilayah wajib diisi"),
+  source: z.string().min(1, "Sumber harga wajib diisi"),
+  priceUpdatedAt: z.string().min(1, "Tanggal pembaruan wajib diisi"),
+});
+
+type CatalogFormValues = z.infer<typeof catalogSchema>;
+
+function CatalogItemDialog({
+  isOpen,
+  onClose,
+  initialData,
+  onSave,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  initialData?: SafetyPriceCatalogItem | null;
+  onSave: (data: CatalogFormValues) => void;
+}) {
+  const form = useForm<CatalogFormValues>({
+    resolver: zodResolver(catalogSchema),
+    defaultValues: {
+      description: "", category: "", unit: "Bh", referencePrice: 0,
+      region: "", source: "", priceUpdatedAt: new Date().toISOString().slice(0, 10),
+      risk: "Sedang", stage: "Pelaksanaan", controlNeed: "Harga acuan katalog",
+    },
+  });
+
+  useEffect(() => {
+    if (!isOpen) return;
+    form.reset(initialData ? {
+      description: initialData.description,
+      category: initialData.category,
+      unit: initialData.unit,
+      referencePrice: initialData.referencePrice,
+      region: initialData.region,
+      source: initialData.source,
+      priceUpdatedAt: initialData.priceUpdatedAt,
+      risk: initialData.risk,
+      stage: initialData.stage,
+      controlNeed: initialData.controlNeed,
+    } : {
+      description: "", category: "", unit: "Bh", referencePrice: 0,
+      region: "", source: "", priceUpdatedAt: new Date().toISOString().slice(0, 10),
+      risk: "Sedang", stage: "Pelaksanaan", controlNeed: "Harga acuan katalog",
+    });
+  }, [form, initialData, isOpen]);
+
+  return (
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-[640px] bg-card border-border">
+        <DialogHeader><DialogTitle>{initialData ? "Edit Item Katalog" : "Tambah Item Katalog"}</DialogTitle></DialogHeader>
+        <form onSubmit={form.handleSubmit((data) => { onSave(data); onClose(); })} className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label htmlFor="catalog-description">Nama Item Standar</Label>
+            <Input id="catalog-description" {...form.register("description")} data-testid="input-catalog-description" />
+            {form.formState.errors.description && <p className="text-sm text-destructive">{form.formState.errors.description.message}</p>}
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Kategori</Label>
+              <Controller control={form.control} name="category" render={({ field }) => (
+                <Select value={field.value} onValueChange={field.onChange}>
+                  <SelectTrigger data-testid="select-catalog-category"><SelectValue placeholder="Pilih kategori" /></SelectTrigger>
+                  <SelectContent>{CATEGORIES.map((category) => <SelectItem key={category} value={category}>{category}</SelectItem>)}</SelectContent>
+                </Select>
+              )} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="catalog-unit">Satuan</Label>
+              <Input id="catalog-unit" {...form.register("unit")} data-testid="input-catalog-unit" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="catalog-price">Harga Acuan (Rp)</Label>
+              <Input id="catalog-price" type="number" {...form.register("referencePrice")} data-testid="input-catalog-price" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="catalog-region">Wilayah</Label>
+              <Input id="catalog-region" {...form.register("region")} placeholder="Contoh: Jabodetabek" data-testid="input-catalog-region" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="catalog-source">Sumber Harga</Label>
+              <Input id="catalog-source" {...form.register("source")} placeholder="Pemasok / standar harga" data-testid="input-catalog-source" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="catalog-date">Tanggal Pembaruan</Label>
+              <Input id="catalog-date" type="date" {...form.register("priceUpdatedAt")} data-testid="input-catalog-date" />
+            </div>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Risiko Bawaan</Label>
+              <Controller control={form.control} name="risk" render={({ field }) => (
+                <Select value={field.value} onValueChange={field.onChange}><SelectTrigger data-testid="select-catalog-risk"><SelectValue /></SelectTrigger>
+                  <SelectContent>{RISKS.map((risk) => <SelectItem key={risk} value={risk}>{risk}</SelectItem>)}</SelectContent>
+                </Select>
+              )} />
+            </div>
+            <div className="space-y-2">
+              <Label>Tahap Bawaan</Label>
+              <Controller control={form.control} name="stage" render={({ field }) => (
+                <Select value={field.value} onValueChange={field.onChange}><SelectTrigger data-testid="select-catalog-stage"><SelectValue /></SelectTrigger>
+                  <SelectContent>{STAGES.map((stage) => <SelectItem key={stage} value={stage}>{stage}</SelectItem>)}</SelectContent>
+                </Select>
+              )} />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="catalog-note">Catatan Pengendalian Bawaan</Label>
+            <Textarea id="catalog-note" {...form.register("controlNeed")} data-testid="textarea-catalog-note" />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose} data-testid="button-cancel-catalog">Batal</Button>
+            <Button type="submit" data-testid="button-save-catalog">Simpan ke Katalog</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 function BoqItemDialog({
   isOpen,
@@ -317,12 +445,21 @@ export default function SafetyBoqPage() {
     removeItems: removeLocalItems,
     isLoaded: isLocalLoaded,
   } = useLocalSafetyBoqStore();
+  const {
+    catalogItems,
+    addCatalogItem,
+    updateCatalogItem,
+    removeCatalogItem,
+    isCatalogLoaded,
+  } = useLocalSafetyPriceCatalog();
   const { data: projects } = useListProjects();
   const { data: organization } = useGetOrganizationContext();
   
   const [selectedProjectId, setSelectedProjectId] = useState<string>('all');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<SafetyBoqItem | null>(null);
+  const [isCatalogDialogOpen, setIsCatalogDialogOpen] = useState(false);
+  const [editingCatalogItem, setEditingCatalogItem] = useState<SafetyPriceCatalogItem | null>(null);
   const projectId = selectedProjectId === 'all' ? null : Number(selectedProjectId);
   const {
     data: sharedItems,
@@ -467,6 +604,43 @@ export default function SafetyBoqPage() {
     }
   };
 
+  const handleUseCatalogItem = (catalogItem: SafetyPriceCatalogItem) => {
+    if (projectId !== null && !canMutateShared) return;
+    const snapshot: SafetyBoqItem = {
+      id: crypto.randomUUID(),
+      description: catalogItem.description,
+      category: catalogItem.category,
+      volume: 1,
+      unit: catalogItem.unit,
+      unitPrice: catalogItem.referencePrice,
+      catalogItemId: catalogItem.id,
+      priceRegion: catalogItem.region,
+      priceSource: catalogItem.source,
+      priceUpdatedAt: catalogItem.priceUpdatedAt,
+      risk: catalogItem.risk,
+      stage: catalogItem.stage,
+      controlNeed: catalogItem.controlNeed,
+      projectId,
+    };
+    if (projectId === null) {
+      const { id: _id, ...localSnapshot } = snapshot;
+      addLocalItem(localSnapshot);
+      toast.success("Item katalog ditambahkan. Harga BOQ dapat disesuaikan.");
+    } else {
+      saveSharedItems([...projectItems, snapshot], "Item katalog ditambahkan ke draft proyek");
+    }
+  };
+
+  const handleSaveCatalogItem = (data: CatalogFormValues) => {
+    if (editingCatalogItem) {
+      updateCatalogItem(editingCatalogItem.id, data);
+      toast.success("Item katalog diperbarui tanpa mengubah draft lama");
+    } else {
+      addCatalogItem(data);
+      toast.success("Item standar disimpan ke katalog");
+    }
+  };
+
   const handleMigrateLocal = () => {
     if (!canMutateShared || projectId === null || migratableItems.length === 0) return;
     const serverIds = new Set(projectItems.map((item) => item.id));
@@ -507,7 +681,7 @@ export default function SafetyBoqPage() {
     toast.success("CSV berhasil diekspor");
   };
 
-  if (!isLocalLoaded) return null;
+  if (!isLocalLoaded || !isCatalogLoaded) return null;
 
   return (
     <div className="space-y-8 pb-12 animate-in fade-in duration-500">
@@ -608,6 +782,44 @@ export default function SafetyBoqPage() {
           </CardContent>
         </Card>
       )}
+
+      <Card className="border-primary/20 bg-card/70">
+        <CardHeader className="flex flex-row items-start justify-between gap-4">
+          <div>
+            <CardTitle className="flex items-center gap-2 text-lg"><BookOpen className="h-5 w-5 text-primary" />Katalog Harga Keselamatan</CardTitle>
+            <p className="mt-1 text-sm text-muted-foreground">Pilih harga acuan untuk membuat salinan di BOQ. Perubahan katalog berikutnya tidak mengubah harga draft lama.</p>
+          </div>
+          <Button variant="outline" onClick={() => { setEditingCatalogItem(null); setIsCatalogDialogOpen(true); }} data-testid="button-create-catalog-item">
+            <Plus className="mr-2 h-4 w-4" />Item Katalog
+          </Button>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {catalogItems.map((item) => (
+              <div key={item.id} className="rounded-lg border border-border/60 bg-background/40 p-4" data-testid={`card-catalog-${item.id}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-foreground">{item.description}</p>
+                    <p className="mt-1 text-lg font-bold text-primary">{formatCurrency(item.referencePrice)} <span className="text-xs font-normal text-muted-foreground">/ {item.unit}</span></p>
+                  </div>
+                  <div className="flex">
+                    <Button variant="ghost" size="icon" onClick={() => { setEditingCatalogItem(item); setIsCatalogDialogOpen(true); }} data-testid={`button-edit-catalog-${item.id}`}><Pencil className="h-4 w-4" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => { if (window.confirm("Hapus item katalog ini? Draft BOQ yang sudah memakai item tetap aman.")) removeCatalogItem(item.id); }} data-testid={`button-delete-catalog-${item.id}`}><Trash2 className="h-4 w-4" /></Button>
+                  </div>
+                </div>
+                <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+                  <p className="flex items-center gap-2"><MapPin className="h-3.5 w-3.5" />{item.region}</p>
+                  <p className="flex items-center gap-2"><Database className="h-3.5 w-3.5" />{item.source}</p>
+                  <p className="flex items-center gap-2"><CalendarDays className="h-3.5 w-3.5" />Diperbarui {item.priceUpdatedAt}</p>
+                </div>
+                <Button className="mt-4 w-full" onClick={() => handleUseCatalogItem(item)} disabled={projectId !== null && !canMutateShared} data-testid={`button-use-catalog-${item.id}`}>
+                  Tambahkan ke BOQ
+                </Button>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="border-border/50 shadow-sm bg-card/50 backdrop-blur-sm">
@@ -759,6 +971,11 @@ export default function SafetyBoqPage() {
                       <div className="text-xs text-muted-foreground font-normal truncate mt-0.5" title={item.controlNeed}>
                         {item.controlNeed}
                       </div>
+                      {item.priceSource && (
+                        <div className="mt-1 text-[11px] text-muted-foreground" data-testid={`text-price-snapshot-${item.id}`}>
+                          Acuan: {item.priceRegion} · {item.priceSource} · {item.priceUpdatedAt}
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-secondary text-secondary-foreground border border-border/50">
@@ -820,6 +1037,12 @@ export default function SafetyBoqPage() {
         onClose={() => setIsDialogOpen(false)}
         initialData={editingItem}
         onSave={handleSave}
+      />
+      <CatalogItemDialog
+        isOpen={isCatalogDialogOpen}
+        onClose={() => setIsCatalogDialogOpen(false)}
+        initialData={editingCatalogItem}
+        onSave={handleSaveCatalogItem}
       />
     </div>
   );
