@@ -47,6 +47,7 @@ import {
   csmsProfiles,
   resolveCsmsProfileForTemplate,
 } from "../lib/csmsProfiles.ts";
+import { tagEvidence } from "../lib/objectStorage.ts";
 
 export const createSafetyRouter = (
   organizationMiddleware: RequestHandler = requireOrganization,
@@ -866,12 +867,24 @@ export const createSafetyRouter = (
         res.status(200).json(CreateFieldActivityResponse.parse(existing));
         return;
       }
+      if (parsed.data.photoObjectPath) {
+        try {
+          await tagEvidence(
+            parsed.data.photoObjectPath,
+            req.organizationContext!.organizationId,
+          );
+        } catch {
+          res.status(400).json({ error: "Foto bukti belum selesai diunggah" });
+          return;
+        }
+      }
       const [activity] = await db
         .insert(fieldActivitiesTable)
         .values({
           ...parsed.data,
           notes: parsed.data.notes ?? null,
-          photoDataUrl: parsed.data.photoDataUrl ?? null,
+          photoObjectPath: parsed.data.photoObjectPath ?? null,
+          photoDataUrl: null,
           latitude: parsed.data.latitude ?? null,
           longitude: parsed.data.longitude ?? null,
           locationAccuracy: parsed.data.locationAccuracy ?? null,

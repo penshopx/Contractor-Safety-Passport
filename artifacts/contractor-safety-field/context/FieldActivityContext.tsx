@@ -4,27 +4,35 @@ import { useAuth } from '@clerk/expo';
 import {
   getListFieldActivitiesQueryKey,
   getOrganizationContext,
+  requestEvidenceUploadUrl,
   type FieldActivityInput,
   useCreateFieldActivity,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState } from 'react-native';
+import { fetch as expoFetch } from 'expo/fetch';
 
 const STORAGE_PREFIX = 'safety-passport-field-queue-v2';
 const LAST_ORG_PREFIX = 'safety-passport-field-last-org-v1';
 
 export type QueueStatus = 'pending' | 'syncing' | 'synced' | 'failed';
 export type QueuedActivity = FieldActivityInput & {
+  localPhotoUri?: string;
+  photoContentType?: 'image/jpeg' | 'image/png' | 'image/webp';
   localStatus: QueueStatus;
   lastError?: string;
+};
+export type OfflineFieldActivityInput = FieldActivityInput & {
+  localPhotoUri?: string;
+  photoContentType?: 'image/jpeg' | 'image/png' | 'image/webp';
 };
 
 type ContextValue = {
   queue: QueuedActivity[];
   isReady: boolean;
   isSyncing: boolean;
-  addActivity: (activity: FieldActivityInput) => Promise<void>;
+  addActivity: (activity: OfflineFieldActivityInput) => Promise<void>;
   syncNow: () => Promise<void>;
 };
 
@@ -107,7 +115,45 @@ export function FieldActivityProvider({ children }: { children: React.ReactNode 
         );
         await persist(next);
         try {
-          await createActivity.mutateAsync({ data: item });
+          let photoObjectPath = item.photoObjectPath;
+          const legacyPhotoDataUrl = (item as QueuedActivity & { photoDataUrl?: string }).photoDataUrl;
+          const photoSource = item.localPhotoUri ?? legacyPhotoDataUrl;
+          if (photoSource && !photoObjectPath) {
+            const photoResponse = await expoFetch(photoSource);
+            if (!photoResponse.ok) throw new Error('Foto lokal tidak dapat dibaca');
+            const photoBlob = await photoResponse.blob();
+            const legacyContentType = legacyPhotoDataUrl?.match(/^data:(image\/(?:jpeg|png|webp));/)?.[1];
+            const contentType = item.photoContentType
+              ?? (legacyContentType === 'image/png' || legacyContentType === 'image/webp' ? legacyContentType : 'image/jpeg');
+            const target = await requestEvidenceUploadUrl(
+              {
+                name: `bukti-${item.clientId}.${contentType.split('/')[1]}`,
+                size: photoBlob.size,
+                contentType,
+              },
+              { headers: { 'x-organization-id': organizationId! } },
+            );
+            const uploadResponse = await expoFetch(target.uploadURL, {
+              method: 'PUT',
+              headers: { 'Content-Type': contentType },
+              body: photoBlob,
+            });
+            if (!uploadResponse.ok) throw new Error('Unggahan foto belum berhasil');
+            photoObjectPath = target.objectPath;
+            next = next.map((entry) =>
+              entry.clientId === item.clientId ? { ...entry, photoObjectPath } : entry,
+            );
+            await persist(next);
+          }
+          const {
+            localPhotoUri: _localPhotoUri,
+            photoContentType: _photoContentType,
+            photoDataUrl: _photoDataUrl,
+            localStatus: _localStatus,
+            lastError: _lastError,
+            ...activityData
+          } = { ...(item as QueuedActivity & { photoDataUrl?: string }), photoObjectPath };
+          await createActivity.mutateAsync({ data: activityData });
           next = next.map((entry) =>
             entry.clientId === item.clientId ? { ...entry, localStatus: 'synced', lastError: undefined } : entry,
           );
@@ -125,13 +171,13 @@ export function FieldActivityProvider({ children }: { children: React.ReactNode 
       isSyncingRef.current = false;
       setIsSyncing(false);
     }
-  }, [createActivity, isReady, persist, queryClient, storageKey]);
+  }, [createActivity, isReady, organizationId, persist, queryClient, storageKey]);
 
   useEffect(() => {
     syncNowRef.current = syncNow;
   }, [syncNow]);
 
-  const addActivity = useCallback(async (activity: FieldActivityInput) => {
+  const addActivity = useCallback(async (activity: OfflineFieldActivityInput) => {
     const next: QueuedActivity[] = [{ ...activity, localStatus: 'pending' }, ...queueRef.current];
     await persist(next);
     await syncNowRef.current();

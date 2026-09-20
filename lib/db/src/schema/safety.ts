@@ -77,6 +77,8 @@ export const fieldActivitiesTable = pgTable("field_activities", {
   actor: text("actor").notNull(),
   status: text("status").notNull(),
   notes: text("notes"),
+  photoObjectPath: text("photo_object_path"),
+  // Kept temporarily so the startup migration can move existing base64 photos.
   photoDataUrl: text("photo_data_url"),
   latitude: real("latitude"),
   longitude: real("longitude"),

@@ -52,7 +52,7 @@ export default function HistoryScreen() {
                   <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
                 </View>
                 <View style={styles.evidence}>
-                  {item.photoDataUrl ? <Feather name="camera" size={15} color={colors.mutedForeground} /> : null}
+                  {('localPhotoUri' in item && item.localPhotoUri) || item.photoObjectPath ? <Feather name="camera" size={15} color={colors.mutedForeground} /> : null}
                   {item.latitude != null ? <Feather name="map-pin" size={15} color={colors.mutedForeground} /> : null}
                   {item.signatureSvg ? <Feather name="edit-3" size={15} color={colors.mutedForeground} /> : null}
                   <Text style={[styles.statusText, { color: statusColor }]}>{statusLabel[localStatus]}</Text>

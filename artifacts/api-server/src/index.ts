@@ -1,5 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
+import { migrateFieldActivityPhotos } from "./lib/migrateFieldActivityPhotos.ts";
 
 const rawPort = process.env["PORT"];
 
@@ -15,11 +16,20 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-app.listen(port, (err) => {
-  if (err) {
-    logger.error({ err }, "Error listening on port");
-    process.exit(1);
-  }
+async function start() {
+  app.listen(port, (err) => {
+    if (err) {
+      logger.error({ err }, "Error listening on port");
+      process.exit(1);
+    }
+    logger.info({ port }, "Server listening");
+    void migrateFieldActivityPhotos().catch((error) => {
+      logger.error({ err: error }, "Legacy field photo migration failed");
+    });
+  });
+}
 
-  logger.info({ port }, "Server listening");
+start().catch((error) => {
+  logger.error({ err: error }, "Failed to start server");
+  process.exit(1);
 });

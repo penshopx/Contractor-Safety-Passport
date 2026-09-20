@@ -9,6 +9,27 @@ import * as zod from 'zod';
 
 
 /**
+ * @summary Request a protected direct-upload URL for field evidence
+ */
+export const requestEvidenceUploadUrlBodyNameMax = 255;
+
+export const requestEvidenceUploadUrlBodySizeMax = 12000000;
+
+
+
+export const RequestEvidenceUploadUrlBody = zod.object({
+  "name": zod.string().min(1).max(requestEvidenceUploadUrlBodyNameMax),
+  "size": zod.number().int().min(1).max(requestEvidenceUploadUrlBodySizeMax),
+  "contentType": zod.enum(['image/jpeg', 'image/png', 'image/webp'])
+})
+
+export const RequestEvidenceUploadUrlResponse = zod.object({
+  "uploadURL": zod.string().url(),
+  "objectPath": zod.string()
+})
+
+
+/**
  * Returns server health status
  * @summary Health check
  */
@@ -612,7 +633,7 @@ export const ListFieldActivitiesResponseItem = zod.object({
   "actor": zod.string(),
   "status": zod.enum(['complete', 'review', 'open']),
   "notes": zod.string().nullable(),
-  "photoDataUrl": zod.string().nullable(),
+  "photoObjectPath": zod.string().nullable(),
   "latitude": zod.number().nullable(),
   "longitude": zod.number().nullable(),
   "locationAccuracy": zod.number().nullable(),
@@ -634,8 +655,7 @@ export const createFieldActivityBodyClientIdMax = 100;
 
 export const createFieldActivityBodyNotesMax = 4000;
 
-export const createFieldActivityBodyPhotoDataUrlMax = 8000000;
-
+export const createFieldActivityBodyPhotoObjectPathRegExp = new RegExp('^/objects/uploads/[a-f0-9-]+$');
 export const createFieldActivityBodyLatitudeMin = -90;
 export const createFieldActivityBodyLatitudeMax = 90;
 
@@ -656,7 +676,7 @@ export const CreateFieldActivityBody = zod.object({
   "actor": zod.string().min(1),
   "status": zod.enum(['complete', 'review', 'open']),
   "notes": zod.string().max(createFieldActivityBodyNotesMax).optional(),
-  "photoDataUrl": zod.string().max(createFieldActivityBodyPhotoDataUrlMax).optional(),
+  "photoObjectPath": zod.string().regex(createFieldActivityBodyPhotoObjectPathRegExp).optional(),
   "latitude": zod.number().min(createFieldActivityBodyLatitudeMin).max(createFieldActivityBodyLatitudeMax).optional(),
   "longitude": zod.number().min(createFieldActivityBodyLongitudeMin).max(createFieldActivityBodyLongitudeMax).optional(),
   "locationAccuracy": zod.number().min(createFieldActivityBodyLocationAccuracyMin).optional(),
@@ -673,7 +693,7 @@ export const CreateFieldActivityResponse = zod.object({
   "actor": zod.string(),
   "status": zod.enum(['complete', 'review', 'open']),
   "notes": zod.string().nullable(),
-  "photoDataUrl": zod.string().nullable(),
+  "photoObjectPath": zod.string().nullable(),
   "latitude": zod.number().nullable(),
   "longitude": zod.number().nullable(),
   "locationAccuracy": zod.number().nullable(),

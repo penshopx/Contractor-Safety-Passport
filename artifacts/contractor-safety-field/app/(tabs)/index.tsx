@@ -26,7 +26,8 @@ export default function CreateActivityScreen() {
   const [project, setProject] = useState('');
   const [actor, setActor] = useState('');
   const [notes, setNotes] = useState('');
-  const [photoDataUrl, setPhotoDataUrl] = useState<string>();
+  const [photoUri, setPhotoUri] = useState<string>();
+  const [photoContentType, setPhotoContentType] = useState<'image/jpeg' | 'image/png' | 'image/webp'>();
   const [location, setLocation] = useState<Location.LocationObjectCoords>();
   const [signatureSvg, setSignatureSvg] = useState<string>();
   const [signatureKey, setSignatureKey] = useState(0);
@@ -38,9 +39,15 @@ export default function CreateActivityScreen() {
       Alert.alert('Izin kamera dibutuhkan', 'Aktifkan izin kamera untuk mengambil foto bukti.');
       return;
     }
-    const result = await ImagePicker.launchCameraAsync({ quality: 0.55, base64: true, allowsEditing: false });
+    const result = await ImagePicker.launchCameraAsync({ quality: 0.55, base64: false, allowsEditing: false });
     const asset = result.assets?.[0];
-    if (!result.canceled && asset?.base64) setPhotoDataUrl(`data:${asset.mimeType ?? 'image/jpeg'};base64,${asset.base64}`);
+    if (!result.canceled && asset?.uri) {
+      setPhotoUri(asset.uri);
+      const mimeType = asset.mimeType;
+      setPhotoContentType(
+        mimeType === 'image/png' || mimeType === 'image/webp' ? mimeType : 'image/jpeg',
+      );
+    }
   };
 
   const captureLocation = async () => {
@@ -75,7 +82,8 @@ export default function CreateActivityScreen() {
       actor: actor.trim(),
       status: type === 'Near miss' ? 'open' : 'complete',
       notes: notes.trim() || undefined,
-      photoDataUrl,
+      localPhotoUri: photoUri,
+      photoContentType,
       latitude: location?.latitude,
       longitude: location?.longitude,
       locationAccuracy: location?.accuracy ?? undefined,
@@ -83,7 +91,7 @@ export default function CreateActivityScreen() {
       occurredAt,
     });
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    setTitle(''); setProject(''); setActor(''); setNotes(''); setPhotoDataUrl(undefined); setLocation(undefined); setSignatureSvg(undefined); setSignatureKey((value) => value + 1);
+    setTitle(''); setProject(''); setActor(''); setNotes(''); setPhotoUri(undefined); setPhotoContentType(undefined); setLocation(undefined); setSignatureSvg(undefined); setSignatureKey((value) => value + 1);
     setSaving(false);
     Alert.alert('Tersimpan di perangkat', 'Laporan aman disimpan dan akan disinkronkan saat koneksi tersedia.');
     void syncNow();
@@ -112,7 +120,7 @@ export default function CreateActivityScreen() {
 
       <Text style={[styles.sectionLabel, { color: colors.foreground }]}>Bukti pendukung</Text>
       <View style={styles.actions}>
-        <Pressable testID="camera-button" onPress={takePhoto} style={({ pressed }) => [styles.action, { backgroundColor: colors.card, borderColor: photoDataUrl ? colors.success : colors.border, opacity: pressed ? 0.7 : 1 }]}>{photoDataUrl ? <Image source={{ uri: photoDataUrl }} style={styles.thumbnail} contentFit="cover" /> : <Feather name="camera" size={23} color={colors.primary} />}<Text style={[styles.actionLabel, { color: colors.foreground }]}>{photoDataUrl ? 'Foto siap' : 'Ambil foto'}</Text></Pressable>
+        <Pressable testID="camera-button" onPress={takePhoto} style={({ pressed }) => [styles.action, { backgroundColor: colors.card, borderColor: photoUri ? colors.success : colors.border, opacity: pressed ? 0.7 : 1 }]}>{photoUri ? <Image source={{ uri: photoUri }} style={styles.thumbnail} contentFit="cover" /> : <Feather name="camera" size={23} color={colors.primary} />}<Text style={[styles.actionLabel, { color: colors.foreground }]}>{photoUri ? 'Foto siap' : 'Ambil foto'}</Text></Pressable>
         <Pressable testID="location-button" onPress={captureLocation} style={({ pressed }) => [styles.action, { backgroundColor: colors.card, borderColor: location ? colors.success : colors.border, opacity: pressed ? 0.7 : 1 }]}><Feather name="map-pin" size={23} color={location ? colors.success : colors.primary} /><Text style={[styles.actionLabel, { color: colors.foreground }]}>{location ? `${location.latitude.toFixed(5)}, ${location.longitude.toFixed(5)}` : 'Ambil lokasi'}</Text></Pressable>
       </View>
       <Text style={[styles.signatureLabel, { color: colors.foreground }]}>Tanda tangan petugas</Text>

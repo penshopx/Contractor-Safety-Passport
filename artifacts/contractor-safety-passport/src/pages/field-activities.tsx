@@ -232,9 +232,9 @@ export default function FieldActivitiesPage() {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2 text-muted-foreground">
-                        {activity.photoDataUrl ? (
-                          <a href={activity.photoDataUrl} target="_blank" rel="noreferrer" title="Buka foto bukti">
-                            <img src={activity.photoDataUrl} alt="Bukti lapangan" className="h-9 w-9 rounded-md object-cover ring-1 ring-border" />
+                        {activity.photoObjectPath ? (
+                          <a href={`/api/storage${activity.photoObjectPath}`} target="_blank" rel="noreferrer" title="Buka foto bukti">
+                            <img src={`/api/storage${activity.photoObjectPath}`} alt="Bukti lapangan" className="h-9 w-9 rounded-md object-cover ring-1 ring-border" />
                           </a>
                         ) : <Camera className="h-4 w-4 opacity-30" />}
                         <MapPin className={`h-4 w-4 ${activity.latitude != null ? "text-primary" : "opacity-30"}`} />

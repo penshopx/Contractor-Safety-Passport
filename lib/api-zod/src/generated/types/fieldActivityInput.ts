@@ -24,8 +24,8 @@ export interface FieldActivityInput {
   status: FieldActivityInputStatus;
   /** @maxLength 4000 */
   notes?: string;
-  /** @maxLength 8000000 */
-  photoDataUrl?: string;
+  /** @pattern ^/objects/uploads/[a-f0-9-]+$ */
+  photoObjectPath?: string;
   /**
      * @minimum -90
      * @maximum 90

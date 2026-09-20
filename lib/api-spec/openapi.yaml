@@ -24,9 +24,33 @@ tags:
     description: Certificate and expiry tracking
   - name: field-activities
     description: Daily safety activities
+  - name: storage
+    description: Protected evidence file storage
   - name: organizations
     description: Contractor workspace onboarding and access context
 paths:
+  /storage/uploads/request-url:
+    post:
+      operationId: requestEvidenceUploadUrl
+      tags: [storage]
+      summary: Request a protected direct-upload URL for field evidence
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EvidenceUploadRequest"
+      responses:
+        "200":
+          description: Upload destination
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvidenceUploadTarget"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
   /healthz:
     get:
       operationId: healthCheck
@@ -801,14 +825,14 @@ components:
         actor: { type: string }
         status: { type: string, enum: [complete, review, open] }
         notes: { type: ["string", "null"] }
-        photoDataUrl: { type: ["string", "null"] }
+        photoObjectPath: { type: ["string", "null"] }
         latitude: { type: ["number", "null"] }
         longitude: { type: ["number", "null"] }
         locationAccuracy: { type: ["number", "null"] }
         signatureSvg: { type: ["string", "null"] }
         occurredAt: { type: string, format: date-time }
         syncedAt: { type: string, format: date-time }
-      required: [id, clientId, type, title, project, actor, status, notes, photoDataUrl, latitude, longitude, locationAccuracy, signatureSvg, occurredAt, syncedAt]
+      required: [id, clientId, type, title, project, actor, status, notes, photoObjectPath, latitude, longitude, locationAccuracy, signatureSvg, occurredAt, syncedAt]
     FieldActivityInput:
       type: object
       properties:
@@ -819,13 +843,26 @@ components:
         actor: { type: string, minLength: 1 }
         status: { type: string, enum: [complete, review, open] }
         notes: { type: string, maxLength: 4000 }
-        photoDataUrl: { type: string, maxLength: 8000000 }
+        photoObjectPath: { type: string, pattern: "^/objects/uploads/[a-f0-9-]+$" }
         latitude: { type: number, minimum: -90, maximum: 90 }
         longitude: { type: number, minimum: -180, maximum: 180 }
         locationAccuracy: { type: number, minimum: 0 }
         signatureSvg: { type: string, maxLength: 100000 }
         occurredAt: { type: string, format: date-time }
       required: [clientId, type, title, project, actor, status, occurredAt]
+    EvidenceUploadRequest:
+      type: object
+      properties:
+        name: { type: string, minLength: 1, maxLength: 255 }
+        size: { type: integer, minimum: 1, maximum: 12000000 }
+        contentType: { type: string, enum: [image/jpeg, image/png, image/webp] }
+      required: [name, size, contentType]
+    EvidenceUploadTarget:
+      type: object
+      properties:
+        uploadURL: { type: string, format: uri }
+        objectPath: { type: string }
+      required: [uploadURL, objectPath]
     Activity:
       type: object
       properties:

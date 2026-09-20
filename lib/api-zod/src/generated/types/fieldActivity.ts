@@ -19,7 +19,7 @@ export interface FieldActivity {
   /** @nullable */
   notes: string | null;
   /** @nullable */
-  photoDataUrl: string | null;
+  photoObjectPath: string | null;
   /** @nullable */
   latitude: number | null;
   /** @nullable */

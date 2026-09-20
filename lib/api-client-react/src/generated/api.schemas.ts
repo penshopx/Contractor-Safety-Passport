@@ -541,7 +541,7 @@ export interface FieldActivity {
   /** @nullable */
   notes: string | null;
   /** @nullable */
-  photoDataUrl: string | null;
+  photoObjectPath: string | null;
   /** @nullable */
   latitude: number | null;
   /** @nullable */
@@ -589,8 +589,8 @@ export interface FieldActivityInput {
   status: FieldActivityInputStatus;
   /** @maxLength 4000 */
   notes?: string;
-  /** @maxLength 8000000 */
-  photoDataUrl?: string;
+  /** @pattern ^/objects/uploads/[a-f0-9-]+$ */
+  photoObjectPath?: string;
   /**
      * @minimum -90
      * @maximum 90
@@ -606,6 +606,34 @@ export interface FieldActivityInput {
   /** @maxLength 100000 */
   signatureSvg?: string;
   occurredAt: string;
+}
+
+export type EvidenceUploadRequestContentType = typeof EvidenceUploadRequestContentType[keyof typeof EvidenceUploadRequestContentType];
+
+
+export const EvidenceUploadRequestContentType = {
+  'image/jpeg': 'image/jpeg',
+  'image/png': 'image/png',
+  'image/webp': 'image/webp',
+} as const;
+
+export interface EvidenceUploadRequest {
+  /**
+     * @minLength 1
+     * @maxLength 255
+     */
+  name: string;
+  /**
+     * @minimum 1
+     * @maximum 12000000
+     */
+  size: number;
+  contentType: EvidenceUploadRequestContentType;
+}
+
+export interface EvidenceUploadTarget {
+  uploadURL: string;
+  objectPath: string;
 }
 
 export interface Activity {
