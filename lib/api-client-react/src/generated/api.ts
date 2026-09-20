@@ -54,6 +54,8 @@ import type {
   ProjectInput,
   ProjectUpdate,
   ReadinessSummary,
+  SafetyBoqDraftInput,
+  SafetyBoqItem,
   SafetyDocument,
   UnauthorizedResponse
 } from './api.schemas';
@@ -1138,6 +1140,172 @@ export const useCreateProject = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getCreateProjectMutationOptions(options));
+    }
+
+export const getGetProjectSafetyBoqUrl = (projectId: number,) => {
+
+
+
+
+  return `/api/projects/${projectId}/safety-boq`
+}
+
+/**
+ * @summary Get the shared safety BOQ draft for a project
+ */
+export const getProjectSafetyBoq = async (projectId: number, options?: Parameters<typeof customFetch>[1]): Promise<SafetyBoqItem[]> => {
+
+  return customFetch<SafetyBoqItem[]>(getGetProjectSafetyBoqUrl(projectId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetProjectSafetyBoqQueryKey = (projectId: number,) => {
+    return [
+    `/api/projects/${projectId}/safety-boq`
+    ] as const;
+    }
+
+
+export const getGetProjectSafetyBoqQueryOptions = <TData = Awaited<ReturnType<typeof getProjectSafetyBoq>>, TError = ErrorType<NotFoundResponse>>(projectId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getProjectSafetyBoq>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetProjectSafetyBoqQueryKey(projectId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getProjectSafetyBoq>>> = ({ signal }) => getProjectSafetyBoq(projectId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: projectId !== null && projectId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getProjectSafetyBoq>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetProjectSafetyBoqQueryResult = NonNullable<Awaited<ReturnType<typeof getProjectSafetyBoq>>>
+export type GetProjectSafetyBoqQueryError = ErrorType<NotFoundResponse>
+
+
+/**
+ * @summary Get the shared safety BOQ draft for a project
+ */
+
+export function useGetProjectSafetyBoq<TData = Awaited<ReturnType<typeof getProjectSafetyBoq>>, TError = ErrorType<NotFoundResponse>>(
+ projectId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getProjectSafetyBoq>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetProjectSafetyBoqQueryOptions(projectId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getReplaceProjectSafetyBoqUrl = (projectId: number,) => {
+
+
+
+
+  return `/api/projects/${projectId}/safety-boq`
+}
+
+/**
+ * @summary Replace the shared safety BOQ draft for a project
+ */
+export const replaceProjectSafetyBoq = async (projectId: number,
+    safetyBoqDraftInput: SafetyBoqDraftInput, options?: Parameters<typeof customFetch>[1]): Promise<SafetyBoqItem[]> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<SafetyBoqItem[]>(getReplaceProjectSafetyBoqUrl(projectId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(safetyBoqDraftInput)
+  }
+);}
+
+
+
+
+
+export const getReplaceProjectSafetyBoqMutationKey = () => ['replaceProjectSafetyBoq'] as const;
+
+export const getReplaceProjectSafetyBoqMutationOptions = <TError = ErrorType<ForbiddenResponse | NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof replaceProjectSafetyBoq>>, TError,ReplaceProjectSafetyBoqMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof replaceProjectSafetyBoq>>, TError,ReplaceProjectSafetyBoqMutationVariables, TContext> => {
+
+const mutationKey = getReplaceProjectSafetyBoqMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof replaceProjectSafetyBoq>>, ReplaceProjectSafetyBoqMutationVariables> = (props) => {
+          const {projectId,data} = props ?? {};
+
+          return  replaceProjectSafetyBoq(projectId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReplaceProjectSafetyBoqMutationResult = NonNullable<Awaited<ReturnType<typeof replaceProjectSafetyBoq>>>
+    export type ReplaceProjectSafetyBoqMutationBody = BodyType<SafetyBoqDraftInput>
+    export type ReplaceProjectSafetyBoqMutationError = ErrorType<ForbiddenResponse | NotFoundResponse>
+    export type ReplaceProjectSafetyBoqMutationVariables = {projectId: number;data: BodyType<SafetyBoqDraftInput>}
+
+    /**
+ * @summary Replace the shared safety BOQ draft for a project
+ */
+export const useReplaceProjectSafetyBoq = <TError = ErrorType<ForbiddenResponse | NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof replaceProjectSafetyBoq>>, TError,ReplaceProjectSafetyBoqMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof replaceProjectSafetyBoq>>,
+        TError,
+        ReplaceProjectSafetyBoqMutationVariables,
+        TContext
+      > => {
+      return useMutation(getReplaceProjectSafetyBoqMutationOptions(options));
     }
 
 export const getGetProjectUrl = (id: number,) => {

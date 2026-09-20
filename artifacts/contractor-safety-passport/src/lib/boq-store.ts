@@ -11,6 +11,7 @@ export interface SafetyBoqItem {
   stage: string;
   controlNeed: string;
   projectId?: number | null;
+  updatedAt?: string;
 }
 
 export const CATEGORIES = [
@@ -70,7 +71,7 @@ const SEED_BOQ_ITEMS: SafetyBoqItem[] = [
 
 const STORAGE_KEY = 'safety_passport_boq_v1';
 
-export function useSafetyBoqStore() {
+export function useLocalSafetyBoqStore() {
   const [items, setItems] = useState<SafetyBoqItem[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
 
@@ -108,9 +109,10 @@ export function useSafetyBoqStore() {
     setItems((prev) => prev.filter(item => item.id !== id));
   }, []);
   
-  const resetToSeed = useCallback(() => {
-    setItems(SEED_BOQ_ITEMS);
+  const removeItems = useCallback((ids: string[]) => {
+    const removedIds = new Set(ids);
+    setItems((prev) => prev.filter((item) => !removedIds.has(item.id)));
   }, []);
 
-  return { items, addItem, updateItem, removeItem, resetToSeed, isLoaded };
+  return { items, addItem, updateItem, removeItem, removeItems, isLoaded };
 }

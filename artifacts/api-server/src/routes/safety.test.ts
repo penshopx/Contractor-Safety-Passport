@@ -12,6 +12,7 @@ import {
   peopleTable,
   pool,
   projectsTable,
+  safetyBoqItemsTable,
   safetyDocumentsTable,
   type OrganizationRole,
 } from "@workspace/db";
@@ -252,6 +253,9 @@ after(async () => {
     .delete(monthlyReportsTable)
     .where(inArray(monthlyReportsTable.organizationId, organizationIds));
   await db
+    .delete(safetyBoqItemsTable)
+    .where(inArray(safetyBoqItemsTable.organizationId, organizationIds));
+  await db
     .delete(certificatesTable)
     .where(inArray(certificatesTable.organizationId, organizationIds));
   await db
@@ -275,6 +279,115 @@ after(async () => {
 });
 
 describe("isolasi data antar kontraktor", () => {
+  it("membagikan draft BOQ proyek dengan isolasi organisasi dan izin peran", async () => {
+    const item = {
+      id: `boq-${runId}`,
+      description: "Helm keselamatan",
+      category: "APD & APK",
+      volume: 10,
+      unit: "Bh",
+      unitPrice: 75_000,
+      risk: "Tinggi",
+      stage: "Pelaksanaan",
+      controlNeed: "Wajib digunakan di area kerja",
+    };
+
+    for (const role of ["viewer", "field_officer"] as const) {
+      const denied = await request(`/projects/${projectAId}/safety-boq`, {
+        role,
+        method: "PUT",
+        body: { items: [item] },
+      });
+      assert.equal(denied.status, 403);
+    }
+
+    const saved = await request(`/projects/${projectAId}/safety-boq`, {
+      role: "safety_expert",
+      method: "PUT",
+      body: { items: [item] },
+    });
+    assert.equal(saved.status, 200);
+    assert.equal(saved.body.length, 1);
+    assert.equal(saved.body[0].description, item.description);
+
+    const secondProject = await request("/projects", {
+      role: "owner",
+      method: "POST",
+      body: projectBody(`Proyek A kedua ${runId}`),
+    });
+    assert.equal(secondProject.status, 201);
+    const sameIdInSecondProject = await request(
+      `/projects/${secondProject.body.id}/safety-boq`,
+      {
+        role: "owner",
+        method: "PUT",
+        body: { items: [{ ...item, description: "Item proyek kedua" }] },
+      },
+    );
+    const sameIdInOtherOrganization = await request(
+      `/projects/${projectBId}/safety-boq`,
+      {
+        organizationId: organizationB,
+        role: "owner",
+        method: "PUT",
+        body: { items: [{ ...item, description: "Item organisasi B" }] },
+      },
+    );
+    assert.equal(sameIdInSecondProject.status, 200);
+    assert.equal(sameIdInOtherOrganization.status, 200);
+    assert.equal(sameIdInSecondProject.body[0].id, item.id);
+    assert.equal(sameIdInOtherOrganization.body[0].id, item.id);
+
+    for (const role of Object.keys(userIds) as OrganizationRole[]) {
+      const visible = await request(`/projects/${projectAId}/safety-boq`, { role });
+      assert.equal(visible.status, 200);
+      assert.equal(visible.body[0].id, item.id);
+    }
+
+    const foreignRead = await request(`/projects/${projectAId}/safety-boq`, {
+      organizationId: organizationB,
+      role: "owner",
+    });
+    const foreignWrite = await request(`/projects/${projectAId}/safety-boq`, {
+      organizationId: organizationB,
+      role: "owner",
+      method: "PUT",
+      body: { items: [] },
+    });
+    assert.equal(foreignRead.status, 404);
+    assert.equal(foreignWrite.status, 404);
+
+    const secondProjectRead = await request(
+      `/projects/${secondProject.body.id}/safety-boq`,
+    );
+    const otherOrganizationRead = await request(
+      `/projects/${projectBId}/safety-boq`,
+      { organizationId: organizationB },
+    );
+    assert.equal(secondProjectRead.body[0].description, "Item proyek kedua");
+    assert.equal(otherOrganizationRead.body[0].description, "Item organisasi B");
+
+    const replaced = await request(`/projects/${projectAId}/safety-boq`, {
+      role: "owner",
+      method: "PUT",
+      body: { items: [{ ...item, description: "Helm proyek terbaru" }] },
+    });
+    assert.equal(replaced.status, 200);
+    assert.equal(replaced.body[0].description, "Helm proyek terbaru");
+
+    await db
+      .delete(safetyBoqItemsTable)
+      .where(
+        and(
+          eq(safetyBoqItemsTable.organizationId, organizationA),
+          eq(safetyBoqItemsTable.projectId, secondProject.body.id),
+        ),
+      );
+    await db
+      .delete(projectsTable)
+      .where(eq(projectsTable.id, secondProject.body.id));
+  });
+
   it("menyimpan, membuka, memperbarui, dan menolak draf bulanan ganda", async () => {
     const report = {
       projectId: projectAId,

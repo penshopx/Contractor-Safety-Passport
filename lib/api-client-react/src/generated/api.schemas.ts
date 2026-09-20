@@ -680,6 +680,74 @@ export interface MonthlyReportUpdate {
   approvedBy?: string;
 }
 
+export interface SafetyBoqItem {
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  id: string;
+  /** @minimum 1 */
+  projectId: number;
+  description: string;
+  category: string;
+  /** @exclusiveMinimum 0 */
+  volume: number;
+  unit: string;
+  /** @minimum 0 */
+  unitPrice: number;
+  risk: string;
+  stage: string;
+  controlNeed: string;
+  updatedAt: string;
+}
+
+export interface SafetyBoqItemInput {
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  id: string;
+  /**
+     * @minLength 1
+     * @maxLength 1000
+     */
+  description: string;
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  category: string;
+  /** @exclusiveMinimum 0 */
+  volume: number;
+  /**
+     * @minLength 1
+     * @maxLength 50
+     */
+  unit: string;
+  /** @minimum 0 */
+  unitPrice: number;
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  risk: string;
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  stage: string;
+  /**
+     * @minLength 1
+     * @maxLength 4000
+     */
+  controlNeed: string;
+}
+
+export interface SafetyBoqDraftInput {
+  /** @maxItems 1000 */
+  items: SafetyBoqItemInput[];
+}
+
 export type EvidenceUploadRequestContentType = typeof EvidenceUploadRequestContentType[keyof typeof EvidenceUploadRequestContentType];
 
 

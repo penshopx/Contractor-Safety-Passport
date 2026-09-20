@@ -7,6 +7,7 @@ import {
   monthlyReportsTable,
   peopleTable,
   projectsTable,
+  safetyBoqItemsTable,
   safetyDocumentsTable,
 } from "@workspace/db";
 import {
@@ -25,6 +26,8 @@ import {
   GetDashboardSummaryResponse,
   GetProjectParams,
   GetProjectResponse,
+  GetProjectSafetyBoqParams,
+  GetProjectSafetyBoqResponse,
   GetReadinessSummaryResponse,
   ListActivityResponse,
   ListCertificatesResponse,
@@ -47,6 +50,9 @@ import {
   UpdateProjectBody,
   UpdateProjectParams,
   UpdateProjectResponse,
+  ReplaceProjectSafetyBoqBody,
+  ReplaceProjectSafetyBoqParams,
+  ReplaceProjectSafetyBoqResponse,
 } from "@workspace/api-zod";
 import {
   requireOrganization,
@@ -340,6 +346,67 @@ export const createSafetyRouter = (
     }
     res.json(GetProjectResponse.parse(project));
   });
+
+  router.get("/projects/:projectId/safety-boq", async (req, res): Promise<void> => {
+    const params = GetProjectSafetyBoqParams.safeParse(req.params);
+    if (!params.success) {
+      res.status(400).json({ error: params.error.message });
+      return;
+    }
+    const { organizationId } = req.organizationContext!;
+    const [project] = await db
+      .select({ id: projectsTable.id })
+      .from(projectsTable)
+      .where(and(eq(projectsTable.id, params.data.projectId), eq(projectsTable.organizationId, organizationId)));
+    if (!project) {
+      res.status(404).json({ error: "Proyek tidak ditemukan" });
+      return;
+    }
+    const items = await db
+      .select()
+      .from(safetyBoqItemsTable)
+      .where(and(eq(safetyBoqItemsTable.organizationId, organizationId), eq(safetyBoqItemsTable.projectId, project.id)))
+      .orderBy(asc(safetyBoqItemsTable.createdAt));
+    res.json(GetProjectSafetyBoqResponse.parse(items));
+  });
+
+  router.put(
+    "/projects/:projectId/safety-boq",
+    requireRole("owner", "safety_expert"),
+    async (req, res): Promise<void> => {
+      const params = ReplaceProjectSafetyBoqParams.safeParse(req.params);
+      const body = ReplaceProjectSafetyBoqBody.safeParse(req.body);
+      if (!params.success || !body.success) {
+        res.status(400).json({ error: "Data BOQ tidak valid" });
+        return;
+      }
+      const { organizationId, userId } = req.organizationContext!;
+      const [project] = await db
+        .select({ id: projectsTable.id })
+        .from(projectsTable)
+        .where(and(eq(projectsTable.id, params.data.projectId), eq(projectsTable.organizationId, organizationId)));
+      if (!project) {
+        res.status(404).json({ error: "Proyek tidak ditemukan" });
+        return;
+      }
+      const items = await db.transaction(async (tx) => {
+        await tx
+          .delete(safetyBoqItemsTable)
+          .where(and(eq(safetyBoqItemsTable.organizationId, organizationId), eq(safetyBoqItemsTable.projectId, project.id)));
+        if (body.data.items.length === 0) return [];
+        return tx
+          .insert(safetyBoqItemsTable)
+          .values(body.data.items.map((item) => ({
+            ...item,
+            organizationId,
+            projectId: project.id,
+            createdBy: userId,
+          })))
+          .returning();
+      });
+      res.json(ReplaceProjectSafetyBoqResponse.parse(items));
+    },
+  );
 
   router.patch(
     "/projects/:id",

@@ -282,6 +282,112 @@ export const CreateProjectResponse = zod.object({
 
 
 /**
+ * @summary Get the shared safety BOQ draft for a project
+ */
+
+
+
+export const GetProjectSafetyBoqParams = zod.object({
+  "projectId": zod.coerce.number().int().min(1)
+})
+
+export const getProjectSafetyBoqResponseIdMax = 100;
+
+
+export const getProjectSafetyBoqResponseVolumeExclusiveMin = 0;
+
+export const getProjectSafetyBoqResponseUnitPriceMin = 0;
+
+
+
+export const GetProjectSafetyBoqResponseItem = zod.object({
+  "id": zod.string().min(1).max(getProjectSafetyBoqResponseIdMax),
+  "projectId": zod.number().int().min(1),
+  "description": zod.string(),
+  "category": zod.string(),
+  "volume": zod.number().gt(getProjectSafetyBoqResponseVolumeExclusiveMin),
+  "unit": zod.string(),
+  "unitPrice": zod.number().min(getProjectSafetyBoqResponseUnitPriceMin),
+  "risk": zod.string(),
+  "stage": zod.string(),
+  "controlNeed": zod.string(),
+  "updatedAt": zod.coerce.date()
+})
+export const GetProjectSafetyBoqResponse = zod.array(GetProjectSafetyBoqResponseItem)
+
+
+/**
+ * @summary Replace the shared safety BOQ draft for a project
+ */
+
+
+
+export const ReplaceProjectSafetyBoqParams = zod.object({
+  "projectId": zod.coerce.number().int().min(1)
+})
+
+export const replaceProjectSafetyBoqBodyItemsItemIdMax = 100;
+
+export const replaceProjectSafetyBoqBodyItemsItemDescriptionMax = 1000;
+
+export const replaceProjectSafetyBoqBodyItemsItemCategoryMax = 200;
+
+export const replaceProjectSafetyBoqBodyItemsItemVolumeExclusiveMin = 0;
+
+export const replaceProjectSafetyBoqBodyItemsItemUnitMax = 50;
+
+export const replaceProjectSafetyBoqBodyItemsItemUnitPriceMin = 0;
+
+export const replaceProjectSafetyBoqBodyItemsItemRiskMax = 100;
+
+export const replaceProjectSafetyBoqBodyItemsItemStageMax = 100;
+
+export const replaceProjectSafetyBoqBodyItemsItemControlNeedMax = 4000;
+
+export const replaceProjectSafetyBoqBodyItemsMax = 1000;
+
+
+
+export const ReplaceProjectSafetyBoqBody = zod.object({
+  "items": zod.array(zod.object({
+  "id": zod.string().min(1).max(replaceProjectSafetyBoqBodyItemsItemIdMax),
+  "description": zod.string().min(1).max(replaceProjectSafetyBoqBodyItemsItemDescriptionMax),
+  "category": zod.string().min(1).max(replaceProjectSafetyBoqBodyItemsItemCategoryMax),
+  "volume": zod.number().gt(replaceProjectSafetyBoqBodyItemsItemVolumeExclusiveMin),
+  "unit": zod.string().min(1).max(replaceProjectSafetyBoqBodyItemsItemUnitMax),
+  "unitPrice": zod.number().min(replaceProjectSafetyBoqBodyItemsItemUnitPriceMin),
+  "risk": zod.string().min(1).max(replaceProjectSafetyBoqBodyItemsItemRiskMax),
+  "stage": zod.string().min(1).max(replaceProjectSafetyBoqBodyItemsItemStageMax),
+  "controlNeed": zod.string().min(1).max(replaceProjectSafetyBoqBodyItemsItemControlNeedMax)
+})).max(replaceProjectSafetyBoqBodyItemsMax)
+})
+
+export const replaceProjectSafetyBoqResponseIdMax = 100;
+
+
+export const replaceProjectSafetyBoqResponseVolumeExclusiveMin = 0;
+
+export const replaceProjectSafetyBoqResponseUnitPriceMin = 0;
+
+
+
+export const ReplaceProjectSafetyBoqResponseItem = zod.object({
+  "id": zod.string().min(1).max(replaceProjectSafetyBoqResponseIdMax),
+  "projectId": zod.number().int().min(1),
+  "description": zod.string(),
+  "category": zod.string(),
+  "volume": zod.number().gt(replaceProjectSafetyBoqResponseVolumeExclusiveMin),
+  "unit": zod.string(),
+  "unitPrice": zod.number().min(replaceProjectSafetyBoqResponseUnitPriceMin),
+  "risk": zod.string(),
+  "stage": zod.string(),
+  "controlNeed": zod.string(),
+  "updatedAt": zod.coerce.date()
+})
+export const ReplaceProjectSafetyBoqResponse = zod.array(ReplaceProjectSafetyBoqResponseItem)
+
+
+/**
  * @summary Get a project
  */
 

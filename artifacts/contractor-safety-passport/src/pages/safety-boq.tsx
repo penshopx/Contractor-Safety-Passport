@@ -11,6 +11,8 @@ import {
   TrendingUp,
   ShieldAlert,
   ClipboardList
+  ,CloudUpload
+  ,Loader2
 } from 'lucide-react';
 import { 
   Card, 
@@ -27,9 +29,16 @@ import {
   SelectTrigger, 
   SelectValue 
 } from '@/components/ui/select';
-import { useListProjects } from '@workspace/api-client-react';
+import {
+  getGetProjectSafetyBoqQueryKey,
+  useGetOrganizationContext,
+  useGetProjectSafetyBoq,
+  useListProjects,
+  useReplaceProjectSafetyBoq,
+} from '@workspace/api-client-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { 
-  useSafetyBoqStore, 
+  useLocalSafetyBoqStore,
   SafetyBoqItem, 
   CATEGORIES, 
   RISKS, 
@@ -299,18 +308,51 @@ function BoqItemDialog({
 }
 
 export default function SafetyBoqPage() {
-  const { items, addItem, updateItem, removeItem, isLoaded } = useSafetyBoqStore();
+  const queryClient = useQueryClient();
+  const {
+    items: localItems,
+    addItem: addLocalItem,
+    updateItem: updateLocalItem,
+    removeItem: removeLocalItem,
+    removeItems: removeLocalItems,
+    isLoaded: isLocalLoaded,
+  } = useLocalSafetyBoqStore();
   const { data: projects } = useListProjects();
+  const { data: organization } = useGetOrganizationContext();
   
   const [selectedProjectId, setSelectedProjectId] = useState<string>('all');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<SafetyBoqItem | null>(null);
+  const projectId = selectedProjectId === 'all' ? null : Number(selectedProjectId);
+  const {
+    data: sharedItems,
+    isLoading: isLoadingShared,
+    isFetching: isRefreshingShared,
+    isSuccess: isSharedReady,
+    isError: isSharedError,
+    refetch: refetchShared,
+  } = useGetProjectSafetyBoq(projectId ?? 0, {
+    query: {
+      queryKey: getGetProjectSafetyBoqQueryKey(projectId ?? 0),
+      enabled: projectId !== null,
+      refetchOnWindowFocus: true,
+      staleTime: 15_000,
+    },
+  });
+  const replaceSharedDraft = useReplaceProjectSafetyBoq();
+  const canEditShared = organization?.role === "owner" || organization?.role === "safety_expert";
+  const canMutateShared = projectId !== null && canEditShared && isSharedReady && !isRefreshingShared;
 
   const projectItems = useMemo(() => {
-    if (selectedProjectId === 'all') return items.filter(item => !item.projectId);
-    const numId = Number(selectedProjectId);
-    return items.filter(item => item.projectId === numId);
-  }, [items, selectedProjectId]);
+    if (projectId === null) return localItems.filter(item => !item.projectId);
+    return sharedItems ?? [];
+  }, [localItems, projectId, sharedItems]);
+  const migratableItems = useMemo(
+    () => projectId === null
+      ? []
+      : localItems.filter((item) => item.projectId == null || item.projectId === projectId),
+    [localItems, projectId],
+  );
 
   const totalCost = projectItems.reduce((acc, curr) => acc + (curr.volume * curr.unitPrice), 0);
 
@@ -353,33 +395,104 @@ export default function SafetyBoqPage() {
   ), [projectItems]);
 
   const handleOpenCreate = () => {
+    if (projectId !== null && !canMutateShared) return;
     setEditingItem(null);
     setIsDialogOpen(true);
   };
 
   const handleOpenEdit = (item: SafetyBoqItem) => {
+    if (projectId !== null && !canMutateShared) return;
     setEditingItem(item);
     setIsDialogOpen(true);
   };
 
   const handleDelete = (id: string) => {
+    if (projectId !== null && !canMutateShared) return;
     if (window.confirm("Apakah Anda yakin ingin menghapus item ini?")) {
-      removeItem(id);
-      toast.success("Item berhasil dihapus");
+      if (projectId === null) {
+        removeLocalItem(id);
+        toast.success("Item berhasil dihapus");
+        return;
+      }
+      saveSharedItems(projectItems.filter((item) => item.id !== id), "Item berhasil dihapus");
     }
+  };
+
+  const saveSharedItems = (nextItems: SafetyBoqItem[], successMessage: string) => {
+    if (!canMutateShared || projectId === null) return;
+    replaceSharedDraft.mutate(
+      {
+        projectId,
+        data: {
+          items: nextItems.map(({ updatedAt: _updatedAt, projectId: _projectId, ...item }) => item),
+        },
+      },
+      {
+        onSuccess: (savedItems) => {
+          queryClient.setQueryData(getGetProjectSafetyBoqQueryKey(projectId), savedItems);
+          toast.success(successMessage);
+        },
+        onError: (error) => {
+          toast.error(
+            error.status === 403
+              ? "Peran Anda tidak dapat mengubah draft BOQ proyek."
+              : "Draft BOQ gagal disimpan. Perubahan belum diterapkan.",
+          );
+        },
+      },
+    );
   };
 
   const handleSave = (data: BoqFormValues) => {
     if (editingItem) {
-      updateItem(editingItem.id, data);
-      toast.success("Item berhasil diperbarui");
+      if (projectId === null) {
+        updateLocalItem(editingItem.id, data);
+        toast.success("Item berhasil diperbarui");
+      } else {
+        saveSharedItems(
+          projectItems.map((item) => item.id === editingItem.id ? { ...item, ...data } : item),
+          "Item berhasil diperbarui",
+        );
+      }
     } else {
-      addItem({
-        ...data,
-        projectId: selectedProjectId === 'all' ? null : Number(selectedProjectId)
-      });
-      toast.success("Item berhasil ditambahkan");
+      if (projectId === null) {
+        addLocalItem({ ...data, projectId: null });
+        toast.success("Item berhasil ditambahkan");
+      } else {
+        saveSharedItems(
+          [...projectItems, { ...data, id: crypto.randomUUID(), projectId }],
+          "Item berhasil ditambahkan",
+        );
+      }
     }
+  };
+
+  const handleMigrateLocal = () => {
+    if (!canMutateShared || projectId === null || migratableItems.length === 0) return;
+    const serverIds = new Set(projectItems.map((item) => item.id));
+    const migrated = migratableItems.map((item) => ({
+      ...item,
+      id: serverIds.has(item.id) ? crypto.randomUUID() : item.id,
+      projectId,
+    }));
+    replaceSharedDraft.mutate(
+      {
+        projectId,
+        data: {
+          items: [...projectItems, ...migrated].map(
+            ({ updatedAt: _updatedAt, projectId: _projectId, ...item }) => item,
+          ),
+        },
+      },
+      {
+        onSuccess: (savedItems) => {
+          queryClient.setQueryData(getGetProjectSafetyBoqQueryKey(projectId), savedItems);
+          removeLocalItems(migratableItems.map((item) => item.id));
+          toast.success(`${migratableItems.length} item lokal dipindahkan ke draft proyek`);
+        },
+        onError: () => toast.error("Data lokal belum dipindahkan dan tetap aman di perangkat ini."),
+      },
+    );
   };
 
   const handleExportPdf = () => {
@@ -394,7 +507,7 @@ export default function SafetyBoqPage() {
     toast.success("CSV berhasil diekspor");
   };
 
-  if (!isLoaded) return null;
+  if (!isLocalLoaded) return null;
 
   return (
     <div className="space-y-8 pb-12 animate-in fade-in duration-500">
@@ -422,7 +535,25 @@ export default function SafetyBoqPage() {
             </SelectContent>
           </Select>
 
-          <Button onClick={handleOpenCreate} className="gap-2" data-testid="button-create-item">
+          {projectId !== null && migratableItems.length > 0 && canEditShared && (
+            <Button
+              variant="outline"
+              onClick={handleMigrateLocal}
+              disabled={!canMutateShared || replaceSharedDraft.isPending}
+              className="gap-2"
+              data-testid="button-migrate-local-boq"
+            >
+              <CloudUpload className="h-4 w-4" />
+              Pindahkan {migratableItems.length} Item Lokal
+            </Button>
+          )}
+
+          <Button
+            onClick={handleOpenCreate}
+            disabled={(projectId !== null && !canMutateShared) || replaceSharedDraft.isPending}
+            className="gap-2"
+            data-testid="button-create-item"
+          >
             <Plus className="h-4 w-4" />
             Tambah Item
           </Button>
@@ -447,6 +578,36 @@ export default function SafetyBoqPage() {
           </DropdownMenu>
         </div>
       </div>
+
+      {projectId !== null && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          {isLoadingShared || isRefreshingShared ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+          <span>
+            {canEditShared
+              ? "Draft proyek dibagikan ke anggota workspace dan diperbarui dari server."
+              : "Anda dapat melihat draft terbaru. Hanya Owner dan Ahli K3 yang dapat mengubahnya."}
+          </span>
+        </div>
+      )}
+
+      {projectId !== null && isSharedError && (
+        <Card className="border-destructive/40 bg-destructive/5">
+          <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-destructive">
+              Draft proyek gagal dimuat. Semua perubahan diblokir agar data yang sudah ada tidak tertimpa.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void refetchShared()}
+              disabled={isRefreshingShared}
+            >
+              {isRefreshingShared && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Coba Lagi
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="border-border/50 shadow-sm bg-card/50 backdrop-blur-sm">
@@ -566,7 +727,13 @@ export default function SafetyBoqPage() {
               </tr>
             </thead>
             <tbody>
-              {projectItems.length === 0 ? (
+              {isLoadingShared && projectId !== null ? (
+                <tr>
+                  <td colSpan={9} className="px-4 py-12 text-center text-muted-foreground">
+                    <Loader2 className="mx-auto h-6 w-6 animate-spin" />
+                  </td>
+                </tr>
+              ) : projectItems.length === 0 ? (
                 <tr>
                   <td colSpan={9} className="px-4 py-12 text-center text-muted-foreground">
                     <div className="flex flex-col items-center justify-center">
@@ -616,7 +783,10 @@ export default function SafetyBoqPage() {
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">{item.stage}</td>
                     <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className={cn(
+                        "flex items-center justify-end gap-1 transition-opacity",
+                        projectId !== null && !canMutateShared ? "hidden" : "opacity-0 group-hover:opacity-100",
+                      )}>
                         <Button 
                           variant="ghost" 
                           size="icon" 
