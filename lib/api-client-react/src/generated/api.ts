@@ -25,6 +25,7 @@ import type {
   CertificateInput,
   ConflictResponse,
   CsmsProfile,
+  CsmsProfileInput,
   DashboardSummary,
   DocumentInput,
   DocumentTemplate,
@@ -2214,6 +2215,183 @@ export function useListCsmsProfiles<TData = Awaited<ReturnType<typeof listCsmsPr
 
 
 
+
+export const getCreateCsmsProfileUrl = () => {
+
+
+
+
+  return `/api/csms-profiles`
+}
+
+/**
+ * @summary Create an organization-owned CSMS guideline version
+ */
+export const createCsmsProfile = async (csmsProfileInput: CsmsProfileInput, options?: Parameters<typeof customFetch>[1]): Promise<CsmsProfile> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<CsmsProfile>(getCreateCsmsProfileUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(csmsProfileInput)
+  }
+);}
+
+
+
+
+
+export const getCreateCsmsProfileMutationKey = () => ['createCsmsProfile'] as const;
+
+export const getCreateCsmsProfileMutationOptions = <TError = ErrorType<ForbiddenResponse | void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCsmsProfile>>, TError,CreateCsmsProfileMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createCsmsProfile>>, TError,CreateCsmsProfileMutationVariables, TContext> => {
+
+const mutationKey = getCreateCsmsProfileMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createCsmsProfile>>, CreateCsmsProfileMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  createCsmsProfile(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateCsmsProfileMutationResult = NonNullable<Awaited<ReturnType<typeof createCsmsProfile>>>
+    export type CreateCsmsProfileMutationBody = BodyType<CsmsProfileInput>
+    export type CreateCsmsProfileMutationError = ErrorType<ForbiddenResponse | void>
+    export type CreateCsmsProfileMutationVariables = {data: BodyType<CsmsProfileInput>}
+
+    /**
+ * @summary Create an organization-owned CSMS guideline version
+ */
+export const useCreateCsmsProfile = <TError = ErrorType<ForbiddenResponse | void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCsmsProfile>>, TError,CreateCsmsProfileMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createCsmsProfile>>,
+        TError,
+        CreateCsmsProfileMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreateCsmsProfileMutationOptions(options));
+    }
+
+export const getUpdateCsmsProfileUrl = (id: string,) => {
+
+
+
+
+  return `/api/csms-profiles/${id}`
+}
+
+/**
+ * @summary Replace an unused organization-owned CSMS guideline version
+ */
+export const updateCsmsProfile = async (id: string,
+    csmsProfileInput: CsmsProfileInput, options?: Parameters<typeof customFetch>[1]): Promise<CsmsProfile> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<CsmsProfile>(getUpdateCsmsProfileUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(csmsProfileInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateCsmsProfileMutationKey = () => ['updateCsmsProfile'] as const;
+
+export const getUpdateCsmsProfileMutationOptions = <TError = ErrorType<ForbiddenResponse | NotFoundResponse | void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateCsmsProfile>>, TError,UpdateCsmsProfileMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateCsmsProfile>>, TError,UpdateCsmsProfileMutationVariables, TContext> => {
+
+const mutationKey = getUpdateCsmsProfileMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateCsmsProfile>>, UpdateCsmsProfileMutationVariables> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateCsmsProfile(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateCsmsProfileMutationResult = NonNullable<Awaited<ReturnType<typeof updateCsmsProfile>>>
+    export type UpdateCsmsProfileMutationBody = BodyType<CsmsProfileInput>
+    export type UpdateCsmsProfileMutationError = ErrorType<ForbiddenResponse | NotFoundResponse | void>
+    export type UpdateCsmsProfileMutationVariables = {id: string;data: BodyType<CsmsProfileInput>}
+
+    /**
+ * @summary Replace an unused organization-owned CSMS guideline version
+ */
+export const useUpdateCsmsProfile = <TError = ErrorType<ForbiddenResponse | NotFoundResponse | void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateCsmsProfile>>, TError,UpdateCsmsProfileMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateCsmsProfile>>,
+        TError,
+        UpdateCsmsProfileMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdateCsmsProfileMutationOptions(options));
+    }
 
 export const getGenerateDocumentUrl = () => {
 

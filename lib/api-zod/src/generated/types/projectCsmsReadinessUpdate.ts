@@ -6,10 +6,9 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { CsmsReadinessItemStatus } from './csmsReadinessItemStatus';
-import type { ProjectCsmsReadinessUpdateProfileId } from './projectCsmsReadinessUpdateProfileId';
 
 export interface ProjectCsmsReadinessUpdate {
-  profileId: ProjectCsmsReadinessUpdateProfileId;
+  profileId: string;
   /** @maxItems 200 */
   itemStatuses: CsmsReadinessItemStatus[];
 }

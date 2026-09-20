@@ -7,11 +7,10 @@
  */
 import type { CsmsReadinessItemStatus } from './csmsReadinessItemStatus';
 import type { CsmsReadinessStage } from './csmsReadinessStage';
-import type { ProjectCsmsReadinessProfileId } from './projectCsmsReadinessProfileId';
 
 export interface ProjectCsmsReadiness {
   projectId: number;
-  profileId: ProjectCsmsReadinessProfileId;
+  profileId: string;
   issuer: string;
   version: string;
   title: string;

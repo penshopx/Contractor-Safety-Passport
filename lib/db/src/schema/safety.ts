@@ -1,4 +1,5 @@
 import {
+  boolean,
   date,
   integer,
   jsonb,
@@ -51,6 +52,41 @@ export const projectCsmsReadinessTable = pgTable(
       name: "project_csms_readiness_organization_project_pk",
       columns: [table.organizationId, table.projectId],
     }),
+  ],
+);
+
+export const csmsProfileVersionsTable = pgTable(
+  "csms_profile_versions",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull(),
+    issuer: text("issuer").notNull(),
+    version: text("version").notNull(),
+    title: text("title").notNull(),
+    source: text("source").notNull(),
+    stages: jsonb("stages").$type<Array<{
+      code: string;
+      name: string;
+      purpose: string;
+      roles: string[];
+      questions: string[];
+      evidence: string[];
+      validations: string[];
+    }>>().notNull(),
+    locked: boolean("locked").notNull().default(false),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex("csms_profile_versions_org_issuer_version_unique").on(
+      table.organizationId,
+      table.issuer,
+      table.version,
+    ),
   ],
 );
 

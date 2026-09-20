@@ -6,7 +6,6 @@ import {
   useGenerateDocument,
   GeneratedDocument,
   GeneratedDocumentInputTemplate,
-  GeneratedDocumentInputCsmsProfileId,
 } from "@workspace/api-client-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -31,7 +30,7 @@ const generatorSchema = z.object({
   scopeOfWork: z.string().min(10, "Lingkup pekerjaan wajib diisi"),
   commitment: z.string().optional(),
   emergencyContact: z.string().optional(),
-  csmsProfileId: z.nativeEnum(GeneratedDocumentInputCsmsProfileId).optional(),
+  csmsProfileId: z.string().min(1).optional(),
 }).superRefine((values, context) => {
   if (values.template === GeneratedDocumentInputTemplate.CSMS_PRAKUALIFIKASI && !values.csmsProfileId) {
     context.addIssue({

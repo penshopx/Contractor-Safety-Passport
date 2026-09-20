@@ -437,7 +437,7 @@ export const getProjectCsmsReadinessResponseStagesItemProgressMax = 100;
 
 export const GetProjectCsmsReadinessResponse = zod.object({
   "projectId": zod.number().int(),
-  "profileId": zod.enum(['PERTAMINA_2020', 'PLN_2021']),
+  "profileId": zod.string(),
   "issuer": zod.string(),
   "version": zod.string(),
   "title": zod.string(),
@@ -481,7 +481,7 @@ export const updateProjectCsmsReadinessBodyItemStatusesMax = 200;
 
 
 export const UpdateProjectCsmsReadinessBody = zod.object({
-  "profileId": zod.enum(['PERTAMINA_2020', 'PLN_2021']),
+  "profileId": zod.string(),
   "itemStatuses": zod.array(zod.object({
   "key": zod.string(),
   "status": zod.enum(['complete', 'follow_up'])
@@ -510,7 +510,7 @@ export const updateProjectCsmsReadinessResponseStagesItemProgressMax = 100;
 
 export const UpdateProjectCsmsReadinessResponse = zod.object({
   "projectId": zod.number().int(),
-  "profileId": zod.enum(['PERTAMINA_2020', 'PLN_2021']),
+  "profileId": zod.string(),
   "issuer": zod.string(),
   "version": zod.string(),
   "title": zod.string(),
@@ -772,11 +772,13 @@ export const ListDocumentTemplatesResponse = zod.array(ListDocumentTemplatesResp
  * @summary List issuer-specific CSMS profiles and guideline versions
  */
 export const ListCsmsProfilesResponseItem = zod.object({
-  "id": zod.enum(['PERTAMINA_2020', 'PLN_2021']),
+  "id": zod.string(),
   "issuer": zod.string(),
   "version": zod.string(),
   "title": zod.string(),
   "source": zod.string(),
+  "locked": zod.boolean(),
+  "builtIn": zod.boolean(),
   "stages": zod.array(zod.object({
   "code": zod.string(),
   "name": zod.string(),
@@ -788,6 +790,115 @@ export const ListCsmsProfilesResponseItem = zod.object({
 }))
 })
 export const ListCsmsProfilesResponse = zod.array(ListCsmsProfilesResponseItem)
+
+
+/**
+ * @summary Create an organization-owned CSMS guideline version
+ */
+export const createCsmsProfileBodyIssuerMax = 200;
+
+export const createCsmsProfileBodyVersionMax = 200;
+
+export const createCsmsProfileBodyTitleMax = 300;
+
+export const createCsmsProfileBodySourceMax = 500;
+
+export const createCsmsProfileBodyStagesMax = 20;
+
+
+
+export const CreateCsmsProfileBody = zod.object({
+  "issuer": zod.string().min(1).max(createCsmsProfileBodyIssuerMax),
+  "version": zod.string().min(1).max(createCsmsProfileBodyVersionMax),
+  "title": zod.string().min(1).max(createCsmsProfileBodyTitleMax),
+  "source": zod.string().min(1).max(createCsmsProfileBodySourceMax),
+  "stages": zod.array(zod.object({
+  "code": zod.string(),
+  "name": zod.string(),
+  "purpose": zod.string(),
+  "roles": zod.array(zod.string()),
+  "questions": zod.array(zod.string()),
+  "evidence": zod.array(zod.string()),
+  "validations": zod.array(zod.string())
+})).min(1).max(createCsmsProfileBodyStagesMax)
+})
+
+export const CreateCsmsProfileResponse = zod.object({
+  "id": zod.string(),
+  "issuer": zod.string(),
+  "version": zod.string(),
+  "title": zod.string(),
+  "source": zod.string(),
+  "locked": zod.boolean(),
+  "builtIn": zod.boolean(),
+  "stages": zod.array(zod.object({
+  "code": zod.string(),
+  "name": zod.string(),
+  "purpose": zod.string(),
+  "roles": zod.array(zod.string()),
+  "questions": zod.array(zod.string()),
+  "evidence": zod.array(zod.string()),
+  "validations": zod.array(zod.string())
+}))
+})
+
+
+/**
+ * @summary Replace an unused organization-owned CSMS guideline version
+ */
+
+
+
+export const UpdateCsmsProfileParams = zod.object({
+  "id": zod.coerce.string().min(1)
+})
+
+export const updateCsmsProfileBodyIssuerMax = 200;
+
+export const updateCsmsProfileBodyVersionMax = 200;
+
+export const updateCsmsProfileBodyTitleMax = 300;
+
+export const updateCsmsProfileBodySourceMax = 500;
+
+export const updateCsmsProfileBodyStagesMax = 20;
+
+
+
+export const UpdateCsmsProfileBody = zod.object({
+  "issuer": zod.string().min(1).max(updateCsmsProfileBodyIssuerMax),
+  "version": zod.string().min(1).max(updateCsmsProfileBodyVersionMax),
+  "title": zod.string().min(1).max(updateCsmsProfileBodyTitleMax),
+  "source": zod.string().min(1).max(updateCsmsProfileBodySourceMax),
+  "stages": zod.array(zod.object({
+  "code": zod.string(),
+  "name": zod.string(),
+  "purpose": zod.string(),
+  "roles": zod.array(zod.string()),
+  "questions": zod.array(zod.string()),
+  "evidence": zod.array(zod.string()),
+  "validations": zod.array(zod.string())
+})).min(1).max(updateCsmsProfileBodyStagesMax)
+})
+
+export const UpdateCsmsProfileResponse = zod.object({
+  "id": zod.string(),
+  "issuer": zod.string(),
+  "version": zod.string(),
+  "title": zod.string(),
+  "source": zod.string(),
+  "locked": zod.boolean(),
+  "builtIn": zod.boolean(),
+  "stages": zod.array(zod.object({
+  "code": zod.string(),
+  "name": zod.string(),
+  "purpose": zod.string(),
+  "roles": zod.array(zod.string()),
+  "questions": zod.array(zod.string()),
+  "evidence": zod.array(zod.string()),
+  "validations": zod.array(zod.string())
+}))
+})
 
 
 /**
@@ -809,7 +920,7 @@ export const GenerateDocumentBody = zod.object({
   "scopeOfWork": zod.string().min(1),
   "commitment": zod.string().optional(),
   "emergencyContact": zod.string().optional(),
-  "csmsProfileId": zod.enum(['PERTAMINA_2020', 'PLN_2021']).optional()
+  "csmsProfileId": zod.string().optional()
 })
 
 export const GenerateDocumentResponse = zod.object({

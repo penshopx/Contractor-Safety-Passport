@@ -9,12 +9,14 @@ export type CsmsStage = {
 };
 
 export type CsmsProfile = {
-  id: "PERTAMINA_2020" | "PLN_2021";
+  id: string;
   issuer: string;
   version: string;
   title: string;
   source: string;
   stages: CsmsStage[];
+  locked?: boolean;
+  builtIn?: boolean;
 };
 
 export const csmsProfiles: CsmsProfile[] = [
@@ -234,10 +236,9 @@ export const buildCsmsReadiness = (
 
 export const resolveCsmsProfileForTemplate = (
   template: string,
-  profileId: string | undefined,
+  profile: CsmsProfile | undefined,
 ) => {
   if (template !== "CSMS_PRAKUALIFIKASI") return undefined;
-  const profile = findCsmsProfile(profileId);
   if (!profile) {
     throw new Error("Profil issuer dan versi pedoman CSMS wajib dipilih");
   }

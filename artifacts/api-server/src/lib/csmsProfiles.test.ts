@@ -61,10 +61,6 @@ describe("profil CSMS issuer", () => {
       () => resolveCsmsProfileForTemplate("CSMS_PRAKUALIFIKASI", undefined),
       /wajib dipilih/,
     );
-    assert.throws(
-      () => resolveCsmsProfileForTemplate("CSMS_PRAKUALIFIKASI", "UNKNOWN"),
-      /wajib dipilih/,
-    );
     assert.equal(
       resolveCsmsProfileForTemplate("RKK_TENDER", undefined),
       undefined,

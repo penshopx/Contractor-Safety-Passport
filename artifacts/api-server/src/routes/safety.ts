@@ -3,6 +3,7 @@ import { and, asc, count, desc, eq, inArray, sql } from "drizzle-orm";
 import {
   db,
   certificatesTable,
+  csmsProfileVersionsTable,
   fieldActivitiesTable,
   monthlyReportsTable,
   peopleTable,
@@ -22,6 +23,8 @@ import {
   CreatePersonResponse,
   CreateProjectBody,
   CreateProjectResponse,
+  CreateCsmsProfileBody,
+  CreateCsmsProfileResponse,
   GenerateDocumentBody,
   GenerateDocumentResponse,
   GetDashboardSummaryResponse,
@@ -40,6 +43,7 @@ import {
   ListPeopleResponse,
   ListProjectsResponse,
   ListMonthlyReportsResponse,
+  ListCsmsProfilesResponse,
   CreateMonthlyReportBody,
   CreateMonthlyReportResponse,
   GetMonthlyReportParams,
@@ -56,6 +60,9 @@ import {
   UpdateProjectCsmsReadinessBody,
   UpdateProjectCsmsReadinessParams,
   UpdateProjectCsmsReadinessResponse,
+  UpdateCsmsProfileBody,
+  UpdateCsmsProfileParams,
+  UpdateCsmsProfileResponse,
   ReplaceProjectSafetyBoqBody,
   ReplaceProjectSafetyBoqParams,
   ReplaceProjectSafetyBoqResponse,
@@ -88,6 +95,37 @@ export const createSafetyRouter = (
 
   const dateOnly = (value: Date | string) =>
     typeof value === "string" ? value : value.toISOString().slice(0, 10);
+
+  const listAvailableCsmsProfiles = async (organizationId: string) => {
+    const customProfiles = await db
+      .select()
+      .from(csmsProfileVersionsTable)
+      .where(eq(csmsProfileVersionsTable.organizationId, organizationId))
+      .orderBy(asc(csmsProfileVersionsTable.issuer), desc(csmsProfileVersionsTable.createdAt));
+    return [
+      ...csmsProfiles.map((profile) => ({ ...profile, locked: true, builtIn: true })),
+      ...customProfiles.map((profile) => ({ ...profile, builtIn: false })),
+    ];
+  };
+
+  const findAvailableCsmsProfile = async (
+    organizationId: string,
+    profileId: string | undefined,
+  ) => {
+    const builtIn = findCsmsProfile(profileId);
+    if (builtIn) return { ...builtIn, locked: true, builtIn: true };
+    if (!profileId) return undefined;
+    const [custom] = await db
+      .select()
+      .from(csmsProfileVersionsTable)
+      .where(
+        and(
+          eq(csmsProfileVersionsTable.id, profileId),
+          eq(csmsProfileVersionsTable.organizationId, organizationId),
+        ),
+      );
+    return custom ? { ...custom, builtIn: false } : undefined;
+  };
 
   const documentTemplates = [
     {
@@ -374,7 +412,9 @@ export const createSafetyRouter = (
       .select()
       .from(projectCsmsReadinessTable)
       .where(and(eq(projectCsmsReadinessTable.projectId, project.id), eq(projectCsmsReadinessTable.organizationId, organizationId)));
-    const profile = findCsmsProfile(saved?.profileId) ?? csmsProfiles[0]!;
+    const profile =
+      (await findAvailableCsmsProfile(organizationId, saved?.profileId)) ??
+      { ...csmsProfiles[0]!, locked: true, builtIn: true };
     res.json(
       GetProjectCsmsReadinessResponse.parse(
         buildCsmsReadiness(project.id, profile, saved?.itemStatuses ?? {}, saved?.updatedAt ?? null),
@@ -401,34 +441,65 @@ export const createSafetyRouter = (
         res.status(404).json({ error: "Proyek tidak ditemukan" });
         return;
       }
-      const profile = findCsmsProfile(body.data.profileId);
-      if (!profile) {
-        res.status(400).json({ error: "Profil CSMS tidak valid" });
-        return;
-      }
       const itemStatuses = Object.fromEntries(
         body.data.itemStatuses.map((item) => [item.key, item.status]),
       );
-      const [saved] = await db
-        .insert(projectCsmsReadinessTable)
-        .values({
-          organizationId,
-          projectId: project.id,
-          profileId: profile.id,
-          itemStatuses,
-          updatedBy: userId,
-        })
-        .onConflictDoUpdate({
-          target: [
-            projectCsmsReadinessTable.organizationId,
-            projectCsmsReadinessTable.projectId,
-          ],
-          set: { profileId: profile.id, itemStatuses, updatedBy: userId, updatedAt: new Date() },
-        })
-        .returning();
+      const builtInProfile = findCsmsProfile(body.data.profileId);
+      const result = await db.transaction(async (tx) => {
+        const profile = builtInProfile
+          ? { ...builtInProfile, locked: true, builtIn: true }
+          : (
+              await tx
+                .update(csmsProfileVersionsTable)
+                .set({ locked: true })
+                .where(
+                  and(
+                    eq(csmsProfileVersionsTable.id, body.data.profileId),
+                    eq(csmsProfileVersionsTable.organizationId, organizationId),
+                  ),
+                )
+                .returning()
+            )[0];
+        if (!profile) return undefined;
+        const [saved] = await tx
+          .insert(projectCsmsReadinessTable)
+          .values({
+            organizationId,
+            projectId: project.id,
+            profileId: profile.id,
+            itemStatuses,
+            updatedBy: userId,
+          })
+          .onConflictDoUpdate({
+            target: [
+              projectCsmsReadinessTable.organizationId,
+              projectCsmsReadinessTable.projectId,
+            ],
+            set: {
+              profileId: profile.id,
+              itemStatuses,
+              updatedBy: userId,
+              updatedAt: new Date(),
+            },
+          })
+          .returning();
+        return {
+          profile: builtInProfile ? profile : { ...profile, builtIn: false },
+          saved: saved!,
+        };
+      });
+      if (!result) {
+        res.status(400).json({ error: "Profil CSMS tidak valid" });
+        return;
+      }
       res.json(
         UpdateProjectCsmsReadinessResponse.parse(
-          buildCsmsReadiness(project.id, profile, saved!.itemStatuses, saved!.updatedAt),
+          buildCsmsReadiness(
+            project.id,
+            result.profile,
+            result.saved.itemStatuses,
+            result.saved.updatedAt,
+          ),
         ),
       );
     },
@@ -641,9 +712,106 @@ export const createSafetyRouter = (
     res.json(ListDocumentTemplatesResponse.parse(documentTemplates));
   });
 
-  router.get("/csms-profiles", (_req, res): void => {
-    res.json(csmsProfiles);
+  router.get("/csms-profiles", async (req, res): Promise<void> => {
+    const profiles = await listAvailableCsmsProfiles(
+      req.organizationContext!.organizationId,
+    );
+    res.json(ListCsmsProfilesResponse.parse(profiles));
   });
+
+  router.post(
+    "/csms-profiles",
+    requireRole("owner"),
+    async (req, res): Promise<void> => {
+      const body = CreateCsmsProfileBody.safeParse(req.body);
+      if (!body.success) {
+        res.status(400).json({ error: body.error.message });
+        return;
+      }
+      const { organizationId, userId } = req.organizationContext!;
+      const id = `ORG_${crypto.randomUUID()}`;
+      try {
+        const [profile] = await db
+          .insert(csmsProfileVersionsTable)
+          .values({ id, organizationId, createdBy: userId, ...body.data })
+          .returning();
+        res.status(201).json(
+          CreateCsmsProfileResponse.parse({ ...profile!, builtIn: false }),
+        );
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          error.message.includes("csms_profile_versions_org_issuer_version_unique")
+        ) {
+          res.status(409).json({ error: "Issuer dan versi pedoman sudah ada" });
+          return;
+        }
+        throw error;
+      }
+    },
+  );
+
+  router.put(
+    "/csms-profiles/:id",
+    requireRole("owner"),
+    async (req, res): Promise<void> => {
+      const params = UpdateCsmsProfileParams.safeParse(req.params);
+      const body = UpdateCsmsProfileBody.safeParse(req.body);
+      if (!params.success || !body.success) {
+        res.status(400).json({ error: "Data profil CSMS tidak valid" });
+        return;
+      }
+      const { organizationId } = req.organizationContext!;
+      const [existing] = await db
+        .select()
+        .from(csmsProfileVersionsTable)
+        .where(
+          and(
+            eq(csmsProfileVersionsTable.id, params.data.id),
+            eq(csmsProfileVersionsTable.organizationId, organizationId),
+          ),
+        );
+      if (!existing) {
+        res.status(404).json({ error: "Profil CSMS tidak ditemukan" });
+        return;
+      }
+      if (existing.locked) {
+        res.status(409).json({
+          error: "Versi ini sudah dipakai dan tidak dapat diubah. Buat versi baru.",
+        });
+        return;
+      }
+      try {
+        const [profile] = await db
+          .update(csmsProfileVersionsTable)
+          .set({ ...body.data, updatedAt: new Date() })
+          .where(
+            and(
+              eq(csmsProfileVersionsTable.id, params.data.id),
+              eq(csmsProfileVersionsTable.organizationId, organizationId),
+              eq(csmsProfileVersionsTable.locked, false),
+            ),
+          )
+          .returning();
+        if (!profile) {
+          res.status(409).json({
+            error: "Versi ini sudah dipakai dan tidak dapat diubah. Buat versi baru.",
+          });
+          return;
+        }
+        res.json(UpdateCsmsProfileResponse.parse({ ...profile!, builtIn: false }));
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          error.message.includes("csms_profile_versions_org_issuer_version_unique")
+        ) {
+          res.status(409).json({ error: "Issuer dan versi pedoman sudah ada" });
+          return;
+        }
+        throw error;
+      }
+    },
+  );
 
   router.post(
     "/generated-documents",
@@ -682,9 +850,32 @@ export const createSafetyRouter = (
       const isRkk = parsed.data.template !== "CSMS_PRAKUALIFIKASI";
       let csmsProfile;
       try {
+        const builtInProfile = findCsmsProfile(parsed.data.csmsProfileId);
+        const selectedProfile =
+          parsed.data.template !== "CSMS_PRAKUALIFIKASI"
+            ? undefined
+            : builtInProfile
+              ? { ...builtInProfile, locked: true, builtIn: true }
+              : (
+                  await db
+                    .update(csmsProfileVersionsTable)
+                    .set({ locked: true })
+                    .where(
+                      and(
+                        eq(csmsProfileVersionsTable.id, parsed.data.csmsProfileId ?? ""),
+                        eq(
+                          csmsProfileVersionsTable.organizationId,
+                          req.organizationContext!.organizationId,
+                        ),
+                      ),
+                    )
+                    .returning()
+                )[0];
         csmsProfile = resolveCsmsProfileForTemplate(
           parsed.data.template,
-          parsed.data.csmsProfileId,
+          selectedProfile && !builtInProfile
+            ? { ...selectedProfile, builtIn: false }
+            : selectedProfile,
         );
       } catch (error) {
         res.status(400).json({

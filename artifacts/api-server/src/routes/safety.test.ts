@@ -4,6 +4,7 @@ import express, { type RequestHandler } from "express";
 import { and, eq, inArray } from "drizzle-orm";
 import {
   certificatesTable,
+  csmsProfileVersionsTable,
   db,
   fieldActivitiesTable,
   monthlyReportsTable,
@@ -11,6 +12,7 @@ import {
   organizationsTable,
   peopleTable,
   pool,
+  projectCsmsReadinessTable,
   projectsTable,
   safetyBoqItemsTable,
   safetyDocumentsTable,
@@ -118,6 +120,24 @@ const activityBody = (suffix: string, project: string) => ({
   actor: "Petugas Lapangan",
   status: "complete",
   occurredAt: "2026-09-20T08:00:00.000Z",
+});
+
+const csmsProfileBody = (suffix: string) => ({
+  issuer: `Principal ${suffix}`,
+  version: `Pedoman ${suffix}`,
+  title: `CSMS ${suffix}`,
+  source: `Sumber ${suffix}`,
+  stages: [
+    {
+      code: "PQ",
+      name: "Prakualifikasi",
+      purpose: "Memastikan kontraktor memenuhi persyaratan keselamatan.",
+      roles: ["Admin CSMS"],
+      questions: ["Apakah persyaratan telah dipenuhi?"],
+      evidence: ["Dokumen pendukung"],
+      validations: ["Dokumen masih berlaku"],
+    },
+  ],
 });
 
 before(async () => {
@@ -262,6 +282,12 @@ after(async () => {
     .delete(safetyDocumentsTable)
     .where(inArray(safetyDocumentsTable.organizationId, organizationIds));
   await db
+    .delete(projectCsmsReadinessTable)
+    .where(inArray(projectCsmsReadinessTable.organizationId, organizationIds));
+  await db
+    .delete(csmsProfileVersionsTable)
+    .where(inArray(csmsProfileVersionsTable.organizationId, organizationIds));
+  await db
     .delete(peopleTable)
     .where(inArray(peopleTable.organizationId, organizationIds));
   await db
@@ -279,6 +305,137 @@ after(async () => {
 });
 
 describe("isolasi data antar kontraktor", () => {
+  it("mengisolasi profil CSMS kustom dan membatasi pengelolaan pada pemilik", async () => {
+    const deniedCreate = await request("/csms-profiles", {
+      role: "safety_expert",
+      method: "POST",
+      body: csmsProfileBody(`denied-${runId}`),
+    });
+    assert.equal(deniedCreate.status, 403);
+
+    const created = await request("/csms-profiles", {
+      role: "owner",
+      method: "POST",
+      body: csmsProfileBody(`private-${runId}`),
+    });
+    assert.equal(created.status, 201);
+    assert.equal(created.body.builtIn, false);
+    assert.equal(created.body.locked, false);
+
+    const [profilesA, profilesB, foreignUpdate] = await Promise.all([
+      request("/csms-profiles", { organizationId: organizationA }),
+      request("/csms-profiles", { organizationId: organizationB }),
+      request(`/csms-profiles/${created.body.id}`, {
+        organizationId: organizationB,
+        role: "owner",
+        method: "PUT",
+        body: csmsProfileBody(`foreign-${runId}`),
+      }),
+    ]);
+    assert.ok(profilesA.body.some((profile: { id: string }) => profile.id === created.body.id));
+    assert.ok(profilesB.body.every((profile: { id: string }) => profile.id !== created.body.id));
+    assert.equal(foreignUpdate.status, 404);
+  });
+
+  it("mengunci snapshot profil saat pertama dipakai kesiapan atau dokumen", async () => {
+    const readinessProfile = await request("/csms-profiles", {
+      role: "owner",
+      method: "POST",
+      body: csmsProfileBody(`readiness-${runId}`),
+    });
+    const readiness = await request(`/projects/${projectAId}/csms-readiness`, {
+      role: "safety_expert",
+      method: "PUT",
+      body: { profileId: readinessProfile.body.id, itemStatuses: [] },
+    });
+    const updateAfterReadiness = await request(
+      `/csms-profiles/${readinessProfile.body.id}`,
+      {
+        role: "owner",
+        method: "PUT",
+        body: { ...csmsProfileBody(`changed-${runId}`), title: "Tidak boleh berubah" },
+      },
+    );
+    assert.equal(readiness.status, 200);
+    assert.equal(readiness.body.title, readinessProfile.body.title);
+    assert.equal(updateAfterReadiness.status, 409);
+
+    const documentProfile = await request("/csms-profiles", {
+      role: "owner",
+      method: "POST",
+      body: csmsProfileBody(`document-${runId}`),
+    });
+    const generated = await request("/generated-documents", {
+      role: "owner",
+      method: "POST",
+      body: {
+        projectId: projectAId,
+        template: "CSMS_PRAKUALIFIKASI",
+        companyName: "Kontraktor A",
+        directorName: "Direktur A",
+        safetyLead: "Ahli K3 A",
+        scopeOfWork: "Pekerjaan pengujian profil CSMS",
+        csmsProfileId: documentProfile.body.id,
+      },
+    });
+    const updateAfterDocument = await request(
+      `/csms-profiles/${documentProfile.body.id}`,
+      {
+        role: "owner",
+        method: "PUT",
+        body: { ...csmsProfileBody(`changed-doc-${runId}`), title: "Tidak boleh berubah" },
+      },
+    );
+    assert.equal(generated.status, 201);
+    assert.equal(generated.body.title.includes(documentProfile.body.issuer), true);
+    assert.equal(updateAfterDocument.status, 409);
+    await db
+      .delete(safetyDocumentsTable)
+      .where(
+        and(
+          eq(safetyDocumentsTable.organizationId, organizationA),
+          eq(safetyDocumentsTable.name, generated.body.title),
+        ),
+      );
+  });
+
+  it("menjaga snapshot konsisten saat pembaruan bersamaan dengan penggunaan pertama", async () => {
+    const created = await request("/csms-profiles", {
+      role: "owner",
+      method: "POST",
+      body: csmsProfileBody(`race-${runId}`),
+    });
+    const replacement = {
+      ...csmsProfileBody(`race-${runId}`),
+      title: `Judul pembaruan ${runId}`,
+    };
+    const [updated, readiness] = await Promise.all([
+      request(`/csms-profiles/${created.body.id}`, {
+        role: "owner",
+        method: "PUT",
+        body: replacement,
+      }),
+      request(`/projects/${projectAId}/csms-readiness`, {
+        role: "owner",
+        method: "PUT",
+        body: { profileId: created.body.id, itemStatuses: [] },
+      }),
+    ]);
+    assert.equal(readiness.status, 200);
+    assert.ok([200, 409].includes(updated.status));
+
+    const profiles = await request("/csms-profiles", { role: "owner" });
+    const locked = profiles.body.find(
+      (profile: { id: string }) => profile.id === created.body.id,
+    );
+    assert.equal(locked.locked, true);
+    assert.equal(readiness.body.title, locked.title);
+    assert.equal(
+      locked.title,
+      updated.status === 200 ? replacement.title : created.body.title,
+    );
+  });
+
   it("membagikan draft BOQ proyek dengan isolasi organisasi dan izin peran", async () => {
     const item = {
       id: `boq-${runId}`,

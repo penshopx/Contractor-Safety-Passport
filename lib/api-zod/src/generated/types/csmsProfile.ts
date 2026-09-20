@@ -5,14 +5,15 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { CsmsProfileId } from './csmsProfileId';
 import type { CsmsStage } from './csmsStage';
 
 export interface CsmsProfile {
-  id: CsmsProfileId;
+  id: string;
   issuer: string;
   version: string;
   title: string;
   source: string;
+  locked: boolean;
+  builtIn: boolean;
   stages: CsmsStage[];
 }

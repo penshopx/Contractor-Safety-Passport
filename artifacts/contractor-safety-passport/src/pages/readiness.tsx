@@ -4,6 +4,7 @@ import {
   useGetOrganizationContext,
   useGetProjectCsmsReadiness,
   useListProjects,
+  useListCsmsProfiles,
   useUpdateProjectCsmsReadiness,
   type CsmsReadinessItemStatusStatus,
 } from "@workspace/api-client-react";
@@ -19,11 +20,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 type ItemKind = "question" | "evidence" | "validation";
 
-const profiles = [
-  { id: "PERTAMINA_2020", label: "Pertamina · Pedoman 2020" },
-  { id: "PLN_2021", label: "PLN · SPLN U1.006:2021" },
-] as const;
-
 const itemKey = (stageCode: string, kind: ItemKind, index: number) =>
   `${stageCode}:${kind}:${index}`;
 
@@ -31,6 +27,7 @@ export default function ReadinessPage() {
   const queryClient = useQueryClient();
   const [projectId, setProjectId] = useState<number | null>(null);
   const { data: projects, isLoading: projectsLoading } = useListProjects();
+  const { data: profiles } = useListCsmsProfiles();
   const { data: organization } = useGetOrganizationContext();
   const canEdit =
     organization?.role === "owner" || organization?.role === "safety_expert";
@@ -57,7 +54,7 @@ export default function ReadinessPage() {
   );
 
   const save = (
-    profileId: "PERTAMINA_2020" | "PLN_2021",
+    profileId: string,
     nextStatuses: Array<{ key: string; status: CsmsReadinessItemStatusStatus }>,
   ) => {
     if (projectId === null) return;
@@ -127,15 +124,13 @@ export default function ReadinessPage() {
             <Select
               value={readiness?.profileId ?? ""}
               disabled={!readiness || !canEdit || updateReadiness.isPending}
-              onValueChange={(value: "PERTAMINA_2020" | "PLN_2021") =>
-                save(value, [])
-              }
+              onValueChange={(value) => save(value, [])}
             >
               <SelectTrigger><SelectValue placeholder="Pilih profil" /></SelectTrigger>
               <SelectContent>
-                {profiles.map((profile) => (
+                {profiles?.map((profile) => (
                   <SelectItem key={profile.id} value={profile.id}>
-                    {profile.label}
+                    {profile.issuer} · {profile.version}
                   </SelectItem>
                 ))}
               </SelectContent>

@@ -368,20 +368,42 @@ export interface CsmsStage {
   validations: string[];
 }
 
-export type CsmsProfileId = typeof CsmsProfileId[keyof typeof CsmsProfileId];
-
-
-export const CsmsProfileId = {
-  PERTAMINA_2020: 'PERTAMINA_2020',
-  PLN_2021: 'PLN_2021',
-} as const;
-
 export interface CsmsProfile {
-  id: CsmsProfileId;
+  id: string;
   issuer: string;
   version: string;
   title: string;
   source: string;
+  locked: boolean;
+  builtIn: boolean;
+  stages: CsmsStage[];
+}
+
+export interface CsmsProfileInput {
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  issuer: string;
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  version: string;
+  /**
+     * @minLength 1
+     * @maxLength 300
+     */
+  title: string;
+  /**
+     * @minLength 1
+     * @maxLength 500
+     */
+  source: string;
+  /**
+     * @minItems 1
+     * @maxItems 20
+     */
   stages: CsmsStage[];
 }
 
@@ -419,17 +441,9 @@ export interface CsmsReadinessStage {
   progress: number;
 }
 
-export type ProjectCsmsReadinessProfileId = typeof ProjectCsmsReadinessProfileId[keyof typeof ProjectCsmsReadinessProfileId];
-
-
-export const ProjectCsmsReadinessProfileId = {
-  PERTAMINA_2020: 'PERTAMINA_2020',
-  PLN_2021: 'PLN_2021',
-} as const;
-
 export interface ProjectCsmsReadiness {
   projectId: number;
-  profileId: ProjectCsmsReadinessProfileId;
+  profileId: string;
   issuer: string;
   version: string;
   title: string;
@@ -450,16 +464,8 @@ export interface ProjectCsmsReadiness {
   updatedAt: string | null;
 }
 
-export type ProjectCsmsReadinessUpdateProfileId = typeof ProjectCsmsReadinessUpdateProfileId[keyof typeof ProjectCsmsReadinessUpdateProfileId];
-
-
-export const ProjectCsmsReadinessUpdateProfileId = {
-  PERTAMINA_2020: 'PERTAMINA_2020',
-  PLN_2021: 'PLN_2021',
-} as const;
-
 export interface ProjectCsmsReadinessUpdate {
-  profileId: ProjectCsmsReadinessUpdateProfileId;
+  profileId: string;
   /** @maxItems 200 */
   itemStatuses: CsmsReadinessItemStatus[];
 }
@@ -471,14 +477,6 @@ export const GeneratedDocumentInputTemplate = {
   RKK_TENDER: 'RKK_TENDER',
   RKK_PELAKSANAAN: 'RKK_PELAKSANAAN',
   CSMS_PRAKUALIFIKASI: 'CSMS_PRAKUALIFIKASI',
-} as const;
-
-export type GeneratedDocumentInputCsmsProfileId = typeof GeneratedDocumentInputCsmsProfileId[keyof typeof GeneratedDocumentInputCsmsProfileId];
-
-
-export const GeneratedDocumentInputCsmsProfileId = {
-  PERTAMINA_2020: 'PERTAMINA_2020',
-  PLN_2021: 'PLN_2021',
 } as const;
 
 export interface GeneratedDocumentInput {
@@ -495,7 +493,7 @@ export interface GeneratedDocumentInput {
   scopeOfWork: string;
   commitment?: string;
   emergencyContact?: string;
-  csmsProfileId?: GeneratedDocumentInputCsmsProfileId;
+  csmsProfileId?: string;
 }
 
 export type GeneratedDocumentTemplate = typeof GeneratedDocumentTemplate[keyof typeof GeneratedDocumentTemplate];

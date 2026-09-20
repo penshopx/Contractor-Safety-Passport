@@ -17,7 +17,8 @@ import {
   HardHat,
   Eye,
   FileSpreadsheet,
-  UserCog
+  UserCog,
+  BookOpenCheck
 } from "lucide-react";
 import {
   Sidebar,
@@ -66,6 +67,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   ];
 
   if (orgContext?.role === "owner") {
+    navItems.push({ icon: BookOpenCheck, label: "Profil CSMS", href: "/csms-profiles" });
     navItems.push({ icon: UserCog, label: "Manajemen Tim", href: "/team" });
   }
 

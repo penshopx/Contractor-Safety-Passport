@@ -33,6 +33,7 @@ import FieldActivitiesPage from '@/pages/field-activities';
 import SmkkReportsPage from '@/pages/smkk-reports';
 import SafetyBoqPage from '@/pages/safety-boq';
 import TeamPage from '@/pages/team';
+import CsmsProfilesPage from '@/pages/csms-profiles';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -247,6 +248,7 @@ function AuthenticatedApp() {
         <Route path="/smkk-reports" component={() => <WorkspaceGate><SmkkReportsPage /></WorkspaceGate>} />
         <Route path="/safety-boq" component={() => <WorkspaceGate><SafetyBoqPage /></WorkspaceGate>} />
         <Route path="/team" component={() => <WorkspaceGate><TeamPage /></WorkspaceGate>} />
+        <Route path="/csms-profiles" component={() => <WorkspaceGate><CsmsProfilesPage /></WorkspaceGate>} />
         
         <Route component={() => <WorkspaceGate><NotFound /></WorkspaceGate>} />
       </Switch>
