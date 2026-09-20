@@ -140,6 +140,13 @@ const csmsProfileBody = (suffix: string) => ({
   ],
 });
 
+const isForeignKeyViolation = (error: unknown) =>
+  error instanceof Error &&
+  "cause" in error &&
+  error.cause instanceof Error &&
+  "code" in error.cause &&
+  error.cause.code === "23503";
+
 before(async () => {
   await db.insert(organizationsTable).values([
     { id: organizationA, name: "Kontraktor A", createdBy: userIds.owner },
@@ -305,6 +312,26 @@ after(async () => {
 });
 
 describe("isolasi data antar kontraktor", () => {
+  it("menolak data keselamatan untuk organisasi yang tidak ada", async () => {
+    await assert.rejects(
+      db.insert(projectsTable).values({
+        ...projectBody(`Orphan ${runId}`),
+        organizationId: `missing-${runId}`,
+        createdBy: userIds.owner,
+      }),
+      isForeignKeyViolation,
+    );
+  });
+
+  it("menolak penghapusan organisasi yang masih memiliki data keselamatan", async () => {
+    await assert.rejects(
+      db
+        .delete(organizationsTable)
+        .where(eq(organizationsTable.id, organizationA)),
+      isForeignKeyViolation,
+    );
+  });
+
   it("mengisolasi profil CSMS kustom dan membatasi pengelolaan pada pemilik", async () => {
     const deniedCreate = await request("/csms-profiles", {
       role: "safety_expert",

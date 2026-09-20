@@ -1,6 +1,7 @@
 import {
   boolean,
   date,
+  index,
   integer,
   jsonb,
   primaryKey,
@@ -14,27 +15,37 @@ import {
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { organizationsTable } from "./identity.ts";
 
-export const projectsTable = pgTable("projects", {
-  id: serial("id").primaryKey(),
-  organizationId: text("organization_id").notNull().default("legacy"),
-  createdBy: text("created_by").notNull().default("system"),
-  name: text("name").notNull(),
-  client: text("client").notNull(),
-  location: text("location").notNull(),
-  standard: text("standard").notNull(),
-  status: text("status").notNull(),
-  progress: integer("progress").notNull().default(0),
-  startDate: date("start_date", { mode: "string" }).notNull(),
-  endDate: date("end_date", { mode: "string" }),
-  value: real("value").notNull().default(0),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const projectsTable = pgTable(
+  "projects",
+  {
+    id: serial("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .default("legacy")
+      .references(() => organizationsTable.id, { onDelete: "restrict" }),
+    createdBy: text("created_by").notNull().default("system"),
+    name: text("name").notNull(),
+    client: text("client").notNull(),
+    location: text("location").notNull(),
+    standard: text("standard").notNull(),
+    status: text("status").notNull(),
+    progress: integer("progress").notNull().default(0),
+    startDate: date("start_date", { mode: "string" }).notNull(),
+    endDate: date("end_date", { mode: "string" }),
+    value: real("value").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("projects_organization_id_idx").on(table.organizationId)],
+);
 
 export const projectCsmsReadinessTable = pgTable(
   "project_csms_readiness",
   {
-    organizationId: text("organization_id").notNull(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizationsTable.id, { onDelete: "restrict" }),
     projectId: integer("project_id").notNull(),
     profileId: text("profile_id").notNull(),
     itemStatuses: jsonb("item_statuses")
@@ -52,6 +63,7 @@ export const projectCsmsReadinessTable = pgTable(
       name: "project_csms_readiness_organization_project_pk",
       columns: [table.organizationId, table.projectId],
     }),
+    index("project_csms_readiness_organization_id_idx").on(table.organizationId),
   ],
 );
 
@@ -59,7 +71,9 @@ export const csmsProfileVersionsTable = pgTable(
   "csms_profile_versions",
   {
     id: text("id").primaryKey(),
-    organizationId: text("organization_id").notNull(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizationsTable.id, { onDelete: "restrict" }),
     issuer: text("issuer").notNull(),
     version: text("version").notNull(),
     title: text("title").notNull(),
@@ -87,43 +101,60 @@ export const csmsProfileVersionsTable = pgTable(
       table.issuer,
       table.version,
     ),
+    index("csms_profile_versions_organization_id_idx").on(table.organizationId),
   ],
 );
 
-export const peopleTable = pgTable("people", {
-  id: serial("id").primaryKey(),
-  organizationId: text("organization_id").notNull().default("legacy"),
-  createdBy: text("created_by").notNull().default("system"),
-  name: text("name").notNull(),
-  role: text("role").notNull(),
-  level: text("level").notNull(),
-  skkni: text("skkni").notNull(),
-  project: text("project").notNull(),
-  status: text("status").notNull(),
-  initials: text("initials").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const peopleTable = pgTable(
+  "people",
+  {
+    id: serial("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .default("legacy")
+      .references(() => organizationsTable.id, { onDelete: "restrict" }),
+    createdBy: text("created_by").notNull().default("system"),
+    name: text("name").notNull(),
+    role: text("role").notNull(),
+    level: text("level").notNull(),
+    skkni: text("skkni").notNull(),
+    project: text("project").notNull(),
+    status: text("status").notNull(),
+    initials: text("initials").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("people_organization_id_idx").on(table.organizationId)],
+);
 
-export const safetyDocumentsTable = pgTable("safety_documents", {
-  id: serial("id").primaryKey(),
-  organizationId: text("organization_id").notNull().default("legacy"),
-  createdBy: text("created_by").notNull().default("system"),
-  name: text("name").notNull(),
-  type: text("type").notNull(),
-  standard: text("standard").notNull(),
-  project: text("project").notNull(),
-  status: text("status").notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow()
-    .$onUpdate(() => new Date()),
-});
+export const safetyDocumentsTable = pgTable(
+  "safety_documents",
+  {
+    id: serial("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .default("legacy")
+      .references(() => organizationsTable.id, { onDelete: "restrict" }),
+    createdBy: text("created_by").notNull().default("system"),
+    name: text("name").notNull(),
+    type: text("type").notNull(),
+    standard: text("standard").notNull(),
+    project: text("project").notNull(),
+    status: text("status").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [index("safety_documents_organization_id_idx").on(table.organizationId)],
+);
 
 export const monthlyReportsTable = pgTable(
   "monthly_reports",
   {
     id: serial("id").primaryKey(),
-    organizationId: text("organization_id").notNull(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizationsTable.id, { onDelete: "restrict" }),
     createdBy: text("created_by").notNull(),
     projectId: integer("project_id").notNull(),
     period: text("period").notNull(),
@@ -145,6 +176,7 @@ export const monthlyReportsTable = pgTable(
       table.projectId,
       table.period,
     ),
+    index("monthly_reports_organization_id_idx").on(table.organizationId),
   ],
 );
 
@@ -152,7 +184,9 @@ export const safetyBoqItemsTable = pgTable(
   "safety_boq_items",
   {
     id: text("id").notNull(),
-    organizationId: text("organization_id").notNull(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizationsTable.id, { onDelete: "restrict" }),
     projectId: integer("project_id").notNull(),
     createdBy: text("created_by").notNull(),
     description: text("description").notNull(),
@@ -178,25 +212,36 @@ export const safetyBoqItemsTable = pgTable(
       name: "safety_boq_items_organization_project_id_pk",
       columns: [table.organizationId, table.projectId, table.id],
     }),
+    index("safety_boq_items_organization_id_idx").on(table.organizationId),
   ],
 );
 
-export const certificatesTable = pgTable("certificates", {
-  id: serial("id").primaryKey(),
-  organizationId: text("organization_id").notNull().default("legacy"),
-  createdBy: text("created_by").notNull().default("system"),
-  owner: text("owner").notNull(),
-  credential: text("credential").notNull(),
-  issuer: text("issuer").notNull(),
-  expiresAt: date("expires_at", { mode: "string" }).notNull(),
-  status: text("status").notNull(),
-});
+export const certificatesTable = pgTable(
+  "certificates",
+  {
+    id: serial("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .default("legacy")
+      .references(() => organizationsTable.id, { onDelete: "restrict" }),
+    createdBy: text("created_by").notNull().default("system"),
+    owner: text("owner").notNull(),
+    credential: text("credential").notNull(),
+    issuer: text("issuer").notNull(),
+    expiresAt: date("expires_at", { mode: "string" }).notNull(),
+    status: text("status").notNull(),
+  },
+  (table) => [index("certificates_organization_id_idx").on(table.organizationId)],
+);
 
 export const fieldActivitiesTable = pgTable(
   "field_activities",
   {
     id: serial("id").primaryKey(),
-    organizationId: text("organization_id").notNull().default("legacy"),
+    organizationId: text("organization_id")
+      .notNull()
+      .default("legacy")
+      .references(() => organizationsTable.id, { onDelete: "restrict" }),
     createdBy: text("created_by").notNull().default("system"),
     clientId: text("client_id").notNull().default("legacy"),
     type: text("type").notNull(),
@@ -220,6 +265,7 @@ export const fieldActivitiesTable = pgTable(
       table.organizationId,
       table.clientId,
     ).where(sql`${table.clientId} <> 'legacy'`),
+    index("field_activities_organization_id_idx").on(table.organizationId),
   ],
 );
 
