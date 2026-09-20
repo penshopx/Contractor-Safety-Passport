@@ -12,7 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
-import { Plus, Search, FileText, CheckCircle2, Clock, XCircle } from "lucide-react";
+import { Link } from "wouter";
+import { Plus, Search, FileText, CheckCircle2, Clock, XCircle, FileCog, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 import { DocumentInputStandard, DocumentInputStatus } from "@workspace/api-client-react";
 
@@ -73,12 +74,18 @@ export default function DocumentsPage() {
           <p className="text-muted-foreground mt-1">Kelola dan pantau validitas dokumen prosedur K3.</p>
         </div>
         
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="shrink-0 gap-2">
-              <Plus className="h-4 w-4" /> Dokumen Baru
+        <div className="flex items-center gap-2">
+          <Link href="/document-generator" data-testid="link-document-generator">
+            <Button variant="outline" className="shrink-0 gap-2 border-primary/50 text-primary hover:bg-primary/10">
+              <FileCog className="h-4 w-4" /> Generator RKK & CSMS
             </Button>
-          </DialogTrigger>
+          </Link>
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="shrink-0 gap-2" data-testid="button-new-document">
+                <Plus className="h-4 w-4" /> Dokumen Baru
+              </Button>
+            </DialogTrigger>
           <DialogContent className="sm:max-w-[425px] border-border/50 bg-card/95 backdrop-blur-xl">
             <DialogHeader>
               <DialogTitle>Tambah Register Dokumen</DialogTitle>
@@ -146,6 +153,7 @@ export default function DocumentsPage() {
             </Form>
           </DialogContent>
         </Dialog>
+      </div>
       </div>
 
       <Card className="border-border/50 bg-card/40 backdrop-blur-sm">

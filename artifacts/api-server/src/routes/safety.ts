@@ -19,6 +19,8 @@ import {
   CreatePersonResponse,
   CreateProjectBody,
   CreateProjectResponse,
+  GenerateDocumentBody,
+  GenerateDocumentResponse,
   GetDashboardSummaryResponse,
   GetProjectParams,
   GetProjectResponse,
@@ -26,6 +28,7 @@ import {
   ListActivityResponse,
   ListCertificatesResponse,
   ListDocumentsResponse,
+  ListDocumentTemplatesResponse,
   ListFieldActivitiesResponse,
   ListPeopleResponse,
   ListProjectsResponse,
@@ -49,6 +52,48 @@ const initialsFor = (name: string) =>
 
 const dateOnly = (value: Date | string) =>
   typeof value === "string" ? value : value.toISOString().slice(0, 10);
+
+const documentTemplates = [
+  {
+    id: "RKK_TENDER" as const,
+    name: "RKK Usulan Penawaran",
+    standard: "SMKK" as const,
+    description:
+      "Draf Rencana Keselamatan Konstruksi untuk tahap pemilihan atau penawaran.",
+    sourceBasis: [
+      "Modul 9 RKK Usulan Penawaran",
+      "Contoh Rencana Keselamatan Konstruksi",
+    ],
+    sectionCount: 6,
+  },
+  {
+    id: "RKK_PELAKSANAAN" as const,
+    name: "RKK Pelaksanaan",
+    standard: "SMKK" as const,
+    description:
+      "Draf RKK pelaksanaan dengan struktur kepemimpinan, perencanaan, dukungan, operasi, dan evaluasi.",
+    sourceBasis: [
+      "Format RKK Pelaksanaan",
+      "Contoh Rencana Keselamatan Konstruksi",
+    ],
+    sectionCount: 6,
+  },
+  {
+    id: "CSMS_PRAKUALIFIKASI" as const,
+    name: "Formulir Pra-kualifikasi CSMS",
+    standard: "CSMS" as const,
+    description:
+      "Draf jawaban dan daftar bukti untuk penilaian awal keselamatan kontraktor.",
+    sourceBasis: [
+      "SPLN U1.006:2021 Contractor Safety Management System",
+      "Formulir CSMS dan Lampiran Formulir CSMS",
+    ],
+    sectionCount: 13,
+  },
+];
+
+const valueOrReview = (value: string | null | undefined) =>
+  value?.trim() || "Belum diisi — wajib ditinjau dan dilengkapi";
 
 router.get("/dashboard/summary", async (_req, res): Promise<void> => {
   const [[active], [people], [expiring], [open], [ready], [documents]] =
@@ -302,6 +347,353 @@ router.post("/documents", async (req, res): Promise<void> => {
     .values(parsed.data)
     .returning();
   res.status(201).json(CreateDocumentResponse.parse(document));
+});
+
+router.get("/document-templates", (_req, res): void => {
+  res.json(ListDocumentTemplatesResponse.parse(documentTemplates));
+});
+
+router.post("/generated-documents", async (req, res): Promise<void> => {
+  const parsed = GenerateDocumentBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  const [project] = await db
+    .select()
+    .from(projectsTable)
+    .where(eq(projectsTable.id, parsed.data.projectId));
+  if (!project) {
+    res.status(404).json({ error: "Proyek tidak ditemukan" });
+    return;
+  }
+
+  const template = documentTemplates.find(
+    (item) => item.id === parsed.data.template,
+  );
+  if (!template) {
+    res.status(400).json({ error: "Template tidak didukung" });
+    return;
+  }
+
+  const personnel = await db
+    .select()
+    .from(peopleTable)
+    .where(eq(peopleTable.project, project.name))
+    .orderBy(asc(peopleTable.name));
+  const personnelNames = personnel.map((person) => person.name);
+  const credentials = personnelNames.length
+    ? await db
+        .select()
+        .from(certificatesTable)
+        .where(inArray(certificatesTable.owner, personnelNames))
+    : [];
+
+  const commonRows = [
+    { label: "Nama proyek", value: project.name },
+    { label: "Pemberi kerja / klien", value: project.client },
+    { label: "Lokasi", value: project.location },
+    { label: "Lingkup pekerjaan", value: parsed.data.scopeOfWork },
+    {
+      label: "Nilai proyek",
+      value: new Intl.NumberFormat("id-ID", {
+        style: "currency",
+        currency: "IDR",
+        maximumFractionDigits: 0,
+      }).format(project.value),
+    },
+    {
+      label: "Periode",
+      value: `${project.startDate} s.d. ${project.endDate ?? "belum ditetapkan"}`,
+    },
+    { label: "Penyedia", value: parsed.data.companyName },
+    { label: "Direktur / pimpinan", value: parsed.data.directorName },
+    { label: "Penanggung jawab K3", value: parsed.data.safetyLead },
+  ];
+
+  const personnelRows = personnel.length
+    ? personnel.map((person) => ({
+        label: `${person.name} — ${person.role}`,
+        value: `${person.level}; ${person.skkni}; status ${person.status}`,
+      }))
+    : [
+        {
+          label: "Personel keselamatan",
+          value: "Belum tersedia — tetapkan personel kompeten sesuai risiko proyek",
+        },
+      ];
+
+  const credentialRows = credentials.length
+    ? credentials.map((credential) => ({
+        label: `${credential.owner} — ${credential.credential}`,
+        value: `${credential.issuer}; berlaku sampai ${credential.expiresAt}; ${credential.status}`,
+      }))
+    : [
+        {
+          label: "Bukti kompetensi",
+          value: "Belum tersedia — lampirkan SKK/sertifikat yang relevan",
+        },
+      ];
+
+  const isRkk = parsed.data.template !== "CSMS_PRAKUALIFIKASI";
+  const sections = isRkk
+    ? [
+        {
+          code: "0",
+          title: "Identitas dan Pengesahan Dokumen",
+          narrative: [
+            "Draf ini merangkum informasi proyek dan pihak yang bertanggung jawab untuk ditinjau sebelum pengesahan.",
+          ],
+          rows: commonRows,
+        },
+        {
+          code: "A",
+          title:
+            "Kepemimpinan dan Partisipasi Pekerja dalam Keselamatan Konstruksi",
+          narrative: [
+            `${parsed.data.companyName} berkomitmen menyediakan kepemimpinan, sumber daya, konsultasi, dan partisipasi pekerja dalam penerapan keselamatan konstruksi.`,
+            valueOrReview(parsed.data.commitment),
+          ],
+          rows: [
+            { label: "Penanggung jawab perusahaan", value: parsed.data.directorName },
+            { label: "Penanggung jawab keselamatan", value: parsed.data.safetyLead },
+            {
+              label: "Konsultasi pekerja",
+              value:
+                "Toolbox meeting, pelaporan bahaya, inspeksi bersama, dan tindak lanjut temuan",
+            },
+          ],
+        },
+        {
+          code: "B",
+          title: "Perencanaan Keselamatan Konstruksi",
+          narrative: [
+            "IBPRP, sasaran, program, jadwal, dan pengendalian harus disusun berdasarkan tahapan pekerjaan aktual.",
+          ],
+          rows: [
+            { label: "Tahapan utama", value: parsed.data.scopeOfWork },
+            {
+              label: "IBPRP",
+              value:
+                "Lengkapi aktivitas, bahaya, tingkat risiko, pengendalian, penanggung jawab, dan peluang perbaikan",
+            },
+            {
+              label: "Acuan",
+              value:
+                "Permen PUPR Nomor 10 Tahun 2021, kontrak, metode kerja, dan ketentuan lain yang berlaku",
+            },
+          ],
+        },
+        {
+          code: "C",
+          title: "Dukungan Keselamatan Konstruksi",
+          narrative: [
+            "Sumber daya, kompetensi, komunikasi, kepedulian, dan informasi terdokumentasi harus tersedia selama proyek.",
+          ],
+          rows: [...personnelRows, ...credentialRows],
+        },
+        {
+          code: "D",
+          title: "Operasi Keselamatan Konstruksi",
+          narrative: [
+            "Pengendalian operasional mencakup metode kerja aman, CSA/JSA, izin kerja, APD, inspeksi, kesehatan kerja, lingkungan, dan kesiapsiagaan darurat.",
+          ],
+          rows: [
+            {
+              label: "Rencana pengendalian",
+              value:
+                "Susun CSA/JSA per pekerjaan kritis dan tautkan dengan metode kerja serta izin kerja",
+            },
+            {
+              label: "Kontak darurat",
+              value: valueOrReview(parsed.data.emergencyContact),
+            },
+            {
+              label: "Subkontraktor",
+              value:
+                "Wajib mengikuti persyaratan RKK, induksi, pengawasan, dan evaluasi penyedia",
+            },
+          ],
+        },
+        {
+          code: "E",
+          title: "Evaluasi dan Peningkatan Kinerja Keselamatan Konstruksi",
+          narrative: [
+            "Kinerja dipantau melalui inspeksi, pengukuran, audit, rapat tinjauan, tindakan koreksi, dan evaluasi RKK.",
+          ],
+          rows: [
+            {
+              label: "Pemantauan",
+              value:
+                "Inspeksi harian/mingguan, rekap tindakan, statistik insiden, dan capaian program",
+            },
+            {
+              label: "Tinjauan manajemen",
+              value:
+                "Dilakukan berkala dan setelah insiden signifikan atau perubahan pekerjaan",
+            },
+          ],
+        },
+      ]
+    : [
+        {
+          code: "0",
+          title: "Identitas Kontraktor dan Konteks Pekerjaan",
+          narrative: [
+            "Data ini menjadi dasar pra-kualifikasi dan harus didukung bukti yang dapat diverifikasi.",
+          ],
+          rows: commonRows,
+        },
+        {
+          code: "I",
+          title: "Kepemimpinan, Kebijakan, dan Organisasi K3LL",
+          narrative: [
+            "Lampirkan kebijakan yang ditandatangani pimpinan, struktur, uraian tugas, dan bukti keterlibatan manajemen.",
+          ],
+          rows: [
+            { label: "Pimpinan", value: parsed.data.directorName },
+            { label: "Penanggung jawab K3LL", value: parsed.data.safetyLead },
+            { label: "Pernyataan komitmen", value: valueOrReview(parsed.data.commitment) },
+          ],
+        },
+        {
+          code: "II",
+          title: "Kepatuhan Hukum dan Persyaratan Lain",
+          narrative: [
+            "Identifikasi perizinan, regulasi, persyaratan kontrak, dan persyaratan principal yang berlaku.",
+          ],
+          rows: [
+            {
+              label: "Bukti minimum",
+              value:
+                "Daftar regulasi, izin usaha, kepesertaan perlindungan pekerja, dan evaluasi kepatuhan",
+            },
+          ],
+        },
+        {
+          code: "III",
+          title: "Pelatihan dan Kompetensi",
+          narrative: [
+            "Kompetensi harus sesuai jabatan, risiko, peralatan, dan tugas yang dijalankan.",
+          ],
+          rows: [...personnelRows, ...credentialRows],
+        },
+        {
+          code: "IV",
+          title: "Pengelolaan Subkontraktor",
+          narrative: [
+            "Seleksi, persyaratan kontrak, induksi, pemantauan, dan evaluasi subkontraktor harus terdokumentasi.",
+          ],
+          rows: [
+            {
+              label: "Bukti yang diminta",
+              value:
+                "Kriteria seleksi, klausul K3LL, hasil evaluasi, dan tindak lanjut ketidaksesuaian",
+            },
+          ],
+        },
+        {
+          code: "V",
+          title: "K3LL dalam Desain, Konstruksi, dan Commissioning",
+          narrative: [
+            "Sertakan HSE Plan, HIRADC/JSA, permit to work, APD, higiene industri, dan pengendalian operasional.",
+          ],
+          rows: [
+            { label: "Lingkup", value: parsed.data.scopeOfWork },
+            {
+              label: "Bukti minimum",
+              value:
+                "HSE Plan, penilaian risiko, prosedur kerja, PTW, daftar APD, dan hasil inspeksi",
+            },
+          ],
+        },
+        {
+          code: "VI",
+          title: "Manajemen Perubahan",
+          narrative: [
+            "Perubahan lingkup, metode, organisasi, peralatan, material, atau jadwal harus dinilai risikonya sebelum diterapkan.",
+          ],
+          rows: [],
+        },
+        {
+          code: "VII–VIII",
+          title: "Inspeksi dan Komunikasi",
+          narrative: [
+            "Program inspeksi, toolbox meeting, rapat K3LL, pelaporan bahaya, dan tindak lanjut harus dapat dibuktikan.",
+          ],
+          rows: [],
+        },
+        {
+          code: "IX",
+          title: "Kesiapsiagaan dan Tanggap Darurat",
+          narrative: [
+            "Rencana darurat harus sesuai skenario risiko pekerjaan dan diuji melalui latihan.",
+          ],
+          rows: [
+            {
+              label: "Kontak darurat",
+              value: valueOrReview(parsed.data.emergencyContact),
+            },
+          ],
+        },
+        {
+          code: "XI",
+          title: "Dokumentasi dan Pengendalian Rekaman",
+          narrative: [
+            "Dokumen, revisi, persetujuan, distribusi, masa simpan, dan bukti lapangan harus dikendalikan.",
+          ],
+          rows: [],
+        },
+        {
+          code: "XII",
+          title: "Evaluasi Kinerja",
+          narrative: [
+            "Lampirkan KPI, statistik, audit internal, evaluasi pihak luar, dan tindak lanjut perbaikan.",
+          ],
+          rows: [],
+        },
+        {
+          code: "XIII",
+          title: "Penghargaan dan Konsekuensi K3LL",
+          narrative: [
+            "Jelaskan mekanisme apresiasi kinerja dan konsekuensi atas pelanggaran secara adil dan terdokumentasi.",
+          ],
+          rows: [],
+        },
+      ];
+
+  const generatedAt = new Date();
+  const title = isRkk ? template.name : "Formulir Pra-kualifikasi CSMS";
+  const documentNumber = `${template.standard}-${project.id}-${generatedAt
+    .toISOString()
+    .slice(0, 10)
+    .replaceAll("-", "")}`;
+
+  await db.insert(safetyDocumentsTable).values({
+    name: title,
+    type: isRkk ? "RKK" : "Pre-qualification",
+    standard: template.standard,
+    project: project.name,
+    status: "review",
+  });
+
+  res.status(201).json(
+    GenerateDocumentResponse.parse({
+      id: crypto.randomUUID(),
+      title,
+      documentNumber,
+      template: template.id,
+      standard: template.standard,
+      projectName: project.name,
+      companyName: parsed.data.companyName,
+      generatedAt,
+      disclaimer:
+        "Dokumen ini merupakan draf berbantuan sistem. Dokumen wajib ditinjau oleh personel K3 yang kompeten, disesuaikan dengan kontrak dan risiko aktual, dilengkapi bukti, ditandatangani, serta disetujui pihak proyek/principal sebelum digunakan.",
+      sources: template.sourceBasis,
+      sections,
+    }),
+  );
 });
 
 router.get("/certificates", async (_req, res): Promise<void> => {

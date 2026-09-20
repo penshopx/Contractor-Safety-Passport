@@ -372,6 +372,67 @@ export const CreateDocumentResponse = zod.object({
 
 
 /**
+ * @summary List supported document templates
+ */
+
+
+
+export const ListDocumentTemplatesResponseItem = zod.object({
+  "id": zod.enum(['RKK_TENDER', 'RKK_PELAKSANAAN', 'CSMS_PRAKUALIFIKASI']),
+  "name": zod.string(),
+  "standard": zod.enum(['SMKK', 'CSMS']),
+  "description": zod.string(),
+  "sourceBasis": zod.array(zod.string()),
+  "sectionCount": zod.number().int().min(1)
+})
+export const ListDocumentTemplatesResponse = zod.array(ListDocumentTemplatesResponseItem)
+
+
+/**
+ * @summary Generate an RKK or CSMS document from project data
+ */
+
+
+
+
+
+
+
+export const GenerateDocumentBody = zod.object({
+  "projectId": zod.number().int().min(1),
+  "template": zod.enum(['RKK_TENDER', 'RKK_PELAKSANAAN', 'CSMS_PRAKUALIFIKASI']),
+  "companyName": zod.string().min(1),
+  "directorName": zod.string().min(1),
+  "safetyLead": zod.string().min(1),
+  "scopeOfWork": zod.string().min(1),
+  "commitment": zod.string().optional(),
+  "emergencyContact": zod.string().optional()
+})
+
+export const GenerateDocumentResponse = zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "documentNumber": zod.string(),
+  "template": zod.enum(['RKK_TENDER', 'RKK_PELAKSANAAN', 'CSMS_PRAKUALIFIKASI']),
+  "standard": zod.enum(['SMKK', 'CSMS']),
+  "projectName": zod.string(),
+  "companyName": zod.string(),
+  "generatedAt": zod.coerce.date(),
+  "disclaimer": zod.string(),
+  "sources": zod.array(zod.string()),
+  "sections": zod.array(zod.object({
+  "code": zod.string(),
+  "title": zod.string(),
+  "narrative": zod.array(zod.string()),
+  "rows": zod.array(zod.object({
+  "label": zod.string(),
+  "value": zod.string()
+}))
+}))
+})
+
+
+/**
  * @summary List certificates
  */
 export const ListCertificatesResponseItem = zod.object({

@@ -252,6 +252,101 @@ export interface DocumentInput {
   status: DocumentInputStatus;
 }
 
+export type DocumentTemplateId = typeof DocumentTemplateId[keyof typeof DocumentTemplateId];
+
+
+export const DocumentTemplateId = {
+  RKK_TENDER: 'RKK_TENDER',
+  RKK_PELAKSANAAN: 'RKK_PELAKSANAAN',
+  CSMS_PRAKUALIFIKASI: 'CSMS_PRAKUALIFIKASI',
+} as const;
+
+export type DocumentTemplateStandard = typeof DocumentTemplateStandard[keyof typeof DocumentTemplateStandard];
+
+
+export const DocumentTemplateStandard = {
+  SMKK: 'SMKK',
+  CSMS: 'CSMS',
+} as const;
+
+export interface DocumentTemplate {
+  id: DocumentTemplateId;
+  name: string;
+  standard: DocumentTemplateStandard;
+  description: string;
+  sourceBasis: string[];
+  /** @minimum 1 */
+  sectionCount: number;
+}
+
+export type GeneratedDocumentInputTemplate = typeof GeneratedDocumentInputTemplate[keyof typeof GeneratedDocumentInputTemplate];
+
+
+export const GeneratedDocumentInputTemplate = {
+  RKK_TENDER: 'RKK_TENDER',
+  RKK_PELAKSANAAN: 'RKK_PELAKSANAAN',
+  CSMS_PRAKUALIFIKASI: 'CSMS_PRAKUALIFIKASI',
+} as const;
+
+export interface GeneratedDocumentInput {
+  /** @minimum 1 */
+  projectId: number;
+  template: GeneratedDocumentInputTemplate;
+  /** @minLength 1 */
+  companyName: string;
+  /** @minLength 1 */
+  directorName: string;
+  /** @minLength 1 */
+  safetyLead: string;
+  /** @minLength 1 */
+  scopeOfWork: string;
+  commitment?: string;
+  emergencyContact?: string;
+}
+
+export type GeneratedDocumentTemplate = typeof GeneratedDocumentTemplate[keyof typeof GeneratedDocumentTemplate];
+
+
+export const GeneratedDocumentTemplate = {
+  RKK_TENDER: 'RKK_TENDER',
+  RKK_PELAKSANAAN: 'RKK_PELAKSANAAN',
+  CSMS_PRAKUALIFIKASI: 'CSMS_PRAKUALIFIKASI',
+} as const;
+
+export type GeneratedDocumentStandard = typeof GeneratedDocumentStandard[keyof typeof GeneratedDocumentStandard];
+
+
+export const GeneratedDocumentStandard = {
+  SMKK: 'SMKK',
+  CSMS: 'CSMS',
+} as const;
+
+export interface GeneratedDocumentRow {
+  label: string;
+  value: string;
+}
+
+export interface GeneratedDocumentSection {
+  code: string;
+  title: string;
+  narrative: string[];
+  rows: GeneratedDocumentRow[];
+}
+
+export interface GeneratedDocument {
+  id: string;
+  title: string;
+  documentNumber: string;
+  template: GeneratedDocumentTemplate;
+  standard: GeneratedDocumentStandard;
+  projectName: string;
+  companyName: string;
+  generatedAt: string;
+  disclaimer: string;
+  sources: string[];
+  sections: GeneratedDocumentSection[];
+}
+
 export type CertificateStatus = typeof CertificateStatus[keyof typeof CertificateStatus];
 
 

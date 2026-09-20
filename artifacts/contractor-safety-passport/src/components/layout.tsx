@@ -7,7 +7,8 @@ import {
   FileText, 
   Users, 
   Award, 
-  ActivitySquare 
+  ActivitySquare,
+  FileCog
 } from "lucide-react";
 import {
   Sidebar,
@@ -32,6 +33,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     { icon: FolderKanban, label: "Proyek", href: "/projects" },
     { icon: CheckSquare, label: "Kesiapan (Readiness)", href: "/readiness" },
     { icon: FileText, label: "Dokumen K3", href: "/documents" },
+    { icon: FileCog, label: "Generator Dokumen", href: "/document-generator" },
     { icon: Users, label: "Personel K3", href: "/people" },
     { icon: Award, label: "Sertifikat", href: "/certificates" },
     { icon: ActivitySquare, label: "Aktivitas Lapangan", href: "/field-activities" },

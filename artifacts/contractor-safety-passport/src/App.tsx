@@ -17,6 +17,7 @@ import ProjectsPage from '@/pages/projects';
 import ProjectDetailPage from '@/pages/projects-detail';
 import ReadinessPage from '@/pages/readiness';
 import DocumentsPage from '@/pages/documents';
+import DocumentGeneratorPage from '@/pages/document-generator';
 import PeoplePage from '@/pages/people';
 import CertificatesPage from '@/pages/certificates';
 import FieldActivitiesPage from '@/pages/field-activities';
@@ -33,6 +34,7 @@ function Router() {
           <Route path="/projects/:id" component={ProjectDetailPage} />
           <Route path="/readiness" component={ReadinessPage} />
           <Route path="/documents" component={DocumentsPage} />
+          <Route path="/document-generator" component={DocumentGeneratorPage} />
           <Route path="/people" component={PeoplePage} />
           <Route path="/certificates" component={CertificatesPage} />
           <Route path="/field-activities" component={FieldActivitiesPage} />

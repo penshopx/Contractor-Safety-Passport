@@ -18,6 +18,8 @@ tags:
     description: K3 personnel and roles
   - name: documents
     description: SMKK and CSMS document tracking
+  - name: document-generator
+    description: Generate project-specific RKK and CSMS documents
   - name: certificates
     description: Certificate and expiry tracking
   - name: field-activities
@@ -226,6 +228,40 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SafetyDocument"
+  /document-templates:
+    get:
+      operationId: listDocumentTemplates
+      tags: [document-generator]
+      summary: List supported document templates
+      responses:
+        "200":
+          description: Supported document templates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DocumentTemplate"
+  /generated-documents:
+    post:
+      operationId: generateDocument
+      tags: [document-generator]
+      summary: Generate an RKK or CSMS document from project data
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GeneratedDocumentInput"
+      responses:
+        "201":
+          description: Generated document
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeneratedDocument"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /certificates:
     get:
       operationId: listCertificates
@@ -410,6 +446,75 @@ components:
         project: { type: string, minLength: 1 }
         status: { type: string, enum: [ready, review, missing] }
       required: [name, type, standard, project, status]
+    DocumentTemplate:
+      type: object
+      properties:
+        id:
+          type: string
+          enum: [RKK_TENDER, RKK_PELAKSANAAN, CSMS_PRAKUALIFIKASI]
+        name: { type: string }
+        standard: { type: string, enum: [SMKK, CSMS] }
+        description: { type: string }
+        sourceBasis:
+          type: array
+          items: { type: string }
+        sectionCount: { type: integer, minimum: 1 }
+      required: [id, name, standard, description, sourceBasis, sectionCount]
+    GeneratedDocumentInput:
+      type: object
+      properties:
+        projectId: { type: integer, minimum: 1 }
+        template:
+          type: string
+          enum: [RKK_TENDER, RKK_PELAKSANAAN, CSMS_PRAKUALIFIKASI]
+        companyName: { type: string, minLength: 1 }
+        directorName: { type: string, minLength: 1 }
+        safetyLead: { type: string, minLength: 1 }
+        scopeOfWork: { type: string, minLength: 1 }
+        commitment: { type: string }
+        emergencyContact: { type: string }
+      required: [projectId, template, companyName, directorName, safetyLead, scopeOfWork]
+    GeneratedDocument:
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: string }
+        documentNumber: { type: string }
+        template:
+          type: string
+          enum: [RKK_TENDER, RKK_PELAKSANAAN, CSMS_PRAKUALIFIKASI]
+        standard: { type: string, enum: [SMKK, CSMS] }
+        projectName: { type: string }
+        companyName: { type: string }
+        generatedAt: { type: string, format: date-time }
+        disclaimer: { type: string }
+        sources:
+          type: array
+          items: { type: string }
+        sections:
+          type: array
+          items:
+            $ref: "#/components/schemas/GeneratedDocumentSection"
+      required: [id, title, documentNumber, template, standard, projectName, companyName, generatedAt, disclaimer, sources, sections]
+    GeneratedDocumentSection:
+      type: object
+      properties:
+        code: { type: string }
+        title: { type: string }
+        narrative:
+          type: array
+          items: { type: string }
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/GeneratedDocumentRow"
+      required: [code, title, narrative, rows]
+    GeneratedDocumentRow:
+      type: object
+      properties:
+        label: { type: string }
+        value: { type: string }
+      required: [label, value]
     Certificate:
       type: object
       properties:
