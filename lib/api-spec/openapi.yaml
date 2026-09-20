@@ -598,22 +598,38 @@ components:
       type: object
       properties:
         id: { type: integer }
+        clientId: { type: string }
         type: { type: string, enum: [Toolbox, Inspection, "Near miss", "Permit to work"] }
         title: { type: string }
         project: { type: string }
         actor: { type: string }
         status: { type: string, enum: [complete, review, open] }
+        notes: { type: ["string", "null"] }
+        photoDataUrl: { type: ["string", "null"] }
+        latitude: { type: ["number", "null"] }
+        longitude: { type: ["number", "null"] }
+        locationAccuracy: { type: ["number", "null"] }
+        signatureSvg: { type: ["string", "null"] }
         occurredAt: { type: string, format: date-time }
-      required: [id, type, title, project, actor, status, occurredAt]
+        syncedAt: { type: string, format: date-time }
+      required: [id, clientId, type, title, project, actor, status, notes, photoDataUrl, latitude, longitude, locationAccuracy, signatureSvg, occurredAt, syncedAt]
     FieldActivityInput:
       type: object
       properties:
+        clientId: { type: string, minLength: 8, maxLength: 100 }
         type: { type: string, enum: [Toolbox, Inspection, "Near miss", "Permit to work"] }
         title: { type: string, minLength: 1 }
         project: { type: string, minLength: 1 }
         actor: { type: string, minLength: 1 }
         status: { type: string, enum: [complete, review, open] }
-      required: [type, title, project, actor, status]
+        notes: { type: string, maxLength: 4000 }
+        photoDataUrl: { type: string, maxLength: 8000000 }
+        latitude: { type: number, minimum: -90, maximum: 90 }
+        longitude: { type: number, minimum: -180, maximum: 180 }
+        locationAccuracy: { type: number, minimum: 0 }
+        signatureSvg: { type: string, maxLength: 100000 }
+        occurredAt: { type: string, format: date-time }
+      required: [clientId, type, title, project, actor, status, occurredAt]
     Activity:
       type: object
       properties:

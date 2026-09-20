@@ -9,6 +9,11 @@ import type { FieldActivityInputStatus } from './fieldActivityInputStatus';
 import type { FieldActivityInputType } from './fieldActivityInputType';
 
 export interface FieldActivityInput {
+  /**
+     * @minLength 8
+     * @maxLength 100
+     */
+  clientId: string;
   type: FieldActivityInputType;
   /** @minLength 1 */
   title: string;
@@ -17,4 +22,23 @@ export interface FieldActivityInput {
   /** @minLength 1 */
   actor: string;
   status: FieldActivityInputStatus;
+  /** @maxLength 4000 */
+  notes?: string;
+  /** @maxLength 8000000 */
+  photoDataUrl?: string;
+  /**
+     * @minimum -90
+     * @maximum 90
+     */
+  latitude?: number;
+  /**
+     * @minimum -180
+     * @maximum 180
+     */
+  longitude?: number;
+  /** @minimum 0 */
+  locationAccuracy?: number;
+  /** @maxLength 100000 */
+  signatureSvg?: string;
+  occurredAt: Date;
 }

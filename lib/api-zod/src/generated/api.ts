@@ -506,12 +506,20 @@ export const CreateCertificateResponse = zod.object({
  */
 export const ListFieldActivitiesResponseItem = zod.object({
   "id": zod.number().int(),
+  "clientId": zod.string(),
   "type": zod.enum(['Toolbox', 'Inspection', 'Near miss', 'Permit to work']),
   "title": zod.string(),
   "project": zod.string(),
   "actor": zod.string(),
   "status": zod.enum(['complete', 'review', 'open']),
-  "occurredAt": zod.coerce.date()
+  "notes": zod.string().nullable(),
+  "photoDataUrl": zod.string().nullable(),
+  "latitude": zod.number().nullable(),
+  "longitude": zod.number().nullable(),
+  "locationAccuracy": zod.number().nullable(),
+  "signatureSvg": zod.string().nullable(),
+  "occurredAt": zod.coerce.date(),
+  "syncedAt": zod.coerce.date()
 })
 export const ListFieldActivitiesResponse = zod.array(ListFieldActivitiesResponseItem)
 
@@ -519,27 +527,60 @@ export const ListFieldActivitiesResponse = zod.array(ListFieldActivitiesResponse
 /**
  * @summary Record a field activity
  */
+export const createFieldActivityBodyClientIdMin = 8;
+export const createFieldActivityBodyClientIdMax = 100;
 
 
+
+
+export const createFieldActivityBodyNotesMax = 4000;
+
+export const createFieldActivityBodyPhotoDataUrlMax = 8000000;
+
+export const createFieldActivityBodyLatitudeMin = -90;
+export const createFieldActivityBodyLatitudeMax = 90;
+
+export const createFieldActivityBodyLongitudeMin = -180;
+export const createFieldActivityBodyLongitudeMax = 180;
+
+export const createFieldActivityBodyLocationAccuracyMin = 0;
+
+export const createFieldActivityBodySignatureSvgMax = 100000;
 
 
 
 export const CreateFieldActivityBody = zod.object({
+  "clientId": zod.string().min(createFieldActivityBodyClientIdMin).max(createFieldActivityBodyClientIdMax),
   "type": zod.enum(['Toolbox', 'Inspection', 'Near miss', 'Permit to work']),
   "title": zod.string().min(1),
   "project": zod.string().min(1),
   "actor": zod.string().min(1),
-  "status": zod.enum(['complete', 'review', 'open'])
+  "status": zod.enum(['complete', 'review', 'open']),
+  "notes": zod.string().max(createFieldActivityBodyNotesMax).optional(),
+  "photoDataUrl": zod.string().max(createFieldActivityBodyPhotoDataUrlMax).optional(),
+  "latitude": zod.number().min(createFieldActivityBodyLatitudeMin).max(createFieldActivityBodyLatitudeMax).optional(),
+  "longitude": zod.number().min(createFieldActivityBodyLongitudeMin).max(createFieldActivityBodyLongitudeMax).optional(),
+  "locationAccuracy": zod.number().min(createFieldActivityBodyLocationAccuracyMin).optional(),
+  "signatureSvg": zod.string().max(createFieldActivityBodySignatureSvgMax).optional(),
+  "occurredAt": zod.coerce.date()
 })
 
 export const CreateFieldActivityResponse = zod.object({
   "id": zod.number().int(),
+  "clientId": zod.string(),
   "type": zod.enum(['Toolbox', 'Inspection', 'Near miss', 'Permit to work']),
   "title": zod.string(),
   "project": zod.string(),
   "actor": zod.string(),
   "status": zod.enum(['complete', 'review', 'open']),
-  "occurredAt": zod.coerce.date()
+  "notes": zod.string().nullable(),
+  "photoDataUrl": zod.string().nullable(),
+  "latitude": zod.number().nullable(),
+  "longitude": zod.number().nullable(),
+  "locationAccuracy": zod.number().nullable(),
+  "signatureSvg": zod.string().nullable(),
+  "occurredAt": zod.coerce.date(),
+  "syncedAt": zod.coerce.date()
 })
 
 

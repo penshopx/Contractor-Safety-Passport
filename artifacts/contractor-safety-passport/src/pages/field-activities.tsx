@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
-import { Plus, Search, Megaphone, Stethoscope, AlertTriangle, FileSignature } from "lucide-react";
+import { Plus, Search, Megaphone, Stethoscope, AlertTriangle, FileSignature, Camera, MapPin, PenLine, Cloud } from "lucide-react";
 import { toast } from "sonner";
 import { FieldActivityInputType, FieldActivityInputStatus } from "@workspace/api-client-react";
 
@@ -22,6 +22,7 @@ const createActivitySchema = z.object({
   project: z.string().min(1, "Proyek wajib diisi"),
   actor: z.string().min(1, "Pelaksana wajib diisi"),
   status: z.nativeEnum(FieldActivityInputStatus),
+  notes: z.string().max(4000).optional(),
 });
 
 export default function FieldActivitiesPage() {
@@ -45,12 +46,18 @@ export default function FieldActivitiesPage() {
       project: "",
       actor: "",
       status: "open"
+      ,notes: ""
     }
   });
 
   const onSubmit = (values: z.infer<typeof createActivitySchema>) => {
     createActivity.mutate(
-      { data: values },
+      { data: {
+        ...values,
+        notes: values.notes || undefined,
+        clientId: `web-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
+        occurredAt: new Date().toISOString(),
+      } },
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getListFieldActivitiesQueryKey() });
@@ -138,6 +145,9 @@ export default function FieldActivitiesPage() {
                     </FormItem>
                   )} />
                 </div>
+                <FormField control={form.control} name="notes" render={({ field }) => (
+                  <FormItem><FormLabel>Catatan / Temuan</FormLabel><FormControl><Input placeholder="Topik, temuan, atau tindakan koreksi..." {...field} /></FormControl><FormMessage /></FormItem>
+                )} />
                 <div className="grid grid-cols-2 gap-4">
                   <FormField control={form.control} name="project" render={({ field }) => (
                     <FormItem><FormLabel>Nama Proyek</FormLabel><FormControl><Input placeholder="Proyek..." {...field} /></FormControl><FormMessage /></FormItem>
@@ -178,19 +188,20 @@ export default function FieldActivitiesPage() {
                 <TableHead>Jenis</TableHead>
                 <TableHead>Proyek</TableHead>
                 <TableHead>Pelaksana / Waktu</TableHead>
+                <TableHead>Bukti digital</TableHead>
                 <TableHead className="text-right">Status</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                  <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
                     Memuat data...
                   </TableCell>
                 </TableRow>
               ) : filteredActivities?.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                  <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
                     Tidak ada aktivitas ditemukan.
                   </TableCell>
                 </TableRow>
@@ -218,6 +229,19 @@ export default function FieldActivitiesPage() {
                           {new Date(activity.occurredAt).toLocaleString('id-ID', {day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'})}
                         </span>
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        {activity.photoDataUrl ? (
+                          <a href={activity.photoDataUrl} target="_blank" rel="noreferrer" title="Buka foto bukti">
+                            <img src={activity.photoDataUrl} alt="Bukti lapangan" className="h-9 w-9 rounded-md object-cover ring-1 ring-border" />
+                          </a>
+                        ) : <Camera className="h-4 w-4 opacity-30" />}
+                        <MapPin className={`h-4 w-4 ${activity.latitude != null ? "text-primary" : "opacity-30"}`} />
+                        <PenLine className={`h-4 w-4 ${activity.signatureSvg ? "text-primary" : "opacity-30"}`} />
+                        <Cloud className="h-4 w-4 text-emerald-400" />
+                      </div>
+                      {activity.notes ? <p className="mt-1 max-w-[220px] truncate text-xs text-muted-foreground" title={activity.notes}>{activity.notes}</p> : null}
                     </TableCell>
                     <TableCell className="text-right">
                       {getStatusBadge(activity.status)}

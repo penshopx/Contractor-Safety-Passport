@@ -70,12 +70,20 @@ export const fieldActivitiesTable = pgTable("field_activities", {
   id: serial("id").primaryKey(),
   organizationId: text("organization_id").notNull().default("legacy"),
   createdBy: text("created_by").notNull().default("system"),
+  clientId: text("client_id").notNull().default("legacy"),
   type: text("type").notNull(),
   title: text("title").notNull(),
   project: text("project").notNull(),
   actor: text("actor").notNull(),
   status: text("status").notNull(),
+  notes: text("notes"),
+  photoDataUrl: text("photo_data_url"),
+  latitude: real("latitude"),
+  longitude: real("longitude"),
+  locationAccuracy: real("location_accuracy"),
+  signatureSvg: text("signature_svg"),
   occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull().defaultNow(),
+  syncedAt: timestamp("synced_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const insertProjectSchema = createInsertSchema(projectsTable).omit({
@@ -105,7 +113,7 @@ export const insertFieldActivitySchema = createInsertSchema(fieldActivitiesTable
   id: true,
   organizationId: true,
   createdBy: true,
-  occurredAt: true,
+  syncedAt: true,
 });
 
 export type InsertProject = z.infer<typeof insertProjectSchema>;

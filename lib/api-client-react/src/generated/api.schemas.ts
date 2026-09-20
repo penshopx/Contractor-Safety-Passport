@@ -430,12 +430,26 @@ export const FieldActivityStatus = {
 
 export interface FieldActivity {
   id: number;
+  clientId: string;
   type: FieldActivityType;
   title: string;
   project: string;
   actor: string;
   status: FieldActivityStatus;
+  /** @nullable */
+  notes: string | null;
+  /** @nullable */
+  photoDataUrl: string | null;
+  /** @nullable */
+  latitude: number | null;
+  /** @nullable */
+  longitude: number | null;
+  /** @nullable */
+  locationAccuracy: number | null;
+  /** @nullable */
+  signatureSvg: string | null;
   occurredAt: string;
+  syncedAt: string;
 }
 
 export type FieldActivityInputType = typeof FieldActivityInputType[keyof typeof FieldActivityInputType];
@@ -458,6 +472,11 @@ export const FieldActivityInputStatus = {
 } as const;
 
 export interface FieldActivityInput {
+  /**
+     * @minLength 8
+     * @maxLength 100
+     */
+  clientId: string;
   type: FieldActivityInputType;
   /** @minLength 1 */
   title: string;
@@ -466,6 +485,25 @@ export interface FieldActivityInput {
   /** @minLength 1 */
   actor: string;
   status: FieldActivityInputStatus;
+  /** @maxLength 4000 */
+  notes?: string;
+  /** @maxLength 8000000 */
+  photoDataUrl?: string;
+  /**
+     * @minimum -90
+     * @maximum 90
+     */
+  latitude?: number;
+  /**
+     * @minimum -180
+     * @maximum 180
+     */
+  longitude?: number;
+  /** @minimum 0 */
+  locationAccuracy?: number;
+  /** @maxLength 100000 */
+  signatureSvg?: string;
+  occurredAt: string;
 }
 
 export interface Activity {

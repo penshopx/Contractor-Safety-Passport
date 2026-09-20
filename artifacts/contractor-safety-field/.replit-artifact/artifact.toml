@@ -1,0 +1,24 @@
+kind = "mobile"
+previewPath = "/field/"
+title = "Safety Passport Field"
+description = "Aplikasi mobile pendamping untuk mandor dan petugas K3 yang mencatat toolbox meeting, inspeksi, PTW, dan near miss secara offline dengan bukti foto, lokasi, waktu, tanda tangan, lalu menyinkronkannya ke dashboard Contractor Safety Passport."
+version = "1.0.0"
+id = "artifacts/contractor-safety-field"
+router = "expo-domain"
+
+[[services]]
+name = "expo"
+ensurePreviewReachable = "/status"
+paths = [ "/field/" ]
+localPort = 23567
+
+[services.development]
+run = "pnpm --filter @workspace/contractor-safety-field run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/contractor-safety-field", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/contractor-safety-field", "run", "serve" ]
+
+[services.env]
+PORT = "23567"
+BASE_PATH = "/field/"

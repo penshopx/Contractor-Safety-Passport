@@ -10,10 +10,24 @@ import type { FieldActivityType } from './fieldActivityType';
 
 export interface FieldActivity {
   id: number;
+  clientId: string;
   type: FieldActivityType;
   title: string;
   project: string;
   actor: string;
   status: FieldActivityStatus;
+  /** @nullable */
+  notes: string | null;
+  /** @nullable */
+  photoDataUrl: string | null;
+  /** @nullable */
+  latitude: number | null;
+  /** @nullable */
+  longitude: number | null;
+  /** @nullable */
+  locationAccuracy: number | null;
+  /** @nullable */
+  signatureSvg: string | null;
   occurredAt: Date;
+  syncedAt: Date;
 }

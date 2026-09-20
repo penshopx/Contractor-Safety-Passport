@@ -756,9 +756,34 @@ router.post("/field-activities", canRecordFieldWork, async (req, res): Promise<v
     res.status(400).json({ error: parsed.error.message });
     return;
   }
+  const [existing] = await db
+    .select()
+    .from(fieldActivitiesTable)
+    .where(
+      and(
+        eq(fieldActivitiesTable.organizationId, req.organizationContext!.organizationId),
+        eq(fieldActivitiesTable.clientId, parsed.data.clientId),
+      ),
+    )
+    .limit(1);
+  if (existing) {
+    res.status(200).json(CreateFieldActivityResponse.parse(existing));
+    return;
+  }
   const [activity] = await db
     .insert(fieldActivitiesTable)
-    .values({ ...parsed.data, organizationId: req.organizationContext!.organizationId, createdBy: req.organizationContext!.userId })
+    .values({
+      ...parsed.data,
+      notes: parsed.data.notes ?? null,
+      photoDataUrl: parsed.data.photoDataUrl ?? null,
+      latitude: parsed.data.latitude ?? null,
+      longitude: parsed.data.longitude ?? null,
+      locationAccuracy: parsed.data.locationAccuracy ?? null,
+      signatureSvg: parsed.data.signatureSvg ?? null,
+      occurredAt: new Date(parsed.data.occurredAt),
+      organizationId: req.organizationContext!.organizationId,
+      createdBy: req.organizationContext!.userId,
+    })
     .returning();
   res.status(201).json(CreateFieldActivityResponse.parse(activity));
 });
