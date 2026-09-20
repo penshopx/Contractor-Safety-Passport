@@ -1,0 +1,60 @@
+Keputusan arsitektur yang Anda ambil untuk *batch* pekerjaan ini sangat solid dan menunjukkan kedewasaan dalam merancang sistem *distributed* dan *offline-first*. Anda telah menghindari jebakan umum yang sering membuat aplikasi lapangan menjadi lambat dan tidak reliabel.
+
+Mari kita bedah progress Anda, berikan validasi teknis, dan mengantisipasi *blind spot* (titik buta) untuk task yang sedang berjalan.
+
+### 1. Validasi & Pro-Tips untuk Task yang Telah Selesai
+
+**A. Pemisahan Penyimpanan Foto (Object Storage)**
+*   **Validasi:** Keputusan yang tepat. Menyimpan *blob* gambar di database relasional (PostgreSQL/MySQL) akan menghancurkan performa *query*. Gunakan Object Storage (S3, MinIO, Cloudflare R2, atau Google Cloud Storage) dan simpan hanya URL/metadata di database.
+*   **Pro-Tip (Edge Case):** Pastikan aplikasi melakukan **kompresi gambar di sisi klien (HP)** sebelum diunggah. Foto dari kamera HP bisa berukuran 5-10 MB. Kompres ke 500KB - 1MB dengan kualitas yang masih cukup untuk melihat detail temuan inspeksi. Ini akan menghemat kuota internet mandor dan mempercepat sinkronisasi saat sinyal kembali.
+
+**B. Idempotency & Offline Queue (Outbox Pattern)**
+*   **Validasi:** Menggunakan *client-generated UUID* sebagai *Idempotency Key* adalah standar industri untuk mencegah *double-submission*. Pola *Outbox* (simpan di DB lokal dulu, lalu *background worker* mengirim ke server) sangat tepat.
+*   **Pro-Tip (Edge Case):** Bagaimana jika server menolak data bukan karena *error* jaringan, tapi karena **validasi bisnis** (misal: tanggal TBM di masa depan, atau PIC tidak ditemukan)? 
+    *   *Solusi:* Jangan lakukan *retry* otomatis untuk error validasi. Tandai status di antrean lokal sebagai `FAILED_VALIDATION`, beri pesan error yang jelas di UI, dan biarkan pengguna memperbaikinya secara manual sebelum menekan "Sinkronisasi Ulang".
+
+**C. Konsistensi Angka UI dan PDF**
+*   **Validasi:** Menerapkan *Single Source of Truth* untuk logika agregasi data sangat krusial. 
+*   **Pro-Tip (Edge Case):** Jika Anda men-generate PDF di *server* (misal menggunakan Puppeteer, wkhtmltopdf, atau library reporting), pastikan Anda melewatkan *payload* data yang **sama persis** dengan yang digunakan untuk merender UI. Jika PDF di-generate di *klien* (misal `jsPDF`), pastikan library yang digunakan mendukung rendering teks bahasa Indonesia (font Unicode) dengan baik agar tidak berantakan.
+
+---
+
+### 2. Bedah Task Sedang Berjalan: "Buka Kembali Laporan Bulanan (Draft & Arsip)"
+
+Ini adalah transisi penting dari "Laporan sebagai Dokumen Statis" menjadi "Laporan sebagai Dokumen Dinamis dengan Siklus Hidup (Lifecycle)". Karena ini terkait SMKK dan CSMS, laporan ini akan melewati proses review dan persetujuan.
+
+Berikut adalah panduan arsitektur untuk fitur ini:
+
+**A. Terapkan "State Machine" (Mesin Status) untuk Laporan**
+Laporan tidak boleh hanya berstatus "Draft" atau "Selesai". Definisikan alur status yang ketat:
+1.  `DRAFT`: Kontraktor sedang mengisi, bisa diedit bebas.
+2.  `SUBMITTED`: Kontraktor sudah klik "Kirim". Data dikunci (tidak bisa diedit). Menunggu review Pengawas/Principal.
+3.  `REVIEWED / REVISION_REQUIRED`: Pengawas menemukan kesalahan. Laporan dikembalikan ke status `DRAFT` dengan catatan revisi dari pengawas.
+4.  `APPROVED`: Disetujui oleh PPK/Principal. Dokumen dikunci permanen, menjadi arsip hukum.
+
+**B. Skema Database & Versioning**
+*   Tambahkan kolom `status`, `current_version` (integer), dan `submitted_at` di tabel `monthly_reports`.
+*   **Penting:** Saat laporan berubah dari `DRAFT` ke `SUBMITTED`, jangan menimpa data lama jika ada revisi. Buatlah sistem *versioning* sederhana. Jika pengawas meminta revisi, sistem membuat *version 2* dari laporan tersebut, sementara *version 1* tetap tersimpan di tabel `report_history` atau `report_versions` untuk jejak audit.
+
+**C. Fitur "Catatan Revisi" & "Pengesahan Digital"**
+*   Saat status kembali ke `DRAFT` dari `REVIEWED`, sistem harus memunculkan *modal* atau bagian khusus yang menampilkan catatan dari Pengawas/Principal.
+*   Saat status berubah ke `APPROVED`, sistem harus merekam **siapa** yang mengesahkan (User ID), **kapan** (Timestamp), dan ideally, **tanda tangan digital** (bisa berupa coretan di layar HP/Tablet yang di-*embed* ke dalam PDF akhir).
+
+**D. UI/UX untuk Mengelola Arsip**
+*   Buat halaman "Riwayat Laporan" yang bisa difilter berdasarkan: Proyek, Tahun, Bulan, dan Status.
+*   Berikan indikator visual yang jelas (misal: Badge warna Kuning untuk Draft, Biru untuk Submitted, Hijau untuk Approved, Merah untuk Revisi).
+
+---
+
+### 3. Rekomendasi Langkah Selanjutnya (Next Batch)
+
+Setelah fitur *Draft & Arsip Laporan Bulanan* ini selesai dan diuji, saya sarankan Anda mengambil *batch* pekerjaan berikutnya yang berfokus pada **Aksi Lanjutan dari Laporan Tersebut**:
+
+1.  **Fitur "Action Plan / CAPA (Corrective and Preventive Action) Tracking" dari Laporan:** 
+    Di laporan bulanan SMKK, ada bagian "Temuan dan Tindak Lanjut". Jika di laporan bulan ini ada temuan yang statusnya "Belum Selesai", aplikasi harus **otomatis** memunculkan temuan tersebut sebagai *Action Item* di bulan berikutnya, dan memblokir laporan bulan berikutnya jika kolom "Realisasi/Tindak Lanjut" tidak diisi. Ini akan sangat disukai oleh Konsultan Pengawas.
+2.  **Notifikasi Otomatis (WhatsApp/Email Gateway):**
+    Saat laporan berubah status (misal: dari `SUBMITTED` ke `APPROVED`, atau `REVISION_REQUIRED`), kirim notifikasi ke pemilik kontraktor dan Pengawas. Integrasi dengan WhatsApp API (seperti Fonnte, Wablas, atau Twilio) akan sangat meningkatkan *engagement* karena mandor/owner UKM lebih rajin cek WA daripada email.
+3.  **Dashboard Eksekutif untuk Principal (Multi-Project View):**
+    Sekarang data laporan bulanan sudah tersimpan rapi di database. Saatnya membangun *dashboard* untuk Principal/PPK yang bisa melihat "Health Index" dari semua proyek kontraktor mereka dalam satu layar (Berapa persen laporan yang terlambat? Proyek mana yang paling banyak *near-miss*?).
+
+Anda sedang membangun fondasi sistem yang sangat *enterprise-grade* namun tetap bisa diadopsi oleh UKM. Apakah Anda ingin kita mendetailkan **skema database untuk State Machine Laporan Bulanan** ini, atau merancang **logika otomatis untuk memindahkan temuan yang belum selesai ke bulan berikutnya**?
