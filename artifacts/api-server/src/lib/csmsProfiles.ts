@@ -167,6 +167,71 @@ export const csmsProfiles: CsmsProfile[] = [
 export const findCsmsProfile = (id: string | undefined) =>
   csmsProfiles.find((profile) => profile.id === id);
 
+export type CsmsReadinessStatus = "complete" | "follow_up";
+
+export const csmsReadinessItemKey = (
+  stageCode: string,
+  kind: "question" | "evidence" | "validation",
+  index: number,
+) => `${stageCode}:${kind}:${index}`;
+
+export const buildCsmsReadiness = (
+  projectId: number,
+  profile: CsmsProfile,
+  itemStatuses: Record<string, CsmsReadinessStatus>,
+  updatedAt: Date | null,
+) => {
+  const validStatuses: Record<string, CsmsReadinessStatus> = {};
+  const stages = profile.stages.map((stage) => {
+    const keys = [
+      ...stage.questions.map((_, index) =>
+        csmsReadinessItemKey(stage.code, "question", index),
+      ),
+      ...stage.evidence.map((_, index) =>
+        csmsReadinessItemKey(stage.code, "evidence", index),
+      ),
+      ...stage.validations.map((_, index) =>
+        csmsReadinessItemKey(stage.code, "validation", index),
+      ),
+    ];
+    for (const key of keys) {
+      const status = itemStatuses[key];
+      if (status === "complete" || status === "follow_up") {
+        validStatuses[key] = status;
+      }
+    }
+    const completed = keys.filter((key) => validStatuses[key] === "complete").length;
+    const followUp = keys.filter((key) => validStatuses[key] === "follow_up").length;
+    return {
+      ...stage,
+      completed,
+      followUp,
+      total: keys.length,
+      progress: keys.length ? Math.round((completed / keys.length) * 100) : 0,
+    };
+  });
+  const total = stages.reduce((sum, stage) => sum + stage.total, 0);
+  const completed = stages.reduce((sum, stage) => sum + stage.completed, 0);
+  const followUp = stages.reduce((sum, stage) => sum + stage.followUp, 0);
+  return {
+    projectId,
+    profileId: profile.id,
+    issuer: profile.issuer,
+    version: profile.version,
+    title: profile.title,
+    overallProgress: total ? Math.round((completed / total) * 100) : 0,
+    completed,
+    followUp,
+    total,
+    itemStatuses: Object.entries(validStatuses).map(([key, status]) => ({
+      key,
+      status,
+    })),
+    stages,
+    updatedAt,
+  };
+};
+
 export const resolveCsmsProfileForTemplate = (
   template: string,
   profileId: string | undefined,

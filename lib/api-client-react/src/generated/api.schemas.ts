@@ -385,6 +385,85 @@ export interface CsmsProfile {
   stages: CsmsStage[];
 }
 
+export type CsmsReadinessItemStatusStatus = typeof CsmsReadinessItemStatusStatus[keyof typeof CsmsReadinessItemStatusStatus];
+
+
+export const CsmsReadinessItemStatusStatus = {
+  complete: 'complete',
+  follow_up: 'follow_up',
+} as const;
+
+export interface CsmsReadinessItemStatus {
+  key: string;
+  status: CsmsReadinessItemStatusStatus;
+}
+
+export interface CsmsReadinessStage {
+  code: string;
+  name: string;
+  purpose: string;
+  roles: string[];
+  questions: string[];
+  evidence: string[];
+  validations: string[];
+  /** @minimum 0 */
+  completed: number;
+  /** @minimum 0 */
+  followUp: number;
+  /** @minimum 0 */
+  total: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  progress: number;
+}
+
+export type ProjectCsmsReadinessProfileId = typeof ProjectCsmsReadinessProfileId[keyof typeof ProjectCsmsReadinessProfileId];
+
+
+export const ProjectCsmsReadinessProfileId = {
+  PERTAMINA_2020: 'PERTAMINA_2020',
+  PLN_2021: 'PLN_2021',
+} as const;
+
+export interface ProjectCsmsReadiness {
+  projectId: number;
+  profileId: ProjectCsmsReadinessProfileId;
+  issuer: string;
+  version: string;
+  title: string;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  overallProgress: number;
+  /** @minimum 0 */
+  completed: number;
+  /** @minimum 0 */
+  followUp: number;
+  /** @minimum 0 */
+  total: number;
+  itemStatuses: CsmsReadinessItemStatus[];
+  stages: CsmsReadinessStage[];
+  /** @nullable */
+  updatedAt: string | null;
+}
+
+export type ProjectCsmsReadinessUpdateProfileId = typeof ProjectCsmsReadinessUpdateProfileId[keyof typeof ProjectCsmsReadinessUpdateProfileId];
+
+
+export const ProjectCsmsReadinessUpdateProfileId = {
+  PERTAMINA_2020: 'PERTAMINA_2020',
+  PLN_2021: 'PLN_2021',
+} as const;
+
+export interface ProjectCsmsReadinessUpdate {
+  profileId: ProjectCsmsReadinessUpdateProfileId;
+  /** @maxItems 200 */
+  itemStatuses: CsmsReadinessItemStatus[];
+}
+
 export type GeneratedDocumentInputTemplate = typeof GeneratedDocumentInputTemplate[keyof typeof GeneratedDocumentInputTemplate];
 
 

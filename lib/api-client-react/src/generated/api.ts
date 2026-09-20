@@ -51,6 +51,8 @@ import type {
   PersonInput,
   PersonUpdate,
   Project,
+  ProjectCsmsReadiness,
+  ProjectCsmsReadinessUpdate,
   ProjectInput,
   ProjectUpdate,
   ReadinessSummary,
@@ -1306,6 +1308,172 @@ export const useReplaceProjectSafetyBoq = <TError = ErrorType<ForbiddenResponse 
         TContext
       > => {
       return useMutation(getReplaceProjectSafetyBoqMutationOptions(options));
+    }
+
+export const getGetProjectCsmsReadinessUrl = (projectId: number,) => {
+
+
+
+
+  return `/api/projects/${projectId}/csms-readiness`
+}
+
+/**
+ * @summary Get stage readiness for the project's active CSMS profile
+ */
+export const getProjectCsmsReadiness = async (projectId: number, options?: Parameters<typeof customFetch>[1]): Promise<ProjectCsmsReadiness> => {
+
+  return customFetch<ProjectCsmsReadiness>(getGetProjectCsmsReadinessUrl(projectId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetProjectCsmsReadinessQueryKey = (projectId: number,) => {
+    return [
+    `/api/projects/${projectId}/csms-readiness`
+    ] as const;
+    }
+
+
+export const getGetProjectCsmsReadinessQueryOptions = <TData = Awaited<ReturnType<typeof getProjectCsmsReadiness>>, TError = ErrorType<NotFoundResponse>>(projectId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getProjectCsmsReadiness>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetProjectCsmsReadinessQueryKey(projectId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getProjectCsmsReadiness>>> = ({ signal }) => getProjectCsmsReadiness(projectId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: projectId !== null && projectId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getProjectCsmsReadiness>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetProjectCsmsReadinessQueryResult = NonNullable<Awaited<ReturnType<typeof getProjectCsmsReadiness>>>
+export type GetProjectCsmsReadinessQueryError = ErrorType<NotFoundResponse>
+
+
+/**
+ * @summary Get stage readiness for the project's active CSMS profile
+ */
+
+export function useGetProjectCsmsReadiness<TData = Awaited<ReturnType<typeof getProjectCsmsReadiness>>, TError = ErrorType<NotFoundResponse>>(
+ projectId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getProjectCsmsReadiness>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetProjectCsmsReadinessQueryOptions(projectId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateProjectCsmsReadinessUrl = (projectId: number,) => {
+
+
+
+
+  return `/api/projects/${projectId}/csms-readiness`
+}
+
+/**
+ * @summary Set the active CSMS profile and item statuses for a project
+ */
+export const updateProjectCsmsReadiness = async (projectId: number,
+    projectCsmsReadinessUpdate: ProjectCsmsReadinessUpdate, options?: Parameters<typeof customFetch>[1]): Promise<ProjectCsmsReadiness> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<ProjectCsmsReadiness>(getUpdateProjectCsmsReadinessUrl(projectId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(projectCsmsReadinessUpdate)
+  }
+);}
+
+
+
+
+
+export const getUpdateProjectCsmsReadinessMutationKey = () => ['updateProjectCsmsReadiness'] as const;
+
+export const getUpdateProjectCsmsReadinessMutationOptions = <TError = ErrorType<ForbiddenResponse | NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateProjectCsmsReadiness>>, TError,UpdateProjectCsmsReadinessMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateProjectCsmsReadiness>>, TError,UpdateProjectCsmsReadinessMutationVariables, TContext> => {
+
+const mutationKey = getUpdateProjectCsmsReadinessMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateProjectCsmsReadiness>>, UpdateProjectCsmsReadinessMutationVariables> = (props) => {
+          const {projectId,data} = props ?? {};
+
+          return  updateProjectCsmsReadiness(projectId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateProjectCsmsReadinessMutationResult = NonNullable<Awaited<ReturnType<typeof updateProjectCsmsReadiness>>>
+    export type UpdateProjectCsmsReadinessMutationBody = BodyType<ProjectCsmsReadinessUpdate>
+    export type UpdateProjectCsmsReadinessMutationError = ErrorType<ForbiddenResponse | NotFoundResponse>
+    export type UpdateProjectCsmsReadinessMutationVariables = {projectId: number;data: BodyType<ProjectCsmsReadinessUpdate>}
+
+    /**
+ * @summary Set the active CSMS profile and item statuses for a project
+ */
+export const useUpdateProjectCsmsReadiness = <TError = ErrorType<ForbiddenResponse | NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateProjectCsmsReadiness>>, TError,UpdateProjectCsmsReadinessMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateProjectCsmsReadiness>>,
+        TError,
+        UpdateProjectCsmsReadinessMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdateProjectCsmsReadinessMutationOptions(options));
     }
 
 export const getGetProjectUrl = (id: number,) => {

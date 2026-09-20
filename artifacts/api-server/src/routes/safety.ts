@@ -6,6 +6,7 @@ import {
   fieldActivitiesTable,
   monthlyReportsTable,
   peopleTable,
+  projectCsmsReadinessTable,
   projectsTable,
   safetyBoqItemsTable,
   safetyDocumentsTable,
@@ -26,6 +27,8 @@ import {
   GetDashboardSummaryResponse,
   GetProjectParams,
   GetProjectResponse,
+  GetProjectCsmsReadinessParams,
+  GetProjectCsmsReadinessResponse,
   GetProjectSafetyBoqParams,
   GetProjectSafetyBoqResponse,
   GetReadinessSummaryResponse,
@@ -50,6 +53,9 @@ import {
   UpdateProjectBody,
   UpdateProjectParams,
   UpdateProjectResponse,
+  UpdateProjectCsmsReadinessBody,
+  UpdateProjectCsmsReadinessParams,
+  UpdateProjectCsmsReadinessResponse,
   ReplaceProjectSafetyBoqBody,
   ReplaceProjectSafetyBoqParams,
   ReplaceProjectSafetyBoqResponse,
@@ -59,7 +65,9 @@ import {
   requireRole,
 } from "../middlewares/organizationContext.ts";
 import {
+  buildCsmsReadiness,
   csmsProfiles,
+  findCsmsProfile,
   resolveCsmsProfileForTemplate,
 } from "../lib/csmsProfiles.ts";
 import { tagEvidence } from "../lib/objectStorage.ts";
@@ -346,6 +354,85 @@ export const createSafetyRouter = (
     }
     res.json(GetProjectResponse.parse(project));
   });
+
+  router.get("/projects/:projectId/csms-readiness", async (req, res): Promise<void> => {
+    const params = GetProjectCsmsReadinessParams.safeParse(req.params);
+    if (!params.success) {
+      res.status(400).json({ error: params.error.message });
+      return;
+    }
+    const { organizationId } = req.organizationContext!;
+    const [project] = await db
+      .select({ id: projectsTable.id })
+      .from(projectsTable)
+      .where(and(eq(projectsTable.id, params.data.projectId), eq(projectsTable.organizationId, organizationId)));
+    if (!project) {
+      res.status(404).json({ error: "Proyek tidak ditemukan" });
+      return;
+    }
+    const [saved] = await db
+      .select()
+      .from(projectCsmsReadinessTable)
+      .where(and(eq(projectCsmsReadinessTable.projectId, project.id), eq(projectCsmsReadinessTable.organizationId, organizationId)));
+    const profile = findCsmsProfile(saved?.profileId) ?? csmsProfiles[0]!;
+    res.json(
+      GetProjectCsmsReadinessResponse.parse(
+        buildCsmsReadiness(project.id, profile, saved?.itemStatuses ?? {}, saved?.updatedAt ?? null),
+      ),
+    );
+  });
+
+  router.put(
+    "/projects/:projectId/csms-readiness",
+    requireRole("owner", "safety_expert"),
+    async (req, res): Promise<void> => {
+      const params = UpdateProjectCsmsReadinessParams.safeParse(req.params);
+      const body = UpdateProjectCsmsReadinessBody.safeParse(req.body);
+      if (!params.success || !body.success) {
+        res.status(400).json({ error: "Data kesiapan CSMS tidak valid" });
+        return;
+      }
+      const { organizationId, userId } = req.organizationContext!;
+      const [project] = await db
+        .select({ id: projectsTable.id })
+        .from(projectsTable)
+        .where(and(eq(projectsTable.id, params.data.projectId), eq(projectsTable.organizationId, organizationId)));
+      if (!project) {
+        res.status(404).json({ error: "Proyek tidak ditemukan" });
+        return;
+      }
+      const profile = findCsmsProfile(body.data.profileId);
+      if (!profile) {
+        res.status(400).json({ error: "Profil CSMS tidak valid" });
+        return;
+      }
+      const itemStatuses = Object.fromEntries(
+        body.data.itemStatuses.map((item) => [item.key, item.status]),
+      );
+      const [saved] = await db
+        .insert(projectCsmsReadinessTable)
+        .values({
+          organizationId,
+          projectId: project.id,
+          profileId: profile.id,
+          itemStatuses,
+          updatedBy: userId,
+        })
+        .onConflictDoUpdate({
+          target: [
+            projectCsmsReadinessTable.organizationId,
+            projectCsmsReadinessTable.projectId,
+          ],
+          set: { profileId: profile.id, itemStatuses, updatedBy: userId, updatedAt: new Date() },
+        })
+        .returning();
+      res.json(
+        UpdateProjectCsmsReadinessResponse.parse(
+          buildCsmsReadiness(project.id, profile, saved!.itemStatuses, saved!.updatedAt),
+        ),
+      );
+    },
+  );
 
   router.get("/projects/:projectId/safety-boq", async (req, res): Promise<void> => {
     const params = GetProjectSafetyBoqParams.safeParse(req.params);

@@ -1,6 +1,7 @@
 import {
   date,
   integer,
+  jsonb,
   primaryKey,
   pgTable,
   real,
@@ -28,6 +29,30 @@ export const projectsTable = pgTable("projects", {
   value: real("value").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+export const projectCsmsReadinessTable = pgTable(
+  "project_csms_readiness",
+  {
+    organizationId: text("organization_id").notNull(),
+    projectId: integer("project_id").notNull(),
+    profileId: text("profile_id").notNull(),
+    itemStatuses: jsonb("item_statuses")
+      .$type<Record<string, "complete" | "follow_up">>()
+      .notNull()
+      .default({}),
+    updatedBy: text("updated_by").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    primaryKey({
+      name: "project_csms_readiness_organization_project_pk",
+      columns: [table.organizationId, table.projectId],
+    }),
+  ],
+);
 
 export const peopleTable = pgTable("people", {
   id: serial("id").primaryKey(),

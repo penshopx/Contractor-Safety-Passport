@@ -406,6 +406,140 @@ export const ReplaceProjectSafetyBoqResponse = zod.array(ReplaceProjectSafetyBoq
 
 
 /**
+ * @summary Get stage readiness for the project's active CSMS profile
+ */
+
+
+
+export const GetProjectCsmsReadinessParams = zod.object({
+  "projectId": zod.coerce.number().int().min(1)
+})
+
+export const getProjectCsmsReadinessResponseOverallProgressMin = 0;
+export const getProjectCsmsReadinessResponseOverallProgressMax = 100;
+
+export const getProjectCsmsReadinessResponseCompletedMin = 0;
+
+export const getProjectCsmsReadinessResponseFollowUpMin = 0;
+
+export const getProjectCsmsReadinessResponseTotalMin = 0;
+
+export const getProjectCsmsReadinessResponseStagesItemCompletedMin = 0;
+
+export const getProjectCsmsReadinessResponseStagesItemFollowUpMin = 0;
+
+export const getProjectCsmsReadinessResponseStagesItemTotalMin = 0;
+
+export const getProjectCsmsReadinessResponseStagesItemProgressMin = 0;
+export const getProjectCsmsReadinessResponseStagesItemProgressMax = 100;
+
+
+
+export const GetProjectCsmsReadinessResponse = zod.object({
+  "projectId": zod.number().int(),
+  "profileId": zod.enum(['PERTAMINA_2020', 'PLN_2021']),
+  "issuer": zod.string(),
+  "version": zod.string(),
+  "title": zod.string(),
+  "overallProgress": zod.number().int().min(getProjectCsmsReadinessResponseOverallProgressMin).max(getProjectCsmsReadinessResponseOverallProgressMax),
+  "completed": zod.number().int().min(getProjectCsmsReadinessResponseCompletedMin),
+  "followUp": zod.number().int().min(getProjectCsmsReadinessResponseFollowUpMin),
+  "total": zod.number().int().min(getProjectCsmsReadinessResponseTotalMin),
+  "itemStatuses": zod.array(zod.object({
+  "key": zod.string(),
+  "status": zod.enum(['complete', 'follow_up'])
+})),
+  "stages": zod.array(zod.object({
+  "code": zod.string(),
+  "name": zod.string(),
+  "purpose": zod.string(),
+  "roles": zod.array(zod.string()),
+  "questions": zod.array(zod.string()),
+  "evidence": zod.array(zod.string()),
+  "validations": zod.array(zod.string()),
+  "completed": zod.number().int().min(getProjectCsmsReadinessResponseStagesItemCompletedMin),
+  "followUp": zod.number().int().min(getProjectCsmsReadinessResponseStagesItemFollowUpMin),
+  "total": zod.number().int().min(getProjectCsmsReadinessResponseStagesItemTotalMin),
+  "progress": zod.number().int().min(getProjectCsmsReadinessResponseStagesItemProgressMin).max(getProjectCsmsReadinessResponseStagesItemProgressMax)
+})),
+  "updatedAt": zod.coerce.date().nullable()
+})
+
+
+/**
+ * @summary Set the active CSMS profile and item statuses for a project
+ */
+
+
+
+export const UpdateProjectCsmsReadinessParams = zod.object({
+  "projectId": zod.coerce.number().int().min(1)
+})
+
+export const updateProjectCsmsReadinessBodyItemStatusesMax = 200;
+
+
+
+export const UpdateProjectCsmsReadinessBody = zod.object({
+  "profileId": zod.enum(['PERTAMINA_2020', 'PLN_2021']),
+  "itemStatuses": zod.array(zod.object({
+  "key": zod.string(),
+  "status": zod.enum(['complete', 'follow_up'])
+})).max(updateProjectCsmsReadinessBodyItemStatusesMax)
+})
+
+export const updateProjectCsmsReadinessResponseOverallProgressMin = 0;
+export const updateProjectCsmsReadinessResponseOverallProgressMax = 100;
+
+export const updateProjectCsmsReadinessResponseCompletedMin = 0;
+
+export const updateProjectCsmsReadinessResponseFollowUpMin = 0;
+
+export const updateProjectCsmsReadinessResponseTotalMin = 0;
+
+export const updateProjectCsmsReadinessResponseStagesItemCompletedMin = 0;
+
+export const updateProjectCsmsReadinessResponseStagesItemFollowUpMin = 0;
+
+export const updateProjectCsmsReadinessResponseStagesItemTotalMin = 0;
+
+export const updateProjectCsmsReadinessResponseStagesItemProgressMin = 0;
+export const updateProjectCsmsReadinessResponseStagesItemProgressMax = 100;
+
+
+
+export const UpdateProjectCsmsReadinessResponse = zod.object({
+  "projectId": zod.number().int(),
+  "profileId": zod.enum(['PERTAMINA_2020', 'PLN_2021']),
+  "issuer": zod.string(),
+  "version": zod.string(),
+  "title": zod.string(),
+  "overallProgress": zod.number().int().min(updateProjectCsmsReadinessResponseOverallProgressMin).max(updateProjectCsmsReadinessResponseOverallProgressMax),
+  "completed": zod.number().int().min(updateProjectCsmsReadinessResponseCompletedMin),
+  "followUp": zod.number().int().min(updateProjectCsmsReadinessResponseFollowUpMin),
+  "total": zod.number().int().min(updateProjectCsmsReadinessResponseTotalMin),
+  "itemStatuses": zod.array(zod.object({
+  "key": zod.string(),
+  "status": zod.enum(['complete', 'follow_up'])
+})),
+  "stages": zod.array(zod.object({
+  "code": zod.string(),
+  "name": zod.string(),
+  "purpose": zod.string(),
+  "roles": zod.array(zod.string()),
+  "questions": zod.array(zod.string()),
+  "evidence": zod.array(zod.string()),
+  "validations": zod.array(zod.string()),
+  "completed": zod.number().int().min(updateProjectCsmsReadinessResponseStagesItemCompletedMin),
+  "followUp": zod.number().int().min(updateProjectCsmsReadinessResponseStagesItemFollowUpMin),
+  "total": zod.number().int().min(updateProjectCsmsReadinessResponseStagesItemTotalMin),
+  "progress": zod.number().int().min(updateProjectCsmsReadinessResponseStagesItemProgressMin).max(updateProjectCsmsReadinessResponseStagesItemProgressMax)
+})),
+  "updatedAt": zod.coerce.date().nullable()
+})
+
+
+/**
  * @summary Get a project
  */
 

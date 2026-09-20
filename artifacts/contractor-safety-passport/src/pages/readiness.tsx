@@ -1,130 +1,268 @@
-import { useGetReadinessSummary } from "@workspace/api-client-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
-import { ShieldCheck, AlertCircle, ShieldAlert } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  getGetProjectCsmsReadinessQueryKey,
+  useGetOrganizationContext,
+  useGetProjectCsmsReadiness,
+  useListProjects,
+  useUpdateProjectCsmsReadiness,
+  type CsmsReadinessItemStatusStatus,
+} from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { AlertCircle, CheckCircle2, Circle, Loader2, ShieldCheck } from "lucide-react";
+import { toast } from "sonner";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+
+type ItemKind = "question" | "evidence" | "validation";
+
+const profiles = [
+  { id: "PERTAMINA_2020", label: "Pertamina · Pedoman 2020" },
+  { id: "PLN_2021", label: "PLN · SPLN U1.006:2021" },
+] as const;
+
+const itemKey = (stageCode: string, kind: ItemKind, index: number) =>
+  `${stageCode}:${kind}:${index}`;
 
 export default function ReadinessPage() {
-  const { data, isLoading } = useGetReadinessSummary();
+  const queryClient = useQueryClient();
+  const [projectId, setProjectId] = useState<number | null>(null);
+  const { data: projects, isLoading: projectsLoading } = useListProjects();
+  const { data: organization } = useGetOrganizationContext();
+  const canEdit =
+    organization?.role === "owner" || organization?.role === "safety_expert";
 
-  const getStatusIcon = (status: string) => {
-    switch(status) {
-      case 'done': return <ShieldCheck className="h-5 w-5 text-primary" />;
-      case 'attention': return <AlertCircle className="h-5 w-5 text-accent-foreground" />;
-      case 'missing': return <ShieldAlert className="h-5 w-5 text-destructive" />;
-      default: return null;
-    }
+  useEffect(() => {
+    if (projectId === null && projects?.length) setProjectId(projects[0].id);
+  }, [projectId, projects]);
+
+  const {
+    data: readiness,
+    isLoading: readinessLoading,
+    isError,
+  } = useGetProjectCsmsReadiness(projectId ?? 0, {
+    query: {
+      enabled: projectId !== null,
+      queryKey: getGetProjectCsmsReadinessQueryKey(projectId ?? 0),
+    },
+  });
+  const updateReadiness = useUpdateProjectCsmsReadiness();
+
+  const statuses = useMemo(
+    () => new Map(readiness?.itemStatuses.map((item) => [item.key, item.status])),
+    [readiness],
+  );
+
+  const save = (
+    profileId: "PERTAMINA_2020" | "PLN_2021",
+    nextStatuses: Array<{ key: string; status: CsmsReadinessItemStatusStatus }>,
+  ) => {
+    if (projectId === null) return;
+    updateReadiness.mutate(
+      { projectId, data: { profileId, itemStatuses: nextStatuses } },
+      {
+        onSuccess: (result) => {
+          queryClient.setQueryData(
+            getGetProjectCsmsReadinessQueryKey(projectId),
+            result,
+          );
+        },
+        onError: () => toast.error("Status kesiapan gagal disimpan"),
+      },
+    );
   };
 
-  const getStatusBadge = (status: string) => {
-    switch(status) {
-      case 'done': return <Badge className="bg-primary/20 text-primary hover:bg-primary/30 border-primary/30">Siap</Badge>;
-      case 'attention': return <Badge className="bg-accent/20 text-accent-foreground hover:bg-accent/30 border-accent/30">Perhatian</Badge>;
-      case 'missing': return <Badge variant="destructive" className="bg-destructive/20 text-destructive hover:bg-destructive/30 border-destructive/30">Belum Siap</Badge>;
-      default: return null;
-    }
+  const updateItem = (
+    key: string,
+    status: CsmsReadinessItemStatusStatus,
+  ) => {
+    if (!readiness) return;
+    const next = new Map(statuses);
+    if (next.get(key) === status) next.delete(key);
+    else next.set(key, status);
+    save(
+      readiness.profileId,
+      Array.from(next, ([itemKeyValue, itemStatus]) => ({
+        key: itemKeyValue,
+        status: itemStatus,
+      })),
+    );
   };
+
+  const selectedProject = projects?.find((project) => project.id === projectId);
+  const isLoading = projectsLoading || (projectId !== null && readinessLoading);
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Kesiapan Pra-Kualifikasi</h1>
-        <p className="text-muted-foreground mt-1 text-lg">Asesmen SMKK (PUPR) dan CSMS (Migas) untuk tender proyek.</p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <ScoreCard 
-          title="Skor Keseluruhan" 
-          score={data?.overall} 
-          loading={isLoading} 
-          primary
-        />
-        <ScoreCard 
-          title="SMKK (Konstruksi Umum)" 
-          score={data?.smkk} 
-          loading={isLoading} 
-        />
-        <ScoreCard 
-          title="CSMS (Migas & Tambang)" 
-          score={data?.csms} 
-          loading={isLoading} 
-        />
+        <h1 className="text-3xl font-bold tracking-tight">Kesiapan Proyek CSMS</h1>
+        <p className="mt-1 text-lg text-muted-foreground">
+          Pantau pertanyaan, bukti, dan validasi pada setiap tahap profil principal.
+        </p>
       </div>
 
       <Card className="border-border/50 bg-card/40 backdrop-blur-sm">
-        <CardHeader>
-          <CardTitle>Daftar Periksa Persyaratan</CardTitle>
-          <CardDescription>Status dokumen dan elemen sistem berdasarkan standar yang berlaku</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="space-y-4">
-              <Skeleton className="h-16 w-full" />
-              <Skeleton className="h-16 w-full" />
-              <Skeleton className="h-16 w-full" />
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {data?.checks.map((check) => (
-                <div 
-                  key={check.id} 
-                  className={`flex flex-col sm:flex-row sm:items-center gap-4 p-4 rounded-lg border transition-colors ${
-                    check.status === 'missing' ? 'bg-destructive/5 border-destructive/20' : 
-                    check.status === 'attention' ? 'bg-accent/5 border-accent/20' : 
-                    'bg-background/50 border-border/50'
-                  }`}
-                >
-                  <div className="shrink-0 pt-1 sm:pt-0">
-                    {getStatusIcon(check.status)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <h4 className="font-semibold text-foreground">{check.title}</h4>
-                      <Badge variant="outline" className="text-[10px] font-mono py-0 h-5 bg-background">
-                        {check.standard}
-                      </Badge>
-                    </div>
-                    <p className="text-sm text-muted-foreground">{check.detail}</p>
-                  </div>
-                  <div className="shrink-0 flex items-center justify-end sm:justify-start">
-                    {getStatusBadge(check.status)}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+        <CardContent className="grid gap-4 p-5 md:grid-cols-2">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Proyek</label>
+            <Select
+              value={projectId?.toString() ?? ""}
+              onValueChange={(value) => setProjectId(Number(value))}
+            >
+              <SelectTrigger><SelectValue placeholder="Pilih proyek" /></SelectTrigger>
+              <SelectContent>
+                {projects?.map((project) => (
+                  <SelectItem key={project.id} value={project.id.toString()}>
+                    {project.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Profil CSMS aktif</label>
+            <Select
+              value={readiness?.profileId ?? ""}
+              disabled={!readiness || !canEdit || updateReadiness.isPending}
+              onValueChange={(value: "PERTAMINA_2020" | "PLN_2021") =>
+                save(value, [])
+              }
+            >
+              <SelectTrigger><SelectValue placeholder="Pilih profil" /></SelectTrigger>
+              <SelectContent>
+                {profiles.map((profile) => (
+                  <SelectItem key={profile.id} value={profile.id}>
+                    {profile.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </CardContent>
       </Card>
+
+      {!projectsLoading && !projects?.length ? (
+        <Card><CardContent className="p-8 text-center text-muted-foreground">
+          Tambahkan proyek terlebih dahulu untuk mulai memantau kesiapan CSMS.
+        </CardContent></Card>
+      ) : isLoading ? (
+        <div className="space-y-4">
+          <Skeleton className="h-36 w-full" />
+          <Skeleton className="h-64 w-full" />
+        </div>
+      ) : isError || !readiness ? (
+        <Card><CardContent className="p-8 text-center text-destructive">
+          Data kesiapan proyek tidak dapat dimuat.
+        </CardContent></Card>
+      ) : (
+        <>
+          <div className="grid gap-4 md:grid-cols-4">
+            <ScoreCard title="Kesiapan keseluruhan" value={`${readiness.overallProgress}%`} icon={<ShieldCheck className="h-5 w-5 text-primary" />} />
+            <ScoreCard title="Butir lengkap" value={`${readiness.completed}/${readiness.total}`} icon={<CheckCircle2 className="h-5 w-5 text-primary" />} />
+            <ScoreCard title="Perlu tindak lanjut" value={String(readiness.followUp)} icon={<AlertCircle className="h-5 w-5 text-amber-400" />} />
+            <ScoreCard title="Tahap CSMS" value={String(readiness.stages.length)} icon={<Circle className="h-5 w-5 text-muted-foreground" />} />
+          </div>
+
+          <Card className="border-border/50 bg-card/40 backdrop-blur-sm">
+            <CardHeader>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <CardTitle>{selectedProject?.name}</CardTitle>
+                  <CardDescription className="mt-1">
+                    {readiness.issuer} · {readiness.version}
+                  </CardDescription>
+                </div>
+                {updateReadiness.isPending && (
+                  <Badge variant="outline" className="gap-1.5">
+                    <Loader2 className="h-3 w-3 animate-spin" /> Menyimpan
+                  </Badge>
+                )}
+              </div>
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-secondary">
+                <div className="h-full bg-primary transition-all" style={{ width: `${readiness.overallProgress}%` }} />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <Accordion type="multiple" defaultValue={[readiness.stages[0]?.code ?? ""]} className="space-y-3">
+                {readiness.stages.map((stage) => (
+                  <AccordionItem key={stage.code} value={stage.code} className="rounded-lg border border-border/60 px-4">
+                    <AccordionTrigger className="hover:no-underline">
+                      <div className="flex flex-1 items-center gap-3 pr-4 text-left">
+                        <Badge variant="outline" className="font-mono">{stage.code}</Badge>
+                        <div className="flex-1">
+                          <p className="font-semibold">{stage.name}</p>
+                          <p className="text-xs font-normal text-muted-foreground">
+                            {stage.completed}/{stage.total} lengkap
+                            {stage.followUp > 0 ? ` · ${stage.followUp} tindak lanjut` : ""}
+                          </p>
+                        </div>
+                        <span className="text-sm font-semibold text-primary">{stage.progress}%</span>
+                      </div>
+                    </AccordionTrigger>
+                    <AccordionContent className="space-y-5 pb-5">
+                      <p className="text-sm text-muted-foreground">{stage.purpose}</p>
+                      <ItemGroup title="Pertanyaan" kind="question" stageCode={stage.code} items={stage.questions} statuses={statuses} disabled={!canEdit || updateReadiness.isPending} onUpdate={updateItem} />
+                      <ItemGroup title="Bukti" kind="evidence" stageCode={stage.code} items={stage.evidence} statuses={statuses} disabled={!canEdit || updateReadiness.isPending} onUpdate={updateItem} />
+                      <ItemGroup title="Validasi" kind="validation" stageCode={stage.code} items={stage.validations} statuses={statuses} disabled={!canEdit || updateReadiness.isPending} onUpdate={updateItem} />
+                    </AccordionContent>
+                  </AccordionItem>
+                ))}
+              </Accordion>
+            </CardContent>
+          </Card>
+        </>
+      )}
     </div>
   );
 }
 
-function ScoreCard({ title, score, loading, primary = false }: { title: string, score?: number, loading: boolean, primary?: boolean }) {
+function ItemGroup({
+  title, kind, stageCode, items, statuses, disabled, onUpdate,
+}: {
+  title: string;
+  kind: ItemKind;
+  stageCode: string;
+  items: string[];
+  statuses: Map<string, CsmsReadinessItemStatusStatus>;
+  disabled: boolean;
+  onUpdate: (key: string, status: CsmsReadinessItemStatusStatus) => void;
+}) {
   return (
-    <Card className={`border-border/50 bg-card/40 backdrop-blur-sm overflow-hidden ${primary ? 'ring-1 ring-primary/50' : ''}`}>
-      <CardContent className="p-6">
-        <p className="text-sm font-medium text-muted-foreground mb-4">{title}</p>
-        {loading ? (
-          <Skeleton className="h-14 w-24" />
-        ) : (
-          <div className="flex items-baseline gap-2">
-            <span className={`text-6xl font-bold tracking-tighter ${primary ? 'text-primary' : 'text-foreground'}`}>
-              {score ?? 0}
-            </span>
-            <span className="text-xl font-bold text-muted-foreground mb-1">%</span>
+    <section className="space-y-2">
+      <h4 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">{title}</h4>
+      {items.map((item, index) => {
+        const key = itemKey(stageCode, kind, index);
+        const status = statuses.get(key);
+        return (
+          <div key={key} className="flex flex-col gap-3 rounded-md border border-border/50 bg-background/40 p-3 sm:flex-row sm:items-center">
+            <p className="flex-1 text-sm leading-relaxed">{item}</p>
+            <div className="flex shrink-0 gap-2">
+              <Button type="button" size="sm" variant={status === "complete" ? "default" : "outline"} disabled={disabled} onClick={() => onUpdate(key, "complete")}>
+                <CheckCircle2 className="mr-1.5 h-4 w-4" /> Lengkap
+              </Button>
+              <Button type="button" size="sm" variant={status === "follow_up" ? "destructive" : "outline"} disabled={disabled} onClick={() => onUpdate(key, "follow_up")}>
+                <AlertCircle className="mr-1.5 h-4 w-4" /> Tindak lanjut
+              </Button>
+            </div>
           </div>
-        )}
-        
-        {!loading && score !== undefined && (
-          <div className="w-full h-2 bg-secondary rounded-full mt-6 overflow-hidden">
-            <div 
-              className={`h-full transition-all duration-1000 ease-out ${
-                score >= 80 ? 'bg-primary' : score >= 60 ? 'bg-accent-foreground' : 'bg-destructive'
-              }`}
-              style={{ width: `${score}%` }}
-            />
-          </div>
-        )}
+        );
+      })}
+    </section>
+  );
+}
+
+function ScoreCard({ title, value, icon }: { title: string; value: string; icon: React.ReactNode }) {
+  return (
+    <Card className="border-border/50 bg-card/40">
+      <CardContent className="p-5">
+        <div className="mb-3 flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">{title}</p>
+          {icon}
+        </div>
+        <p className="text-3xl font-bold tracking-tight">{value}</p>
       </CardContent>
     </Card>
   );

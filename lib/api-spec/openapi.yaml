@@ -306,6 +306,51 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+  /projects/{projectId}/csms-readiness:
+    get:
+      operationId: getProjectCsmsReadiness
+      tags: [projects]
+      summary: Get stage readiness for the project's active CSMS profile
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        "200":
+          description: Project CSMS readiness
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectCsmsReadiness"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: updateProjectCsmsReadiness
+      tags: [projects]
+      summary: Set the active CSMS profile and item statuses for a project
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectCsmsReadinessUpdate"
+      responses:
+        "200":
+          description: Updated project CSMS readiness
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectCsmsReadiness"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /projects/{id}:
     get:
       operationId: getProject
@@ -856,6 +901,67 @@ components:
           items:
             $ref: "#/components/schemas/CsmsStage"
       required: [id, issuer, version, title, source, stages]
+    CsmsReadinessItemStatus:
+      type: object
+      properties:
+        key: { type: string }
+        status: { type: string, enum: [complete, follow_up] }
+      required: [key, status]
+    CsmsReadinessStage:
+      type: object
+      properties:
+        code: { type: string }
+        name: { type: string }
+        purpose: { type: string }
+        roles:
+          type: array
+          items: { type: string }
+        questions:
+          type: array
+          items: { type: string }
+        evidence:
+          type: array
+          items: { type: string }
+        validations:
+          type: array
+          items: { type: string }
+        completed: { type: integer, minimum: 0 }
+        followUp: { type: integer, minimum: 0 }
+        total: { type: integer, minimum: 0 }
+        progress: { type: integer, minimum: 0, maximum: 100 }
+      required: [code, name, purpose, roles, questions, evidence, validations, completed, followUp, total, progress]
+    ProjectCsmsReadiness:
+      type: object
+      properties:
+        projectId: { type: integer }
+        profileId: { type: string, enum: [PERTAMINA_2020, PLN_2021] }
+        issuer: { type: string }
+        version: { type: string }
+        title: { type: string }
+        overallProgress: { type: integer, minimum: 0, maximum: 100 }
+        completed: { type: integer, minimum: 0 }
+        followUp: { type: integer, minimum: 0 }
+        total: { type: integer, minimum: 0 }
+        itemStatuses:
+          type: array
+          items:
+            $ref: "#/components/schemas/CsmsReadinessItemStatus"
+        stages:
+          type: array
+          items:
+            $ref: "#/components/schemas/CsmsReadinessStage"
+        updatedAt: { type: ["string", "null"], format: date-time }
+      required: [projectId, profileId, issuer, version, title, overallProgress, completed, followUp, total, itemStatuses, stages, updatedAt]
+    ProjectCsmsReadinessUpdate:
+      type: object
+      properties:
+        profileId: { type: string, enum: [PERTAMINA_2020, PLN_2021] }
+        itemStatuses:
+          type: array
+          maxItems: 200
+          items:
+            $ref: "#/components/schemas/CsmsReadinessItemStatus"
+      required: [profileId, itemStatuses]
     GeneratedDocumentInput:
       type: object
       properties:
