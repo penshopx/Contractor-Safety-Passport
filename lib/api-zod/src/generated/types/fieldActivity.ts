@@ -11,6 +11,8 @@ import type { FieldActivityType } from './fieldActivityType';
 export interface FieldActivity {
   id: number;
   clientId: string;
+  /** @nullable */
+  projectId: number | null;
   type: FieldActivityType;
   title: string;
   project: string;

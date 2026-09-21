@@ -13,6 +13,7 @@ const activity = (
   type: string,
   status: string,
   occurredAt: string,
+  projectId = 1,
   project = "Proyek A",
 ): SmkkActivity => ({
   title,
@@ -20,6 +21,7 @@ const activity = (
   status,
   occurredAt,
   project,
+  projectId,
   actor: "Petugas",
 });
 
@@ -51,12 +53,12 @@ describe("laporan bulanan SMKK", () => {
       activity("akhir bulan", "Inspection", "open", "2026-09-30T23:59:59.999Z"),
       activity("bulan lalu", "Toolbox", "complete", "2026-08-31T23:59:59.999Z"),
       activity("bulan depan", "Toolbox", "complete", "2026-10-01T00:00:00.000Z"),
-      activity("proyek lain", "Toolbox", "complete", "2026-09-15T08:00:00.000Z", "Proyek B"),
+      activity("proyek lain", "Toolbox", "complete", "2026-09-15T08:00:00.000Z", 2, "Proyek B"),
     ];
 
     const selected = selectMonthlyProjectActivities(
       activities,
-      "Proyek A",
+      1,
       "2026-09",
     );
 
@@ -108,7 +110,7 @@ describe("laporan bulanan SMKK", () => {
   });
 
   it("menghasilkan laporan kosong yang valid untuk bulan tanpa aktivitas", () => {
-    const selected = selectMonthlyProjectActivities([], "Proyek A", "2026-09");
+    const selected = selectMonthlyProjectActivities([], 1, "2026-09");
     const summary = summarizeSmkkActivities(selected);
     const report = buildSections(
       createSmkkDocumentData(project, selected, summary, details),
@@ -132,5 +134,16 @@ describe("laporan bulanan SMKK", () => {
     assert.deepEqual(activityDetails?.rows, [
       ["Belum ada kegiatan lapangan", "-", "-", "-"],
     ]);
+  });
+
+  it("memisahkan dua proyek dengan nama yang sama berdasarkan ID", () => {
+    const activities = [
+      activity("proyek pertama", "Toolbox", "complete", "2026-09-10T08:00:00Z", 101, "Nama Sama"),
+      activity("proyek kedua", "Inspection", "complete", "2026-09-11T08:00:00Z", 202, "Nama Sama"),
+    ];
+
+    const selected = selectMonthlyProjectActivities(activities, 101, "2026-09");
+
+    assert.deepEqual(selected.map(({ title }) => title), ["proyek pertama"]);
   });
 });

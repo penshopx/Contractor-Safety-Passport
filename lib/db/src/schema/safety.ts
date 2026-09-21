@@ -244,6 +244,9 @@ export const fieldActivitiesTable = pgTable(
       .references(() => organizationsTable.id, { onDelete: "restrict" }),
     createdBy: text("created_by").notNull().default("system"),
     clientId: text("client_id").notNull().default("legacy"),
+    projectId: integer("project_id").references(() => projectsTable.id, {
+      onDelete: "restrict",
+    }),
     type: text("type").notNull(),
     title: text("title").notNull(),
     project: text("project").notNull(),
@@ -266,6 +269,7 @@ export const fieldActivitiesTable = pgTable(
       table.clientId,
     ).where(sql`${table.clientId} <> 'legacy'`),
     index("field_activities_organization_id_idx").on(table.organizationId),
+    index("field_activities_project_id_idx").on(table.projectId),
     index("field_activities_photo_object_path_idx").on(table.photoObjectPath),
   ],
 );

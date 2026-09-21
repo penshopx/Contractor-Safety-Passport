@@ -34,7 +34,7 @@ function formatDateMonthYear(monthString: string) {
 
 export default function SmkkReportsPage() {
   const queryClient = useQueryClient();
-  const [selectedProjectName, setSelectedProjectName] = useState<string>("");
+  const [selectedProjectId, setSelectedProjectId] = useState<string>("");
   const [selectedMonth, setSelectedMonth] = useState<string>(
     new Date().toISOString().slice(0, 7) // YYYY-MM
   );
@@ -56,15 +56,15 @@ export default function SmkkReportsPage() {
   const createReport = useCreateMonthlyReport();
   const updateReport = useUpdateMonthlyReport();
 
-  const selectedProject = projects?.find(p => p.name === selectedProjectName);
+  const selectedProject = projects?.find(p => String(p.id) === selectedProjectId);
   
   const filteredActivities = useMemo(() => {
     return selectMonthlyProjectActivities(
       activities,
-      selectedProjectName,
+      selectedProject?.id ?? 0,
       selectedMonth,
     );
-  }, [activities, selectedProjectName, selectedMonth]);
+  }, [activities, selectedProject?.id, selectedMonth]);
 
   const summary = useMemo(
     () => summarizeSmkkActivities(filteredActivities),
@@ -73,7 +73,7 @@ export default function SmkkReportsPage() {
 
   const openReport = (report: MonthlyReport) => {
     setOpenedReportId(report.id);
-    setSelectedProjectName(report.projectName);
+    setSelectedProjectId(String(report.projectId));
     setSelectedMonth(report.period);
     setEvaluation(report.evaluation);
     setNotes(report.notes);
@@ -211,8 +211,8 @@ export default function SmkkReportsPage() {
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="project-select">Proyek</Label>
-              <Select value={selectedProjectName} onValueChange={(value) => {
-                setSelectedProjectName(value);
+              <Select value={selectedProjectId} onValueChange={(value) => {
+                setSelectedProjectId(value);
                 setOpenedReportId(null);
               }}>
                 <SelectTrigger id="project-select" data-testid="select-project">
@@ -220,7 +220,7 @@ export default function SmkkReportsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   {projects?.map(p => (
-                    <SelectItem key={p.id} value={p.name} data-testid={`select-project-${p.id}`}>
+                    <SelectItem key={p.id} value={String(p.id)} data-testid={`select-project-${p.id}`}>
                       {p.name}
                     </SelectItem>
                   ))}
@@ -318,7 +318,7 @@ export default function SmkkReportsPage() {
                 <Button
                   variant="outline"
                   onClick={() => saveReport("draft")}
-                  disabled={!selectedProjectName || createReport.isPending || updateReport.isPending}
+                  disabled={!selectedProjectId || createReport.isPending || updateReport.isPending}
                   data-testid="button-save-draft"
                 >
                   <Save className="h-4 w-4 mr-2" /> Simpan Draf
@@ -326,14 +326,14 @@ export default function SmkkReportsPage() {
                 <Button
                   variant="outline"
                   onClick={() => saveReport("final")}
-                  disabled={!selectedProjectName || createReport.isPending || updateReport.isPending}
+                  disabled={!selectedProjectId || createReport.isPending || updateReport.isPending}
                   data-testid="button-save-final"
                 >
                   Simpan Final
                 </Button>
                 <Button
                   onClick={handleDownload}
-                  disabled={!selectedProjectName || isGenerating}
+                  disabled={!selectedProjectId || isGenerating}
                   data-testid="button-download-pdf"
                   className="bg-primary text-primary-foreground font-semibold"
                 >
@@ -343,7 +343,7 @@ export default function SmkkReportsPage() {
               </div>
            </div>
            <ScrollArea className="flex-1 bg-muted/40 p-4 md:p-8">
-             {selectedProjectName ? (
+              {selectedProjectId ? (
                <div className="bg-white text-black p-8 md:p-12 shadow-md max-w-[210mm] mx-auto min-h-[297mm] flex flex-col gap-6 font-sans text-[11px] md:text-sm">
                   <div className="text-center mb-4">
                     <h1 className="text-lg md:text-xl font-bold uppercase tracking-wide border-b-2 border-black pb-4 mb-4">Laporan Bulanan Pelaksanaan SMKK</h1>

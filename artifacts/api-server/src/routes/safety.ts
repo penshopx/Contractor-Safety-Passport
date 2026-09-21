@@ -1376,6 +1376,23 @@ export const createSafetyRouter = (
         res.status(200).json(CreateFieldActivityResponse.parse(existing));
         return;
       }
+      const [project] = await db
+        .select({ id: projectsTable.id, name: projectsTable.name })
+        .from(projectsTable)
+        .where(
+          and(
+            eq(projectsTable.id, parsed.data.projectId),
+            eq(
+              projectsTable.organizationId,
+              req.organizationContext!.organizationId,
+            ),
+          ),
+        )
+        .limit(1);
+      if (!project) {
+        res.status(400).json({ error: "Proyek tidak ditemukan" });
+        return;
+      }
       if (parsed.data.photoObjectPath) {
         try {
           await tagEvidence(
@@ -1391,6 +1408,7 @@ export const createSafetyRouter = (
         .insert(fieldActivitiesTable)
         .values({
           ...parsed.data,
+          project: project.name,
           notes: parsed.data.notes ?? null,
           photoObjectPath: parsed.data.photoObjectPath ?? null,
           photoDataUrl: null,

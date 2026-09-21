@@ -610,6 +610,8 @@ export const FieldActivityStatus = {
 export interface FieldActivity {
   id: number;
   clientId: string;
+  /** @nullable */
+  projectId: number | null;
   type: FieldActivityType;
   title: string;
   project: string;
@@ -656,6 +658,8 @@ export interface FieldActivityInput {
      * @maxLength 100
      */
   clientId: string;
+  /** @minimum 1 */
+  projectId: number;
   type: FieldActivityInputType;
   /** @minLength 1 */
   title: string;

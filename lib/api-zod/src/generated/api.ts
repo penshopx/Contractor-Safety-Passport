@@ -1016,6 +1016,7 @@ export const CreateCertificateResponse = zod.object({
 export const ListFieldActivitiesResponseItem = zod.object({
   "id": zod.number().int(),
   "clientId": zod.string(),
+  "projectId": zod.number().int().nullable(),
   "type": zod.enum(['Toolbox', 'Inspection', 'Near miss', 'Permit to work']),
   "title": zod.string(),
   "project": zod.string(),
@@ -1042,6 +1043,7 @@ export const createFieldActivityBodyClientIdMax = 100;
 
 
 
+
 export const createFieldActivityBodyNotesMax = 4000;
 
 export const createFieldActivityBodyPhotoObjectPathRegExp = new RegExp('^/objects/uploads/[a-f0-9-]+$');
@@ -1059,6 +1061,7 @@ export const createFieldActivityBodySignatureSvgMax = 100000;
 
 export const CreateFieldActivityBody = zod.object({
   "clientId": zod.string().min(createFieldActivityBodyClientIdMin).max(createFieldActivityBodyClientIdMax),
+  "projectId": zod.number().int().min(1),
   "type": zod.enum(['Toolbox', 'Inspection', 'Near miss', 'Permit to work']),
   "title": zod.string().min(1),
   "project": zod.string().min(1),
@@ -1076,6 +1079,7 @@ export const CreateFieldActivityBody = zod.object({
 export const CreateFieldActivityResponse = zod.object({
   "id": zod.number().int(),
   "clientId": zod.string(),
+  "projectId": zod.number().int().nullable(),
   "type": zod.enum(['Toolbox', 'Inspection', 'Near miss', 'Permit to work']),
   "title": zod.string(),
   "project": zod.string(),

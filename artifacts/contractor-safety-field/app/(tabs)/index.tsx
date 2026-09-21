@@ -1,5 +1,5 @@
 import { Feather } from '@expo/vector-icons';
-import type { FieldActivityInputType } from '@workspace/api-client-react';
+import { useListProjects, type FieldActivityInputType } from '@workspace/api-client-react';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
@@ -21,9 +21,10 @@ const types: { value: FieldActivityInputType; label: string; icon: keyof typeof 
 export default function CreateActivityScreen() {
   const colors = useColors();
   const { addActivity, syncNow } = useFieldActivities();
+  const { data: projects, isLoading: isLoadingProjects } = useListProjects();
   const [type, setType] = useState<FieldActivityInputType>('Toolbox');
   const [title, setTitle] = useState('');
-  const [project, setProject] = useState('');
+  const [projectId, setProjectId] = useState<number>();
   const [actor, setActor] = useState('');
   const [notes, setNotes] = useState('');
   const [photoUri, setPhotoUri] = useState<string>();
@@ -68,7 +69,8 @@ export default function CreateActivityScreen() {
   };
 
   const save = async () => {
-    if (!title.trim() || !project.trim() || !actor.trim()) {
+    const project = projects?.find((item) => item.id === projectId);
+    if (!title.trim() || !project || !actor.trim()) {
       Alert.alert('Data belum lengkap', 'Isi judul, proyek, dan penanggung jawab.');
       return;
     }
@@ -78,7 +80,8 @@ export default function CreateActivityScreen() {
       clientId: `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
       type,
       title: title.trim(),
-      project: project.trim(),
+      projectId: project.id,
+      project: project.name,
       actor: actor.trim(),
       status: type === 'Near miss' ? 'open' : 'complete',
       notes: notes.trim() || undefined,
@@ -91,7 +94,7 @@ export default function CreateActivityScreen() {
       occurredAt,
     });
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    setTitle(''); setProject(''); setActor(''); setNotes(''); setPhotoUri(undefined); setPhotoContentType(undefined); setLocation(undefined); setSignatureSvg(undefined); setSignatureKey((value) => value + 1);
+    setTitle(''); setProjectId(undefined); setActor(''); setNotes(''); setPhotoUri(undefined); setPhotoContentType(undefined); setLocation(undefined); setSignatureSvg(undefined); setSignatureKey((value) => value + 1);
     setSaving(false);
     Alert.alert('Tersimpan di perangkat', 'Laporan aman disimpan dan akan disinkronkan saat koneksi tersedia.');
     void syncNow();
@@ -113,7 +116,14 @@ export default function CreateActivityScreen() {
 
       <View style={styles.form}>
         <Field label="Judul laporan" value={title} onChangeText={setTitle} placeholder="Toolbox meeting pekerjaan ketinggian" colors={colors} />
-        <Field label="Nama proyek" value={project} onChangeText={setProject} placeholder="Proyek Gedung Utama" colors={colors} />
+        <Text style={[styles.fieldLabel, { color: colors.foreground }]}>Proyek</Text>
+        <View style={styles.projectList}>
+          {projects?.map((project) => {
+            const selected = project.id === projectId;
+            return <Pressable key={project.id} testID={`project-${project.id}`} onPress={() => setProjectId(project.id)} style={[styles.projectOption, { backgroundColor: selected ? colors.secondary : colors.input, borderColor: selected ? colors.primary : colors.border }]}><Text style={[styles.projectOptionText, { color: colors.foreground }]}>{project.name}</Text><Text style={[styles.projectOptionMeta, { color: colors.mutedForeground }]}>{project.location}</Text></Pressable>;
+          })}
+          {!isLoadingProjects && projects?.length === 0 ? <Text style={{ color: colors.mutedForeground }}>Belum ada proyek di ruang kerja ini.</Text> : null}
+        </View>
         <Field label="Penanggung jawab" value={actor} onChangeText={setActor} placeholder="Nama mandor / petugas K3" colors={colors} />
         <Field label="Catatan temuan" value={notes} onChangeText={setNotes} placeholder="Topik, temuan, tindakan koreksi…" colors={colors} multiline />
       </View>
@@ -146,6 +156,10 @@ const styles = StyleSheet.create({
   form: { marginTop: 18, gap: 13 },
   field: { gap: 7 },
   fieldLabel: { fontFamily: 'PlusJakartaSans_600SemiBold', fontSize: 12 },
+  projectList: { gap: 8 },
+  projectOption: { minHeight: 54, borderWidth: 1, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 9, justifyContent: 'center' },
+  projectOptionText: { fontFamily: 'PlusJakartaSans_600SemiBold', fontSize: 14 },
+  projectOptionMeta: { fontFamily: 'PlusJakartaSans_400Regular', fontSize: 11, marginTop: 2 },
   input: { minHeight: 50, borderWidth: 1, borderRadius: 8, paddingHorizontal: 14, fontFamily: 'PlusJakartaSans_400Regular', fontSize: 14 },
   multiline: { height: 92, paddingTop: 13, textAlignVertical: 'top' },
   actions: { flexDirection: 'row', gap: 10 },

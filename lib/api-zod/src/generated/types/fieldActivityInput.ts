@@ -14,6 +14,8 @@ export interface FieldActivityInput {
      * @maxLength 100
      */
   clientId: string;
+  /** @minimum 1 */
+  projectId: number;
   type: FieldActivityInputType;
   /** @minLength 1 */
   title: string;

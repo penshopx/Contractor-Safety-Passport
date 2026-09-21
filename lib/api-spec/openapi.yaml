@@ -1146,6 +1146,7 @@ components:
       properties:
         id: { type: integer }
         clientId: { type: string }
+        projectId: { type: ["integer", "null"] }
         type: { type: string, enum: [Toolbox, Inspection, "Near miss", "Permit to work"] }
         title: { type: string }
         project: { type: string }
@@ -1159,11 +1160,12 @@ components:
         signatureSvg: { type: ["string", "null"] }
         occurredAt: { type: string, format: date-time }
         syncedAt: { type: string, format: date-time }
-      required: [id, clientId, type, title, project, actor, status, notes, photoObjectPath, latitude, longitude, locationAccuracy, signatureSvg, occurredAt, syncedAt]
+      required: [id, clientId, projectId, type, title, project, actor, status, notes, photoObjectPath, latitude, longitude, locationAccuracy, signatureSvg, occurredAt, syncedAt]
     FieldActivityInput:
       type: object
       properties:
         clientId: { type: string, minLength: 8, maxLength: 100 }
+        projectId: { type: integer, minimum: 1 }
         type: { type: string, enum: [Toolbox, Inspection, "Near miss", "Permit to work"] }
         title: { type: string, minLength: 1 }
         project: { type: string, minLength: 1 }
@@ -1176,7 +1178,7 @@ components:
         locationAccuracy: { type: number, minimum: 0 }
         signatureSvg: { type: string, maxLength: 100000 }
         occurredAt: { type: string, format: date-time }
-      required: [clientId, type, title, project, actor, status, occurredAt]
+      required: [clientId, projectId, type, title, project, actor, status, occurredAt]
     MonthlyReport:
       type: object
       properties:

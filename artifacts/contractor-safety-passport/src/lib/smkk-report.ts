@@ -2,6 +2,7 @@ import type { ProjectDocumentData } from "./document-generator.ts";
 
 export interface SmkkActivity {
   id?: number;
+  projectId: number | null;
   type: string;
   title: string;
   project: string;
@@ -21,15 +22,15 @@ export interface SmkkSummary {
 
 export function selectMonthlyProjectActivities(
   activities: SmkkActivity[] | undefined,
-  projectName: string,
+  projectId: number,
   month: string,
 ) {
-  if (!activities || !projectName || !/^\d{4}-\d{2}$/.test(month)) return [];
+  if (!activities || !projectId || !/^\d{4}-\d{2}$/.test(month)) return [];
 
   return activities
     .filter(
       (activity) =>
-        activity.project === projectName &&
+        activity.projectId === projectId &&
         activity.occurredAt.slice(0, 7) === month,
     )
     .sort(

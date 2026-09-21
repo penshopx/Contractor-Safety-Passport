@@ -112,8 +112,13 @@ const certificateBody = (owner: string) => ({
   status: "valid",
 });
 
-const activityBody = (suffix: string, project: string) => ({
+const activityBody = (
+  suffix: string,
+  project: string,
+  projectId = projectAId,
+) => ({
   clientId: `${runId}-${suffix}`,
+  projectId,
   type: "Inspection",
   title: `Inspeksi ${suffix}`,
   project,
@@ -235,13 +240,13 @@ before(async () => {
   ]);
   await db.insert(fieldActivitiesTable).values([
     {
-      ...activityBody("seed-a", projects[0].name),
+      ...activityBody("seed-a", projects[0].name, projects[0].id),
       occurredAt: new Date("2026-09-20T08:00:00.000Z"),
       organizationId: organizationA,
       createdBy: userIds.owner,
     },
     {
-      ...activityBody("seed-b", projects[1].name),
+      ...activityBody("seed-b", projects[1].name, projects[1].id),
       occurredAt: new Date("2026-09-20T09:00:00.000Z"),
       organizationId: organizationB,
       createdBy: userIds.owner,
@@ -806,7 +811,7 @@ describe("isolasi data antar kontraktor", () => {
       clientId: sharedClientId,
     };
     const bodyB = {
-      ...activityBody("shared-b", `Proyek B ${runId}`),
+      ...activityBody("shared-b", `Proyek B ${runId}`, projectBId),
       clientId: sharedClientId,
     };
     const createdA = await request("/field-activities", {

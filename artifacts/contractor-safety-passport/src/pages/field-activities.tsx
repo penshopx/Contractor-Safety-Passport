@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useListFieldActivities, useCreateFieldActivity, getListFieldActivitiesQueryKey } from "@workspace/api-client-react";
+import { useListFieldActivities, useCreateFieldActivity, getListFieldActivitiesQueryKey, useListProjects } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,7 @@ import { FieldActivityInputType, FieldActivityInputStatus } from "@workspace/api
 const createActivitySchema = z.object({
   title: z.string().min(1, "Judul kegiatan wajib diisi"),
   type: z.nativeEnum(FieldActivityInputType),
-  project: z.string().min(1, "Proyek wajib diisi"),
+  projectId: z.coerce.number().int().positive("Proyek wajib dipilih"),
   actor: z.string().min(1, "Pelaksana wajib diisi"),
   status: z.nativeEnum(FieldActivityInputStatus),
   notes: z.string().max(4000).optional(),
@@ -31,6 +31,7 @@ export default function FieldActivitiesPage() {
   const queryClient = useQueryClient();
   
   const { data: activities, isLoading } = useListFieldActivities();
+  const { data: projects } = useListProjects();
   const createActivity = useCreateFieldActivity();
 
   const filteredActivities = activities?.filter(a => 
@@ -43,7 +44,7 @@ export default function FieldActivitiesPage() {
     defaultValues: {
       title: "",
       type: "Toolbox",
-      project: "",
+      projectId: 0,
       actor: "",
       status: "open"
       ,notes: ""
@@ -51,9 +52,15 @@ export default function FieldActivitiesPage() {
   });
 
   const onSubmit = (values: z.infer<typeof createActivitySchema>) => {
+    const project = projects?.find((item) => item.id === values.projectId);
+    if (!project) {
+      form.setError("projectId", { message: "Proyek wajib dipilih" });
+      return;
+    }
     createActivity.mutate(
       { data: {
         ...values,
+        project: project.name,
         notes: values.notes || undefined,
         clientId: `web-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
         occurredAt: new Date().toISOString(),
@@ -149,8 +156,19 @@ export default function FieldActivitiesPage() {
                   <FormItem><FormLabel>Catatan / Temuan</FormLabel><FormControl><Input placeholder="Topik, temuan, atau tindakan koreksi..." {...field} /></FormControl><FormMessage /></FormItem>
                 )} />
                 <div className="grid grid-cols-2 gap-4">
-                  <FormField control={form.control} name="project" render={({ field }) => (
-                    <FormItem><FormLabel>Nama Proyek</FormLabel><FormControl><Input placeholder="Proyek..." {...field} /></FormControl><FormMessage /></FormItem>
+                  <FormField control={form.control} name="projectId" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Proyek</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value ? String(field.value) : ""}>
+                        <FormControl><SelectTrigger><SelectValue placeholder="Pilih proyek" /></SelectTrigger></FormControl>
+                        <SelectContent>
+                          {projects?.map((project) => (
+                            <SelectItem key={project.id} value={String(project.id)}>{project.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
                   )} />
                   <FormField control={form.control} name="actor" render={({ field }) => (
                     <FormItem><FormLabel>Penanggung Jawab</FormLabel><FormControl><Input placeholder="Nama Petugas..." {...field} /></FormControl><FormMessage /></FormItem>
