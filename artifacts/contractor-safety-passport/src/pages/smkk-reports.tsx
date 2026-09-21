@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { downloadPdf, type ProjectDocumentData } from "@/lib/document-generator";
 import {
+  countInvalidProjectActivityDates,
   createSmkkDocumentData,
   selectMonthlyProjectActivities,
   summarizeSmkkActivities,
@@ -65,6 +66,15 @@ export default function SmkkReportsPage() {
       selectedMonth,
     );
   }, [activities, selectedProject?.id, selectedMonth]);
+
+  const invalidActivityDateCount = useMemo(
+    () =>
+      countInvalidProjectActivityDates(
+        activities,
+        selectedProject?.id ?? 0,
+      ),
+    [activities, selectedProject?.id],
+  );
 
   const summary = useMemo(
     () => summarizeSmkkActivities(filteredActivities),
@@ -350,6 +360,19 @@ export default function SmkkReportsPage() {
                     <div className="font-bold text-base">{selectedProject?.name}</div>
                     <div className="text-gray-600 mt-1">Periode: {formatDateMonthYear(selectedMonth)}</div>
                   </div>
+
+                   {invalidActivityDateCount > 0 && (
+                     <div
+                       role="alert"
+                       data-testid="invalid-activity-date-warning"
+                       className="border border-amber-400 bg-amber-50 p-3 text-left text-amber-900"
+                     >
+                       <span className="font-semibold">
+                         {invalidActivityDateCount} aktivitas tidak dimasukkan.
+                       </span>{" "}
+                       Tanggal aktivitas kosong atau tidak valid. Perbaiki tanggal aktivitas agar dapat masuk ke laporan bulanan.
+                     </div>
+                   )}
 
                   <div className="space-y-2">
                     <h3 className="font-bold bg-gray-100 p-1.5 border border-gray-300">1. Identitas Proyek</h3>

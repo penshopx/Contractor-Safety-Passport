@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { buildSections } from "./document-generator.ts";
 import {
+  countInvalidProjectActivityDates,
   createSmkkDocumentData,
   selectMonthlyProjectActivities,
   summarizeSmkkActivities,
@@ -145,5 +146,34 @@ describe("laporan bulanan SMKK", () => {
     const selected = selectMonthlyProjectActivities(activities, 101, "2026-09");
 
     assert.deepEqual(selected.map(({ title }) => title), ["proyek pertama"]);
+  });
+
+  it("mengabaikan tanggal kosong dan format tanggal yang tidak valid", () => {
+    const activities = [
+      activity("tanggal kosong", "Toolbox", "complete", ""),
+      activity("format salah", "Inspection", "open", "09/15/2026"),
+      activity("tanggal mustahil", "Inspection", "open", "2026-09-31T08:00:00Z"),
+      activity("valid", "Toolbox", "complete", "2026-09-15T08:00:00Z"),
+    ];
+
+    const selected = selectMonthlyProjectActivities(activities, 1, "2026-09");
+
+    assert.deepEqual(selected.map(({ title }) => title), ["valid"]);
+    assert.equal(countInvalidProjectActivityDates(activities, 1), 3);
+  });
+
+  it("menerima zona waktu eksplisit dan memakai bulan kalender pada nilai API", () => {
+    const activities = [
+      activity("awal September WIB", "Toolbox", "complete", "2026-09-01T00:30:00+07:00"),
+      activity("akhir Agustus UTC", "Inspection", "open", "2026-08-31T17:30:00Z"),
+    ];
+
+    assert.deepEqual(
+      selectMonthlyProjectActivities(activities, 1, "2026-09").map(
+        ({ title }) => title,
+      ),
+      ["awal September WIB"],
+    );
+    assert.equal(countInvalidProjectActivityDates(activities, 1), 0);
   });
 });
