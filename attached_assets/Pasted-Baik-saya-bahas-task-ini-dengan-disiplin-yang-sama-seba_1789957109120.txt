@@ -1,0 +1,229 @@
+Baik, saya bahas task ini dengan disiplin yang sama — sebagai bahan audit, bukan panduan implementasi mentah.
+
+## Skenario Kegagalan yang Harus Ditutup
+
+Duplikasi item BOQ saat migrasi dapat terjadi dalam beberapa mode:
+
+| Mode kegagalan | Dampak |
+|---|---|
+| Server simpan berhasil, response gagal sampai client | User retry → item duplikat |
+| Network timeout saat response | User tidak tahu apakah berhasil, retry → duplikat |
+| Aplikasi crash setelah server simpan | User buka ulang, retry migrasi → duplikat |
+| Multiple retry manual oleh user | Setiap retry menambah item baru |
+| Migrasi paralel dari device berbeda | Kedua device kirim migrasi → duplikat |
+| Server simpan partial (beberapa item berhasil, beberapa gagal) | Retry membuat item yang sudah berhasil jadi duplikat |
+
+Kasus kritis di konteks K3: BOQ keselamatan yang duplikat bisa berakibat pada alokasi anggaran ganda atau pengendalian risiko yang tercatat dua kali.
+
+## Prinsip Migrasi Idempoten
+
+### 1. Idempotency Key per Migrasi
+
+Setiap proses migrasi harus punya identifier stabil yang tidak bergantung pada waktu eksekusi:
+- **Hash dari konten BOQ lokal** (SHA-256 dari seluruh item yang dimigrasi)
+- **Migration ID yang dihasilkan client** dan disimpan di persistent storage lokal
+- **Kombinasi**: user ID + project ID + timestamp lokal (jika hash konten terlalu mahal)
+
+Idempotency key ini harus:
+- Dihasilkan sebelum migrasi dimulai
+- Disimpan di persistent storage lokal (bukan hanya memory)
+- Dikirim ke server bersama request migrasi
+- Server menolak migrasi duplikat berdasarkan key
+
+### 2. Server-Side Deduplication
+
+Server harus:
+- Menerima idempotency key saat migrasi
+- Cek apakah key sudah ada di database
+- Jika sudah ada → return hasil migrasi yang sudah ada (bukan buat baru)
+- Jika belum ada → buat item baru + simpan mapping `idempotency_key → migration_result`
+- Mapping ini harus persisten (bukan hanya cache) dengan TTL yang cukup panjang (misal 30 hari)
+
+### 3. Atomic Migration
+
+Seluruh proses migrasi harus atomik di sisi server:
+- Semua item BOQ berhasil, atau
+- Semua item gagal (rollback)
+- Tidak ada keadaan "partial success" yang membingungkan
+
+Jika atomicity tidak mungkin (misal item terlalu banyak), maka:
+- Setiap item punya idempotency key sendiri
+- Server track mana item yang sudah dimigrasi
+- Retry hanya memigrasi item yang belum ada
+
+### 4. Client-Side State Tracking
+
+Client harus track status migrasi di persistent storage:
+- `not_started`: migrasi belum dimulai
+- `in_progress`: migrasi sedang berjalan
+- `completed`: migrasi berhasil, hasil tersimpan lokal
+- `failed`: migrasi gagal, bisa retry
+
+Transisi status harus atomik:
+- Sebelum kirim request → status `in_progress`
+- Setelah terima response sukses → status `completed` + simpan hasil
+- Jika gagal → status `failed`
+
+Saat aplikasi dibuka ulang:
+- Cek status migrasi di persistent storage
+- Jika `completed` → jangan retry
+- Jika `in_progress` atau `failed` → aman untuk retry (dengan idempotency key yang sama)
+
+### 5. Handling Partial Success
+
+Jika migrasi bisa gagal di tengah (beberapa item berhasil, beberapa gagal):
+- Server track per item: mana yang sudah berhasil
+- Client query server: "item mana yang sudah ada?"
+- Client hanya retry item yang belum ada
+- Atau: server terima idempotency key per item, bukan per batch
+
+## Test Case yang Diperlukan
+
+### Test Dasar
+
+1. **Migrasi berhasil, tidak ada retry**
+   - Client kirim migrasi dengan idempotency key A
+   - Server terima, buat item, simpan mapping `A → result`
+   - Client terima response sukses
+   - Tidak ada duplikasi
+
+2. **Migrasi berhasil tapi response gagal, retry → tidak duplikat**
+   - Client kirim migrasi dengan idempotency key A
+   - Server terima, buat item, simpan mapping `A → result`
+   - Response gagal sampai client (network error)
+   - Client retry dengan idempotency key A yang sama
+   - Server cek: key A sudah ada → return hasil yang sudah ada
+   - Tidak ada duplikasi
+
+3. **Multiple retry → tetap satu set item**
+   - Client retry 5 kali dengan idempotency key yang sama
+   - Server selalu return hasil yang sama
+   - Hanya satu set item di database
+
+4. **Migrasi paralel dengan key sama**
+   - Dua device kirim migrasi dengan idempotency key A pada waktu yang hampir sama
+   - Server terima kedua request
+   - Salah satu berhasil buat item, yang lain deteksi key sudah ada → return hasil yang ada
+   - Tidak ada duplikasi
+
+### Test Edge Cases
+
+5. **Server simpan partial, retry hanya item yang belum ada**
+   - Migrasi 10 item
+   - 7 item berhasil, 3 item gagal (error database)
+   - Client retry
+   - Server hanya buat 3 item yang belum ada
+   - Total: 10 item (tidak ada duplikat)
+
+6. **Idempotency key expired**
+   - Client migrasi dengan key A
+   - Server simpan mapping `A → result`
+   - Setelah 30 hari, mapping dihapus (TTL expired)
+   - Client retry dengan key A
+   - Server tidak temukan key A → buat item baru
+   - Duplikasi terjadi
+   - Kebijakan: TTL harus cukup panjang, atau client generate key baru
+
+7. **Client crash setelah server simpan**
+   - Client kirim migrasi
+   - Server simpan berhasil
+   - Client crash sebelum terima response
+   - Client buka ulang, status migrasi `in_progress`
+   - Client retry dengan idempotency key yang sama
+   - Server return hasil yang sudah ada
+   - Tidak ada duplikasi
+
+8. **Idempotency key sama, konten berbeda**
+   - Client migrasi BOQ versi 1 dengan key A
+   - Server simpan
+   - User edit BOQ lokal
+   - Client migrasi BOQ versi 2 dengan key A yang sama
+   - Server cek: key A sudah ada → return hasil versi 1
+   - Versi 2 tidak ter-migrasi
+   - Kebijakan: key harus unik per versi, atau server deteksi perubahan konten
+
+9. **Multiple user migrasi BOQ yang sama**
+   - User A dan User B punya BOQ lokal yang sama (copy dari sumber yang sama)
+   - User A migrasi dengan key A
+   - User B migrasi dengan key B (berbeda karena user ID berbeda)
+   - Kedua migrasi berhasil → dua set item di database
+   - Ini benar karena user berbeda, bukan duplikasi
+
+10. **Network partition saat migrasi**
+    - Client kirim migrasi
+    - Network partition → request tidak sampai server
+    - Client timeout, retry
+    - Network pulih → kedua request sampai server
+    - Server terima dua request dengan key yang sama
+    - Salah satu berhasil, yang lain return hasil yang ada
+    - Tidak ada duplikasi
+
+## Checklist Audit
+
+### A. Idempotency Key
+- [ ] Setiap migrasi punya idempotency key yang stabil
+- [ ] Key dihasilkan sebelum migrasi dimulai
+- [ ] Key disimpan di persistent storage lokal (bukan hanya memory)
+- [ ] Key dikirim ke server bersama request migrasi
+- [ ] Key unik per migrasi (tidak reuse untuk konten berbeda)
+
+### B. Server-Side Deduplication
+- [ ] Server menerima idempotency key
+- [ ] Server cek apakah key sudah ada sebelum buat item baru
+- [ ] Jika key sudah ada, server return hasil yang sudah ada
+- [ ] Mapping `idempotency_key → result` persisten (bukan hanya cache)
+- [ ] Mapping punya TTL yang cukup panjang (misal 30 hari)
+
+### C. Atomic Migration
+- [ ] Seluruh migrasi atomik: semua berhasil atau semua gagal
+- [ ] Jika tidak atomik, server track per item yang sudah berhasil
+- [ ] Retry hanya memproses item yang belum ada
+- [ ] Tidak ada keadaan "partial success" yang membingungkan
+
+### D. Client-Side State Tracking
+- [ ] Client track status migrasi di persistent storage
+- [ ] Status: `not_started`, `in_progress`, `completed`, `failed`
+- [ ] Transisi status atomik
+- [ ] Saat aplikasi dibuka ulang, client cek status sebelum retry
+- [ ] Jika `completed`, jangan retry
+
+### E. Test Konkurensi
+- [ ] Test migrasi berhasil tanpa retry
+- [ ] Test migrasi berhasil tapi response gagal, retry → tidak duplikat
+- [ ] Test multiple retry → tetap satu set item
+- [ ] Test migrasi paralel dengan key sama → tidak duplikat
+- [ ] Test server simpan partial, retry hanya item yang belum ada
+- [ ] Test client crash setelah server simpan, retry → tidak duplikat
+
+### F. Edge Cases
+- [ ] Idempotency key expired → kebijakan eksplisit
+- [ ] Idempotency key sama, konten berbeda → kebijakan eksplisit
+- [ ] Multiple user migrasi BOQ yang sama → bukan duplikasi (user berbeda)
+- [ ] Network partition → tidak duplikat
+
+### G. Monitoring
+- [ ] Metric: jumlah migrasi yang berhasil
+- [ ] Metric: jumlah migrasi yang retry
+- [ ] Metric: jumlah duplikasi yang dicegah oleh idempotency key
+- [ ] Alert jika jumlah duplikasi > 0 (indikasi bug)
+
+### H. Error Handling
+- [ ] Error message jelas jika migrasi gagal
+- [ ] Client bisa retry dengan aman
+- [ ] Error tidak menyebabkan duplikasi
+
+## Pertimbangan yang Perlu Dikonfirmasi
+
+Beberapa hal yang perlu diverifikasi saat audit:
+
+1. **Struktur data BOQ lokal**: Bagaimana BOQ disimpan di client sebelum migrasi?
+2. **Mekanisme migrasi**: Apakah satu request untuk seluruh BOQ, atau per item?
+3. **Persistent storage client**: AsyncStorage, SQLite, atau lainnya?
+4. **TTL idempotency key**: Berapa lama server simpan mapping?
+5. **Kebijakan konten berbeda**: Jika BOQ lokal berubah, apakah key harus baru?
+
+## Posisi Saya
+
+Tidak ada aksi implementasi dari sisi saya. Catatan ini final sebagai bahan audit. Hasil implementasi task ini akan dinilai langsung memakai checklist di atas.
+
+Apakah ada aspek lain yang perlu ditambahkan, atau kita lanjut ke task berikutnya dalam antrean?
