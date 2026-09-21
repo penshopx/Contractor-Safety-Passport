@@ -1,0 +1,66 @@
+Penajaman Anda tepat dan penting. Saya akui bahwa catatan saya sebelumnya tentang "transaksi singkat" tidak cukup — penghapusan terjadi di Object Storage, di luar transaksi PostgreSQL, sehingga re-check saja tidak cukup kuat tanpa mekanisme lease atau pola dua fase yang eksplisit.
+
+## Integrasi Penajaman ke Checklist Audit
+
+Pola yang saya akui sebagai standar minimum untuk Task #23:
+
+### Protokol Penghapusan Dua Fase
+
+1. **Tandai kandidat** — catat `objectPath` sebagai `deleting` atau buat lease di database dengan TTL.
+2. **Re-check referensi** — pastikan `objectPath` belum ditautkan ke aktivitas atau entitas lain.
+3. **Hapus dari storage** — eksekusi penghapusan di Object Storage.
+4. **Catat hasil** — tulis ke audit log (sukses atau gagal).
+5. **Tangani kegagalan** — lepaskan lease atau jadwalkan ulang dengan backoff eksponensial.
+6. **Proteksi sisi linking** — proses linking foto harus memeriksa status kandidat sebelum menyimpan referensi; menolak atau menunggu jika objek sedang di-lease.
+
+Jika implementasi memilih pola lebih sederhana (tanpa lease), maka:
+- Re-check harus dilakukan **sedekat mungkin** sebelum penghapusan, bukan di awal batch.
+- Jendela race harus diukur dan didokumentasikan.
+- Pengujian konkurensi wajib membuktikan bahwa race tidak menghasilkan data loss.
+
+## Checklist Audit Final Task #23
+
+### A. Identitas dan Referensi
+- [ ] Cleanup membandingkan `objectPath`, bukan URL atau signed URL
+- [ ] Inventaris kolom referensi berasal dari skema aktual (`photo_object_path`, `photo_data_url`)
+- [ ] Tidak ada normalisasi URL di logika cleanup
+
+### B. Proteksi Legacy
+- [ ] Prefix `/objects/legacy-field-activities/...` masuk exclude list
+- [ ] Exclude list hanya dibuka setelah migrasi dinyatakan selesai secara eksplisit (bukan inferred)
+- [ ] Status migrasi bisa diverifikasi dari database atau flag operasional
+
+### C. Protokol Penghapusan
+- [ ] Kandidat ditandai sebagai `deleting` atau di-lease sebelum penghapusan
+- [ ] Re-check referensi dilakukan setelah penandaan, sedekat mungkin sebelum delete
+- [ ] Penghapusan di Object Storage dicatat hasilnya di audit log
+- [ ] Kegagalan melepaskan lease atau dijadwalkan ulang dengan backoff
+- [ ] Proses linking memeriksa status kandidat sebelum menyimpan referensi
+
+### D. Batasan Ruang Lingkup
+- [ ] Pemindaian dibatasi ke prefix objek yang dikelola aplikasi
+- [ ] Objek di luar prefix tidak pernah disentuh
+- [ ] Metadata `organizationId` dibaca dari objek dan dicatat di audit log
+- [ ] Objek tanpa metadata organisasi dikarantina atau dilaporkan, bukan dihapus langsung
+
+### E. Grace Period dan LastModified
+- [ ] Grace period dihitung dari `LastModified` hanya jika API storage menyediakannya secara konsisten
+- [ ] Jika `LastModified` tidak konsisten, sistem memakai waktu pencatatan internal sebagai alternatif
+- [ ] Objek dalam grace period tidak pernah masuk kandidat hapus
+
+### F. Audit Log dan Peringatan
+- [ ] Audit log mencatat: `objectPath`, `organizationId`, `deletedAt`, `sizeBytes`, `reason`
+- [ ] Objek yang dikarantina tercatat terpisah dari objek yang dihapus
+- [ ] Alert didasarkan pada kegagalan berulang (Task #45)
+- [ ] Pengujian konkurensi race condition tercakup (Task #46)
+
+### G. Edge Cases
+- [ ] Foto yang referensinya dihapus dari aktivitas terdeteksi sebagai yatim setelah grace period
+- [ ] Objek yang baru diupload tidak masuk kandidat selama grace period
+- [ ] Batch deletion memiliki batas laju untuk menghindari rate limit storage
+
+## Posisi Saya
+
+Tidak ada aksi implementasi dari sisi saya. Catatan ini final sebagai bahan audit, dan hasil Task #23 akan dinilai langsung memakai checklist di atas. Dua risiko residual (race condition dan kegagalan berulang) sudah tercakup oleh Task #45 dan #46, sehingga tidak perlu ditangani terpisah.
+
+Jika ada task lain dalam antrean yang perlu dibahas — misalnya pengujian regresi untuk laporan, BOQ, undangan, atau sinkronisasi offline — saya siap mendiskusikan pendekatan auditnya dengan disiplin yang sama: mengakui koreksi, tidak menulis kode mentah, dan memposisikan catatan sebagai bahan verifikasi.
