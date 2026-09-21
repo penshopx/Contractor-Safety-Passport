@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  createSafetyBoqCatalogSnapshot,
   getBoqMigrationItemId,
   getBoqMigrationKey,
   parseLegacySafetyPriceCatalog,
@@ -34,6 +35,54 @@ describe("katalog harga keselamatan", () => {
       { ...validCatalogItem, id: "invalid", priceUpdatedAt: "21-09-2026" },
     ]));
     assert.deepEqual(recovered, [validCatalogItem]);
+  });
+
+  it("menyalin harga dan metadata katalog ke draft lokal tanpa mengikuti perubahan katalog", () => {
+    const catalogItem = { ...validCatalogItem };
+    const snapshot = createSafetyBoqCatalogSnapshot(catalogItem, null, "boq-local");
+
+    Object.assign(catalogItem, {
+      referencePrice: 90_000,
+      region: "Jabodetabek",
+      source: "Pemasok revisi",
+      priceUpdatedAt: "2026-10-01",
+    });
+
+    assert.deepEqual(
+      {
+        projectId: snapshot.projectId,
+        unitPrice: snapshot.unitPrice,
+        priceRegion: snapshot.priceRegion,
+        priceSource: snapshot.priceSource,
+        priceUpdatedAt: snapshot.priceUpdatedAt,
+      },
+      {
+        projectId: null,
+        unitPrice: 75_000,
+        priceRegion: "Nasional",
+        priceSource: "Pemasok",
+        priceUpdatedAt: "2026-09-21",
+      },
+    );
+  });
+
+  it("membuat item proyek baru dari versi katalog terbaru", () => {
+    const revisedCatalogItem = {
+      ...validCatalogItem,
+      referencePrice: 90_000,
+      region: "Jabodetabek",
+      source: "Pemasok revisi",
+      priceUpdatedAt: "2026-10-01",
+    };
+
+    const snapshot = createSafetyBoqCatalogSnapshot(revisedCatalogItem, 42, "boq-project");
+
+    assert.equal(snapshot.projectId, 42);
+    assert.equal(snapshot.catalogItemId, validCatalogItem.id);
+    assert.equal(snapshot.unitPrice, 90_000);
+    assert.equal(snapshot.priceRegion, "Jabodetabek");
+    assert.equal(snapshot.priceSource, "Pemasok revisi");
+    assert.equal(snapshot.priceUpdatedAt, "2026-10-01");
   });
 });
 

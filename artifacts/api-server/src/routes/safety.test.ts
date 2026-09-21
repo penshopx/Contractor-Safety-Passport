@@ -402,6 +402,116 @@ describe("isolasi data antar kontraktor", () => {
     assert.equal(deleted.status, 204);
   });
 
+  it("mempertahankan snapshot draft proyek setelah katalog diubah dan dihapus", async () => {
+    const project = await request("/projects", {
+      role: "owner",
+      method: "POST",
+      body: projectBody(`Snapshot katalog ${runId}`),
+    });
+    assert.equal(project.status, 201);
+
+    const createdCatalog = await request("/safety-price-catalog", {
+      role: "owner",
+      method: "POST",
+      body: catalogItemBody("snapshot lama"),
+    });
+    assert.equal(createdCatalog.status, 201);
+
+    const oldSnapshot = {
+      id: `boq-catalog-old-${runId}`,
+      description: createdCatalog.body.description,
+      category: createdCatalog.body.category,
+      volume: 1,
+      unit: createdCatalog.body.unit,
+      unitPrice: createdCatalog.body.referencePrice,
+      catalogItemId: createdCatalog.body.id,
+      priceRegion: createdCatalog.body.region,
+      priceSource: createdCatalog.body.source,
+      priceUpdatedAt: createdCatalog.body.priceUpdatedAt,
+      risk: createdCatalog.body.risk,
+      stage: createdCatalog.body.stage,
+      controlNeed: createdCatalog.body.controlNeed,
+    };
+    const firstDraft = await request(`/projects/${project.body.id}/safety-boq`, {
+      role: "owner",
+      method: "PUT",
+      body: { revision: 0, items: [oldSnapshot] },
+    });
+    assert.equal(firstDraft.status, 200);
+
+    const revisedCatalogBody = {
+      ...catalogItemBody("snapshot baru"),
+      referencePrice: 90_000,
+      region: "Jabodetabek",
+      source: "Survei pasar revisi",
+      priceUpdatedAt: "2026-10-01",
+    };
+    const revisedCatalog = await request(
+      `/safety-price-catalog/${createdCatalog.body.id}`,
+      {
+        role: "safety_expert",
+        method: "PATCH",
+        body: revisedCatalogBody,
+      },
+    );
+    assert.equal(revisedCatalog.status, 200);
+
+    const newSnapshot = {
+      ...oldSnapshot,
+      id: `boq-catalog-new-${runId}`,
+      description: revisedCatalog.body.description,
+      unitPrice: revisedCatalog.body.referencePrice,
+      priceRegion: revisedCatalog.body.region,
+      priceSource: revisedCatalog.body.source,
+      priceUpdatedAt: revisedCatalog.body.priceUpdatedAt,
+    };
+    const secondDraft = await request(`/projects/${project.body.id}/safety-boq`, {
+      role: "owner",
+      method: "PUT",
+      body: {
+        revision: firstDraft.body.revision,
+        items: [firstDraft.body.items[0], newSnapshot],
+      },
+    });
+    assert.equal(secondDraft.status, 200);
+
+    const deletedCatalog = await request(
+      `/safety-price-catalog/${createdCatalog.body.id}`,
+      { role: "owner", method: "DELETE" },
+    );
+    assert.equal(deletedCatalog.status, 204);
+
+    const reloadedDraft = await request(`/projects/${project.body.id}/safety-boq`);
+    assert.equal(reloadedDraft.status, 200);
+    assert.deepEqual(
+      reloadedDraft.body.items.map((item: {
+        unitPrice: number;
+        priceRegion: string;
+        priceSource: string;
+        priceUpdatedAt: string;
+      }) => ({
+        unitPrice: item.unitPrice,
+        priceRegion: item.priceRegion,
+        priceSource: item.priceSource,
+        priceUpdatedAt: item.priceUpdatedAt,
+      })),
+      [
+        {
+          unitPrice: 75_000,
+          priceRegion: "Nasional",
+          priceSource: "Pemasok snapshot lama",
+          priceUpdatedAt: "2026-09-21",
+        },
+        {
+          unitPrice: 90_000,
+          priceRegion: "Jabodetabek",
+          priceSource: "Survei pasar revisi",
+          priceUpdatedAt: "2026-10-01",
+        },
+      ],
+    );
+  });
+
   it("menolak data keselamatan untuk organisasi yang tidak ada", async () => {
     await assert.rejects(
       db.insert(projectsTable).values({

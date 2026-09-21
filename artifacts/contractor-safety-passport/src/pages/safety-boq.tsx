@@ -48,6 +48,7 @@ import {
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { 
+  createSafetyBoqCatalogSnapshot,
   getBoqMigrationItemId,
   getBoqMigrationKey,
   readLegacySafetyPriceCatalog,
@@ -634,22 +635,7 @@ export default function SafetyBoqPage() {
 
   const handleUseCatalogItem = (catalogItem: SafetyPriceCatalogItem) => {
     if (projectId !== null && !canMutateShared) return;
-    const snapshot: SafetyBoqItem = {
-      id: crypto.randomUUID(),
-      description: catalogItem.description,
-      category: catalogItem.category,
-      volume: 1,
-      unit: catalogItem.unit,
-      unitPrice: catalogItem.referencePrice,
-      catalogItemId: catalogItem.id,
-      priceRegion: catalogItem.region,
-      priceSource: catalogItem.source,
-      priceUpdatedAt: catalogItem.priceUpdatedAt,
-      risk: catalogItem.risk,
-      stage: catalogItem.stage,
-      controlNeed: catalogItem.controlNeed,
-      projectId,
-    };
+    const snapshot = createSafetyBoqCatalogSnapshot(catalogItem, projectId);
     if (projectId === null) {
       const { id: _id, ...localSnapshot } = snapshot;
       addLocalItem(localSnapshot);

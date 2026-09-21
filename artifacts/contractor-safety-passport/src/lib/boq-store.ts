@@ -41,6 +41,33 @@ export type LegacySafetyPriceCatalogItem = SafetyPriceCatalogItemInput & {
   id: string;
 };
 
+export type SafetyPriceCatalogSnapshotSource = SafetyPriceCatalogItemInput & {
+  id: string;
+};
+
+export function createSafetyBoqCatalogSnapshot(
+  catalogItem: SafetyPriceCatalogSnapshotSource,
+  projectId: number | null,
+  id = crypto.randomUUID(),
+): SafetyBoqItem {
+  return {
+    id,
+    description: catalogItem.description,
+    category: catalogItem.category,
+    volume: 1,
+    unit: catalogItem.unit,
+    unitPrice: catalogItem.referencePrice,
+    catalogItemId: catalogItem.id,
+    priceRegion: catalogItem.region,
+    priceSource: catalogItem.source,
+    priceUpdatedAt: catalogItem.priceUpdatedAt,
+    risk: catalogItem.risk,
+    stage: catalogItem.stage,
+    controlNeed: catalogItem.controlNeed,
+    projectId,
+  };
+}
+
 export const CATEGORIES = [
   "Dokumen RKK",
   "Sosialisasi & Pelatihan",
