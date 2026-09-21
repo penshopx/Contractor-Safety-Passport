@@ -80,6 +80,59 @@ describe('antrean aktivitas lapangan', () => {
     );
   });
 
+  it('memakai ulang jalur foto setelah aplikasi berhenti sebelum aktivitas tersimpan', async () => {
+    let persisted = [{
+      ...activity('foto-sudah-diunggah'),
+      localPhotoUri: 'file:///bukti-inspeksi.jpg',
+      photoContentType: 'image/jpeg' as const,
+    }];
+    let uploadUrlRequests = 0;
+    let activityCreateRequests = 0;
+    let failActivityCreation = true;
+
+    const mutate = async (
+      updater: (current: QueuedActivity[]) => QueuedActivity[],
+    ) => {
+      persisted = structuredClone(updater(persisted));
+      return persisted;
+    };
+    const send = async (
+      item: QueuedActivity,
+      checkpoint: (patch: Partial<QueuedActivity>) => Promise<void>,
+    ) => {
+      let photoObjectPath = item.photoObjectPath;
+      if (item.localPhotoUri && !photoObjectPath) {
+        uploadUrlRequests += 1;
+        photoObjectPath = 'evidence/foto-sudah-diunggah.jpg';
+        await checkpoint({ photoObjectPath });
+      }
+
+      activityCreateRequests += 1;
+      if (failActivityCreation) throw new Error('Pembuatan aktivitas gagal');
+      assert.equal(photoObjectPath, 'evidence/foto-sudah-diunggah.jpg');
+    };
+
+    await syncQueuedActivities(persisted, mutate, send);
+
+    assert.equal(persisted[0]?.localStatus, 'failed');
+    assert.equal(
+      persisted[0]?.photoObjectPath,
+      'evidence/foto-sudah-diunggah.jpg',
+    );
+    assert.equal(uploadUrlRequests, 1);
+    assert.equal(activityCreateRequests, 1);
+
+    persisted = recoverQueue(
+      JSON.parse(JSON.stringify(persisted)) as QueuedActivity[],
+    );
+    failActivityCreation = false;
+    await syncQueuedActivities(persisted, mutate, send);
+
+    assert.equal(persisted[0]?.localStatus, 'synced');
+    assert.equal(uploadUrlRequests, 1);
+    assert.equal(activityCreateRequests, 2);
+  });
+
   it('tidak menimpa item baru yang ditambahkan saat sinkronisasi berjalan', async () => {
     let persisted = [activity('sedang-dikirim')];
     const sent: string[] = [];
