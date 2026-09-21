@@ -1,0 +1,232 @@
+Baik, saya bahas task ini dengan disiplin yang sama — sebagai bahan audit, bukan panduan implementasi mentah.
+
+## Skenario Kegagalan yang Harus Ditutup
+
+Katalog harga yang tersimpan per perangkat menyebabkan beberapa mode kegagalan:
+
+| Mode kegagalan | Dampak |
+|---|---|
+| Owner update harga, ahli K3 tidak tahu | BOQ disusun dengan harga lama, estimasi biaya salah |
+| Dua anggota update harga berbeda di device masing-masing | Tidak ada sumber kebenaran tunggal, angka tidak konsisten |
+| Anggota baru bergabung, tidak punya katalog | Tidak bisa menyusun BOQ atau pakai harga asal |
+| Harga berubah di tengah penyusunan BOQ | Sebagian item pakai harga lama, sebagian harga baru |
+| Katalog lokal corrupt atau terhapus | Anggota kehilangan seluruh referensi harga |
+| Migrasi dari lokal ke server tidak sinkron | Beberapa anggota masih pakai katalog lokal lama |
+| Offline tanpa cache katalog | Anggota lapangan tidak bisa lihat harga acuan |
+
+Kasus kritis di konteks K3: estimasi biaya keselamatan yang tidak konsisten antar anggota tim bisa berakibat pada pengajuan anggaran yang salah atau pengendalian risiko yang underfunded.
+
+## Prinsip Katalog Harga Per Organisasi
+
+### 1. Sumber Kebenaran Tunggal di Server
+
+Katalog harga harus:
+- Disimpan per organisasi di server, bukan per perangkat
+- Semua anggota organisasi membaca dari sumber yang sama
+- Perubahan harga langsung terlihat oleh semua anggota (saat online)
+
+### 2. Kebijakan Akses yang Jelas
+
+Siapa yang bisa melakukan apa terhadap katalog:
+
+| Peran | Baca | Tambah item | Edit harga | Hapus item | Kelola katalog |
+|---|---|---|---|---|---|
+| Owner | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Ahli K3 | ✅ | ✅ | ✅ | ❓ | ❌ |
+| Anggota biasa | ✅ | ❌ | ❌ | ❌ | ❌ |
+
+Kebijakan ini harus eksplisit dan ditegakkan di API, bukan hanya di UI.
+
+### 3. Konsistensi dengan Kebijakan Snapshot BOQ
+
+Dari Task #30, kita sudah tahu:
+- Item BOQ menyalin harga dari katalog sebagai snapshot saat ditambahkan
+- Memperbarui katalog tidak mengubah draft BOQ yang sudah ada
+
+Kebijakan ini harus tetap berlaku:
+- Katalog adalah **referensi acuan**, bukan sumber hidup untuk BOQ yang sudah disusun
+- Jika harga katalog berubah, draft BOQ yang sudah ada tetap pakai harga lama
+- User bisa **manual refresh** harga item dari katalog jika diinginkan
+- Atau: notifikasi bahwa harga katalog berubah, user pilih apakah update item BOQ
+
+### 4. Versioning Katalog
+
+Katalog harus punya versi:
+- Setiap perubahan harga menaikkan versi katalog
+- Item BOQ menyimpan `catalog_version` saat harga disalin
+- User bisa lihat: "harga ini dari katalog versi X, versi terbaru adalah Y"
+- Ini membantu audit trail: mengapa BOQ pakai harga tertentu
+
+### 5. Migrasi dari Lokal ke Server
+
+Migrasi harus:
+- Mengambil katalog lokal dari setiap perangkat
+- Menggabungkan ke katalog server per organisasi
+- Menangani konflik (dua device punya harga berbeda untuk item yang sama)
+- Memberi user kesempatan review sebelum finalisasi
+- Setelah migrasi, katalog lokal tidak lagi jadi sumber kebenaran
+
+### 6. Cache Lokal untuk Offline
+
+Karena aplikasi mendukung mode offline:
+- Katalog server di-cache ke perangkat lokal
+- Cache diperbarui saat online (pull atau push notification)
+- Saat offline, user pakai cache lokal
+- Cache ditandai dengan versi dan timestamp terakhir update
+- UI menampilkan indikator: "harga dari cache, terakhir update: [tanggal]"
+
+## Test Case yang Diperlukan
+
+### Test Dasar
+
+1. **Owner update harga, anggota lain melihat perubahan**
+   - Owner ubah harga item X dari 100.000 ke 150.000
+   - Ahli K3 buka katalog → harga item X = 150.000
+   - Anggota biasa buka katalog → harga item X = 150.000
+
+2. **Anggota baru mendapat katalog organisasi**
+   - User baru diundang ke organisasi
+   - User buka katalog → melihat semua item harga yang sudah ada
+   - Tidak perlu input manual
+
+3. **BOQ yang sudah ada tidak berubah saat katalog update**
+   - Buat draft BOQ dengan item X harga 100.000
+   - Owner update katalog: item X = 150.000
+   - Draft BOQ tetap menampilkan 100.000
+   - Ada indikator bahwa harga katalog sudah berubah
+
+4. **Manual refresh harga dari katalog**
+   - Draft BOQ punya item X harga 100.000 (katalog lama)
+   - Katalog sekarang: item X = 150.000
+   - User klik "refresh harga" → item X berubah ke 150.000
+   - Version number BOQ naik
+
+### Test Akses
+
+5. **Anggota biasa tidak bisa edit harga**
+   - Anggota biasa coba edit harga → API tolak (403)
+   - UI tidak menampilkan tombol edit untuk anggota biasa
+
+6. **Ahli K3 bisa tambah item tapi tidak hapus**
+   - Ahli K3 tambah item baru → berhasil
+   - Ahli K3 coba hapus item → API tolak (403)
+
+7. **Isolasi organisasi**
+   - Organisasi A punya katalog dengan item X = 100.000
+   - Organisasi B punya katalog dengan item X = 200.000
+   - User organisasi A tidak bisa lihat atau edit katalog organisasi B
+
+### Test Migrasi
+
+8. **Migrasi katalog lokal ke server**
+   - User punya katalog lokal dengan 50 item
+   - Trigger migrasi → semua item masuk katalog server
+   - Katalog lokal ditandai sebagai "sudah dimigrasi"
+   - User lain di organisasi bisa lihat 50 item tersebut
+
+9. **Konflik migrasi: dua device punya harga berbeda**
+   - Device A: item X = 100.000
+   - Device B: item X = 150.000
+   - Migrasi dari Device A berhasil
+   - Migrasi dari Device B → konflik, user diminta pilih harga mana yang benar
+   - Atau: harga terbaru (berdasarkan timestamp) yang dipakai
+
+10. **Migrasi idempoten**
+    - User migrasi katalog lokal
+    - Network error, retry
+    - Tidak ada item duplikat di katalog server
+
+### Test Offline
+
+11. **Akses katalog saat offline**
+    - User online, cache katalog tersimpan
+    - User offline, buka katalog → melihat data dari cache
+    - UI menampilkan "data dari cache, terakhir update: [tanggal]"
+
+12. **Update katalog saat offline, sync saat online**
+    - Owner offline, edit harga item X
+    - Owner online → perubahan di-sync ke server
+    - Anggota lain melihat harga baru
+
+### Test Versioning
+
+13. **Versioning katalog**
+    - Katalog versi 1: item X = 100.000
+    - Owner update item X = 150.000 → katalog versi 2
+    - BOQ yang dibuat saat versi 1 masih menampilkan 100.000
+    - Indikator: "harga dari katalog v1, versi terbaru v2"
+
+14. **Audit trail perubahan harga**
+    - Owner ubah harga item X tiga kali
+    - Riwayat perubahan tercatat: siapa, kapan, harga lama, harga baru
+    - Bisa diakses untuk audit
+
+## Checklist Audit
+
+### A. Penyimpanan Server
+- [ ] Katalog harga disimpan per organisasi di server
+- [ ] Semua anggota organisasi membaca dari sumber yang sama
+- [ ] Perubahan harga langsung tersedia untuk semua anggota (saat online)
+
+### B. Kebijakan Akses
+- [ ] Peran yang bisa baca, tambah, edit, hapus didefinisikan eksplisit
+- [ ] Kebijakan ditegakkan di API, bukan hanya di UI
+- [ ] Anggota biasa hanya bisa baca
+- [ ] Owner punya kontrol penuh
+
+### C. Konsistensi dengan Snapshot BOQ
+- [ ] Item BOQ menyalin harga dari katalog sebagai snapshot
+- [ ] Update katalog tidak mengubah draft BOQ yang sudah ada
+- [ ] Ada mekanisme manual refresh harga dari katalog
+- [ ] Indikator bahwa harga katalog sudah berubah sejak BOQ disusun
+
+### D. Versioning Katalog
+- [ ] Setiap perubahan menaikkan versi katalog
+- [ ] Item BOQ menyimpan referensi ke versi katalog saat harga disalin
+- [ ] User bisa lihat versi katalog yang dipakai vs versi terbaru
+- [ ] Riwayat perubahan harga tercatat (siapa, kapan, harga lama, harga baru)
+
+### E. Migrasi dari Lokal ke Server
+- [ ] Katalog lokal bisa dimigrasi ke server per organisasi
+- [ ] Konflik harga antar device ditangani eksplisit
+- [ ] Migrasi idempoten (retry tidak membuat duplikat)
+- [ ] Setelah migrasi, katalog lokal tidak lagi jadi sumber kebenaran
+
+### F. Cache Offline
+- [ ] Katalog server di-cache ke perangkat lokal
+- [ ] Cache diperbarui saat online
+- [ ] Saat offline, user pakai cache lokal
+- [ ] UI menampilkan indikator status cache (terakhir update kapan)
+
+### G. Isolasi Organisasi
+- [ ] Katalog organisasi A tidak bisa diakses oleh user organisasi B
+- [ ] Berlaku untuk semua operasi: baca, tambah, edit, hapus
+- [ ] Test: user organisasi A coba akses katalog organisasi B → ditolak
+
+### H. Test Konkurensi
+- [ ] Dua user edit harga item yang sama bersamaan → salah satu berhasil, yang lain ditolak atau digabung
+- [ ] Migrasi paralel dari dua device → tidak ada duplikat
+- [ ] Update katalog saat user lain sedang menyusun BOQ → BOQ tidak terpengaruh
+
+### I. Monitoring
+- [ ] Metric: jumlah perubahan harga per hari
+- [ ] Metric: jumlah anggota yang menggunakan katalog server vs masih pakai lokal
+- [ ] Metric: jumlah konflik migrasi
+- [ ] Alert jika ada anggota yang masih pakai katalog lokal setelah periode migrasi
+
+## Pertimbangan yang Perlu Dikonfirmasi
+
+Beberapa hal yang perlu diverifikasi saat audit:
+
+1. **Struktur katalog saat ini**: Bagaimana katalog disimpan di perangkat lokal? Format data?
+2. **Jumlah item tipikal**: Berapa banyak item harga dalam satu katalog?
+3. **Kebijakan akses aktual**: Siapa yang saat ini bisa edit katalog?
+4. **Status migrasi**: Apakah sudah ada mekanisme migrasi, atau ini baru direncanakan?
+5. **Frekuensi update harga**: Seberapa sering harga berubah? (untuk menentukan strategi cache)
+6. **Relasi dengan Task #30**: Bagaimana versioning katalog berinteraksi dengan versioning BOQ draft?
+
+## Posisi Saya
+
+Tidak ada aksi implementasi dari sisi saya. Catatan ini final sebagai bahan audit. Hasil implementasi task ini akan dinilai langsung memakai checklist di atas.
+
+Apakah ada aspek lain yang perlu ditambahkan, atau kita lanjut ke task berikutnya dalam antrean?
