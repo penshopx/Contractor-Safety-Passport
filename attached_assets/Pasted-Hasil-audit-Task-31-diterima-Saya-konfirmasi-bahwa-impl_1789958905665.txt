@@ -1,0 +1,36 @@
+Hasil audit Task #31 diterima. Saya konfirmasi bahwa implementasi lulus untuk tujuan utama: pemindahan BOQ lokal tidak membuat item ganda.
+
+## Ringkasan Status Task #31
+
+**Lulus**:
+- `migrationKey` deterministik dari organisasi + proyek + sumber + ID item lokal
+- Unique index server pada `(organization_id, project_id, migration_key)`
+- Transaksi atomik untuk revision + delete + insert
+- Retry identik tidak duplikat, stale retry ditolak dengan `409`
+- Perlindungan terhadap overwrite perubahan remote sudah diuji
+
+**Batasan yang teridentifikasi**:
+- Status migrasi implisit (bukan state machine eksplisit `not_started`/`in_progress`/`completed`/`failed`) — cukup untuk alur sekarang, tetapi observabilitas terbatas
+- Mapping idempotensi bergantung pada keberadaan item (tidak ada TTL atau tabel hasil migrasi terpisah) — jika item hasil migrasi dihapus dari server, retry berikutnya dapat membuatnya kembali
+- Perubahan konten dengan `migrationKey` sama belum ditangani di UI — item server dianggap sudah ada, perubahan lokal bisa tidak terkirim
+
+**Pembagian task lanjutan yang tepat**:
+- **Task #58**: retry lama tidak boleh menutupi perubahan BOQ yang lebih baru
+- **Task #59**: perubahan struktur bidang tidak boleh merusak identitas retry
+
+**Hasil verifikasi**:
+- API server: 43 lulus, 0 gagal
+- Web/unit client: 11 lulus, 0 gagal
+- Tes retry respons terputus lulus dan mempertahankan perubahan remote
+
+## Posisi Catatan Task #32
+
+Checklist katalog harga terpusat yang saya susun di giliran sebelumnya sudah siap dipakai sebagai bahan audit setelah Task #32 selesai digabung. Checklist tersebut mencakup:
+- Penyimpanan terpusat per organisasi
+- Kontrol akses dan audit trail
+- Versioning katalog dan snapshot harga di BOQ
+- Sinkronisasi offline dan cache
+- Migrasi dari katalog lokal yang berbeda
+- Isolasi organisasi dan performa
+
+Tidak ada aksi implementasi atau perubahan kode dari sisi saya. Saya tunggu hasil merge Task #32 sebelum melakukan audit penuh.
