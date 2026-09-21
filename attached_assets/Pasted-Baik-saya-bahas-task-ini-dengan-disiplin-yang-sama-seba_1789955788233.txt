@@ -1,0 +1,203 @@
+Baik, saya bahas task ini dengan disiplin yang sama — sebagai bahan audit, bukan panduan implementasi mentah.
+
+## Skenario Kegagalan yang Harus Ditutup
+
+Regresi pada alur laporan bisa terjadi secara diam-diam saat API berubah, karena setiap tahap siklus hidup laporan bergantung pada kontrak yang saling terhubung:
+
+| Mode kegagalan | Dampak |
+|---|---|
+| Simpan laporan gagal tanpa error jelas | User kehilangan pekerjaan, tidak tahu apa yang salah |
+| Dua draf untuk periode+proyek yang sama | Data tercampur, user bingung mana yang benar |
+| Buka laporan yang sudah disimpan gagal | User tidak bisa melanjutkan pekerjaan |
+| Finalisasi gagal setelah edit | Laporan terjebak di status draft selamanya |
+| Unduh ulang PDF menghasilkan file berbeda | Inkonsistensi antara tampilan dan arsip |
+| Perubahan API merusak alur tanpa terdeteksi | Bug baru muncul di production karena tidak ada test yang menangkap |
+| Test runner gagal memuat modul | Seluruh suite test tidak berjalan, regresi lolos tanpa diketahui |
+
+Kasus kritis: test runner yang gagal memuat ESM berarti **tidak ada test yang berjalan sama sekali**, sehingga semua regresi lolos tanpa terdeteksi. Ini adalah risiko tertinggi.
+
+## Prinsip Pengujian Regresi yang Kuat
+
+### 1. Test Runner Harus Andal Terlebih Dahulu
+
+Sebelum menambahkan test baru, runner harus bisa:
+- Memuat semua modul ESM dengan benar (termasuk ekstensi file)
+- Menjalankan skenario route yang sudah ada tanpa error
+- Menghasilkan output yang jelas: lulus, gagal, atau error infrastruktur
+
+Jika runner rusak, tidak ada gunanya menambah test baru — hasilnya tidak bisa dipercaya.
+
+### 2. Siklus Hidup Laporan sebagai Satu Kesatuan
+
+Test regresi harus mencakup seluruh siklus hidup laporan sebagai alur terintegrasi, bukan hanya endpoint individual:
+
+```
+Buat draft → Simpan → Buka kembali → Edit → Simpan lagi → Finalisasi → Unduh PDF → Unduh ulang PDF
+```
+
+Setiap transisi harus diuji karena regresi sering terjadi di **perbatasan antar tahap**, bukan di dalam satu tahap.
+
+### 3. Konflik Draf Ganda Harus Ditangani Eksplisit
+
+Dua skenario konflik yang perlu diuji:
+- **User yang sama** membuat draf kedua untuk periode+proyek yang sama → harus ditolak atau menggabungkan
+- **Dua user berbeda** membuat draf untuk periode+proyek yang sama → harus ditolak dengan error jelas
+
+### 4. Alur Browser Terautentikasi
+
+Test harus berjalan dalam konteks user yang terautentikasi, bukan hanya API call mentah:
+- Session/token autentikasi aktif
+- Konteks organisasi benar
+- Cookie atau header autentikasi dikirim dengan setiap request
+- Redirect dan error autentikasi ditangani
+
+### 5. Kontrak API yang Stabil
+
+Setiap endpoint yang terlibat dalam alur laporan harus memiliki kontrak yang terdokumentasi:
+- Request body schema
+- Response body schema
+- Status codes yang mungkin
+- Error response format
+
+Perubahan kontrak harus menyebabkan test gagal, bukan lolos diam-diam.
+
+## Test Case yang Diperlukan
+
+### Test Infrastruktur
+
+1. **Runner memuat semua modul ESM**
+   - Semua file test berhasil diimpor
+   - Tidak ada error "Cannot find module" atau "Unknown file extension"
+   - Runner menyelesaikan setup sebelum skenario route berjalan
+
+2. **Runner melaporkan hasil dengan benar**
+   - Test lulus → exit code 0
+   - Test gagal → exit code non-zero, pesan jelas
+   - Error infrastruktur → exit code non-zero, dibedakan dari test gagal
+
+### Test Siklus Hidup Laporan
+
+3. **Buat dan simpan draft laporan**
+   - User terautentikasi membuat draft untuk proyek + periode tertentu
+   - Draft tersimpan dengan status "draft"
+   - Response berisi ID laporan
+
+4. **Buka kembali draft yang sudah disimpan**
+   - User membuka draft berdasarkan ID
+   - Data yang ditampilkan sama dengan yang disimpan
+   - Status tetap "draft"
+
+5. **Edit dan simpan ulang draft**
+   - User mengubah data draft
+   - Simpan ulang berhasil
+   - Data yang tersimpan mencerminkan perubahan
+
+6. **Finalisasi laporan**
+   - User memfinalisasi draft
+   - Status berubah menjadi "final"
+   - PDF dihasilkan
+   - Data tidak bisa diedit lagi (atau ada kebijakan eksplisit)
+
+7. **Unduh PDF laporan**
+   - User mengunduh PDF laporan final
+   - File PDF valid (bisa dibuka)
+   - Konten PDF sesuai dengan data laporan
+
+8. **Unduh ulang PDF laporan**
+   - User mengunduh ulang PDF yang sama
+   - File identik dengan unduhan pertama (byte-for-byte atau konten sama)
+   - Tidak ada regenerasi yang mengubah konten
+
+### Test Konflik
+
+9. **Draf ganda oleh user yang sama**
+   - User membuat draft untuk proyek A, Januari 2025
+   - User mencoba membuat draft lagi untuk proyek A, Januari 2025
+   - Ditolak dengan error jelas, atau draft lama dikembalikan
+
+10. **Draf ganda oleh user berbeda**
+    - User A membuat draft untuk proyek A, Januari 2025
+    - User B (organisasi sama) mencoba membuat draft untuk proyek A, Januari 2025
+    - Ditolak dengan error jelas
+
+### Test Autentikasi dan Isolasi
+
+11. **Akses tanpa autentikasi ditolak**
+    - Request tanpa token → 401
+    - Tidak ada data yang bocor
+
+12. **Akses lintas organisasi ditolak**
+    - User organisasi A mencoba membuka laporan organisasi B → 403/404
+    - Berlaku untuk semua tahap: buka, edit, finalisasi, unduh
+
+### Test Regresi API
+
+13. **Perubahan response format terdeteksi**
+    - Jika API mengubah struktur response, test gagal
+    - Bukan lolos dengan data undefined/null
+
+14. **Perubahan status code terdeteksi**
+    - Jika API mengubah status code (misal 200 → 201), test gagal
+    - Memaksa developer memperbarui test secara eksplisit
+
+## Checklist Audit
+
+### A. Test Runner
+- [ ] Runner berhasil memuat semua modul ESM tanpa error
+- [ ] Ekstensi file ditangani dengan benar (`.js`, `.ts`, `.mjs`)
+- [ ] Runner menyelesaikan setup sebelum skenario route berjalan
+- [ ] Hasil test dilaporkan dengan jelas (lulus/gagal/error infrastruktur)
+- [ ] Exit code benar: 0 untuk lulus, non-zero untuk gagal
+- [ ] Runner berjalan di CI tanpa intervensi manual
+
+### B. Siklus Hidup Laporan
+- [ ] Test mencakup: buat draft → simpan → buka → edit → simpan ulang → finalisasi → unduh → unduh ulang
+- [ ] Setiap transisi diuji sebagai alur terintegrasi, bukan hanya endpoint individual
+- [ ] Data yang tersimpan konsisten di setiap tahap
+- [ ] PDF yang dihasilkan valid dan sesuai data laporan
+- [ ] Unduh ulang menghasilkan PDF yang identik
+
+### C. Konflik Draf
+- [ ] Draf ganda oleh user yang sama ditangani eksplisit (ditolak atau dikembalikan)
+- [ ] Draf ganda oleh user berbeda ditolak dengan error jelas
+- [ ] Error message dapat ditindaklanjuti oleh user
+
+### D. Autentikasi dan Isolasi
+- [ ] Test berjalan dalam konteks user terautentikasi
+- [ ] Request tanpa autentikasi ditolak (401)
+- [ ] Akses lintas organisasi ditolak (403/404)
+- [ ] Konteks organisasi benar di setiap tahap
+
+### E. Kontrak API
+- [ ] Request body schema divalidasi di test
+- [ ] Response body schema divalidasi di test
+- [ ] Status codes yang diharapkan ditegaskan
+- [ ] Perubahan kontrak menyebabkan test gagal, bukan lolos diam-diam
+
+### F. CI Integration
+- [ ] Test regresi berjalan di setiap PR
+- [ ] Test regresi berjalan di setiap merge ke main
+- [ ] Kegagalan test memblokir merge
+- [ ] Waktu eksekusi test wajar (<5 menit untuk suite penuh)
+
+### G. Monitoring
+- [ ] Metric: waktu eksekusi test suite
+- [ ] Metric: jumlah test yang lulus/gagal per run
+- [ ] Alert jika test suite gagal di main branch
+- [ ] Alert jika waktu eksekusi meningkat drastis
+
+## Pertimbangan yang Perlu Dikonfirmasi
+
+Beberapa hal yang perlu diverifikasi saat audit:
+
+1. **Stack test runner**: Jest, Vitest, Mocha, atau lainnya? Ini mempengaruhi cara penanganan ESM.
+2. **Konfigurasi ESM**: Apakah `package.json` sudah punya `"type": "module"`, atau perlu flag khusus?
+3. **Browser testing**: Playwright, Cypress, atau Puppeteer? Atau hanya API-level test?
+4. **Autentikasi di test**: Bagaimana test mendapatkan token/session yang valid?
+5. **Status test suite saat ini**: Berapa banyak test yang sudah ada, berapa yang lulus/gagal?
+
+## Posisi Saya
+
+Tidak ada aksi implementasi dari sisi saya. Catatan ini final sebagai bahan audit. Hasil implementasi task ini akan dinilai langsung memakai checklist di atas.
+
+Apakah ada aspek lain yang perlu ditambahkan, atau kita lanjut ke task berikutnya dalam antrean?

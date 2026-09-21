@@ -1,0 +1,209 @@
+Baik, saya bahas task pengujian regresi ini dengan disiplin yang sama — sebagai bahan audit, bukan panduan implementasi mentah.
+
+## Skenario Kegagalan yang Harus Ditutup
+
+Regresi pada alur laporan bisa terjadi tanpa disadari karena perubahan API yang tampak tidak terkait:
+
+| Mode kegagalan | Dampak |
+|---|---|
+| Simpan laporan gagal setelah perubahan skema | User kehilangan pekerjaan berjam-jam |
+| Konflik draf ganda tidak terdeteksi | Dua user menimpa laporan yang sama |
+| Buka laporan lama gagal setelah migrasi | Arsip tidak bisa diakses |
+| Finalisasi laporan gagal | Laporan tidak bisa dikunci untuk audit |
+| Unduh ulang PDF gagal | Auditor tidak bisa mendapatkan dokumen |
+| Runner tes tidak berjalan | Regresi tidak terdeteksi sampai production |
+| ESM import tanpa ekstensi | Tes gagal di CI, developer mengabaikan |
+| Alur browser tidak diuji | Tes API hijau tapi UI rusak |
+
+Kasus kritis: runner tes yang gagal memuat ESM berarti **seluruh suite pengujian server tidak berjalan**, sehingga regresi apa pun bisa lolos ke production tanpa terdeteksi.
+
+## Prinsip Pengujian Regresi yang Kuat
+
+### 1. Runner Tes Harus Berjalan Dulu
+
+Sebelum menambah skenario baru, pastikan infrastruktur tes berfungsi:
+- ESM import dengan ekstensi `.js` atau konfigurasi yang benar
+- Semua test file dimuat tanpa error
+- CI gagal jika runner tidak bisa dimuat (bukan skip diam-diam)
+- Tidak ada test yang di-skip tanpa alasan eksplisit
+
+### 2. Alur Lengkap End-to-End
+
+Pengujian regresi harus mencakup alur lengkap yang dialami user, bukan hanya endpoint individual:
+
+```
+Buat draft → Simpan → Buka kembali → Edit → Simpan → Finalisasi → Unduh PDF → Unduh ulang
+```
+
+Setiap langkah harus diverifikasi setelah perubahan API.
+
+### 3. Skenario Konflik Draf Ganda
+
+Dua user (atau dua tab) mengedit laporan yang sama:
+- User A buka laporan → User B buka laporan yang sama
+- User A simpan → User B simpan → siapa yang menang?
+- Kebijakan: last-write-wins, optimistic locking, atau tolak?
+- Error message harus jelas dan dapat ditindaklanjuti
+
+### 4. Alur Browser Terautentikasi
+
+Tes API saja tidak cukup karena:
+- Middleware autentikasi bisa berperilaku berbeda di browser vs test client
+- Cookie/session bisa kedaluwarsa di tengah alur
+- Redirect setelah login bisa memecah alur
+- CORS bisa memblokir request tertentu
+
+Tes browser terautentikasi harus:
+- Login sebagai user nyata (atau test user)
+- Menjalankan alur lengkap di browser
+- Memverifikasi bahwa response API sesuai dengan yang ditampilkan di UI
+
+### 5. Kontrak API yang Stabil
+
+Perubahan API harus backward compatible:
+- Field baru boleh ditambahkan, field lama tidak boleh dihapus
+- Tipe data tidak boleh berubah (string → number)
+- Status code tidak boleh berubah (200 → 201)
+- Struktur response tidak boleh berubah tanpa versi baru
+
+## Test Case yang Diperlukan
+
+### Test Infrastruktur
+
+1. **Runner tes memuat semua file**
+   - ESM import dengan ekstensi berjalan tanpa error
+   - Semua test file ditemukan dan dijalankan
+   - CI gagal jika ada file yang tidak bisa dimuat
+
+2. **Tidak ada test yang di-skip diam-diam**
+   - Setiap `skip` atau `todo` punya alasan eksplisit
+   - Jumlah test yang berjalan sesuai ekspektasi
+
+### Test Alur Laporan
+
+3. **Simpan laporan baru**
+   - Buat draft → simpan → verifikasi data tersimpan
+   - Buka kembali → data sama dengan yang disimpan
+
+4. **Simpan laporan yang sudah ada**
+   - Buka laporan → edit → simpan → verifikasi perubahan
+   - Data yang tidak diedit tidak berubah
+
+5. **Konflik draf ganda**
+   - User A dan B buka laporan yang sama
+   - User A simpan → User B simpan
+   - Verifikasi kebijakan konflik (tolak, merge, atau overwrite)
+   - Error message jelas
+
+6. **Buka laporan lama**
+   - Laporan dari 6 bulan lalu → buka → data lengkap
+   - Laporan dari proyek yang sudah dihapus → buka → data tetap ada (snapshot)
+
+7. **Finalisasi laporan**
+   - Draft → finalisasi → status berubah ke "final"
+   - Laporan final tidak bisa diedit (atau ada mekanisme unlock eksplisit)
+
+8. **Unduh PDF**
+   - Laporan final → unduh PDF → file valid
+   - PDF berisi data yang benar (bukan data kosong atau salah)
+
+9. **Unduh ulang PDF**
+   - Unduh PDF → unduh lagi → file sama (atau regenerasi yang konsisten)
+   - Tidak ada error saat unduh ulang
+
+### Test Autentikasi
+
+10. **Alur browser terautentikasi**
+    - Login → buat laporan → simpan → buka → finalisasi → unduh
+    - Seluruh alur berjalan tanpa re-login
+    - Session tidak kedaluwarsa di tengah alur
+
+11. **Token kedaluwarsa di tengah alur**
+    - Mulai alur → token kedaluwarsa → simpan laporan
+    - Aplikasi redirect ke login → setelah login, lanjutkan alur
+    - Data draft tidak hilang
+
+12. **Isolasi organisasi di browser**
+    - Login sebagai user organisasi A
+    - Tidak bisa membuka laporan organisasi B (meskipun tahu URL-nya)
+
+### Test Regresi Spesifik
+
+13. **Perubahan skema tidak merusak alur**
+    - Tambah kolom baru ke tabel laporan → alur tetap berjalan
+    - Ubah tipe kolom (jika perlu) → alur tetap berjalan atau migrasi eksplisit
+
+14. **Perubahan middleware tidak merusak autentikasi**
+    - Tambah middleware baru → alur terautentikasi tetap berjalan
+    - Ubah urutan middleware → tidak ada efek samping
+
+15. **Perubahan dependency tidak merusak ESM**
+    - Update package → runner tes tetap berjalan
+    - Tidak ada import yang rusak
+
+## Checklist Audit
+
+### A. Infrastruktur Tes
+- [ ] Runner tes memuat semua file ESM tanpa error
+- [ ] Ekstensi file import sudah benar (`.js` atau konfigurasi yang sesuai)
+- [ ] CI gagal jika runner tidak bisa dimuat
+- [ ] Tidak ada test yang di-skip tanpa alasan eksplisit
+- [ ] Jumlah test yang berjalan sesuai ekspektasi
+
+### B. Alur Laporan Lengkap
+- [ ] Test: buat draft → simpan → buka → edit → simpan
+- [ ] Test: finalisasi → unduh PDF → unduh ulang
+- [ ] Test: buka laporan lama (arsip)
+- [ ] Test: buka laporan dari proyek yang sudah dihapus
+
+### C. Konflik Draf
+- [ ] Test: dua user edit laporan yang sama
+- [ ] Kebijakan konflik ditegakkan (tolak, merge, atau overwrite)
+- [ ] Error message jelas dan dapat ditindaklanjuti
+- [ ] Data tidak corrupt setelah konflik
+
+### D. Alur Browser Terautentikasi
+- [ ] Test browser: login → alur lengkap → logout
+- [ ] Session tidak kedaluwarsa di tengah alur
+- [ ] Token kedaluwarsa ditangani dengan graceful redirect
+- [ ] Isolasi organisasi berlaku di browser
+
+### E. Kontrak API
+- [ ] Response API sesuai dengan tipe yang dideklarasikan
+- [ ] Field baru tidak merusak client lama
+- [ ] Status code konsisten
+- [ ] Error response terstruktur dan informatif
+
+### F. Regresi Spesifik
+- [ ] Perubahan skema tidak merusak alur simpan/buka
+- [ ] Perubahan middleware tidak merusak autentikasi
+- [ ] Perubahan dependency tidak merusak ESM import
+- [ ] Migrasi database tidak merusak laporan lama
+
+### G. CI/CD Integration
+- [ ] Semua test berjalan di CI sebelum merge
+- [ ] Test browser terautentikasi berjalan di CI (jika memungkinkan)
+- [ ] Test regresi tidak di-skip di CI
+- [ ] Failure di test regresi memblokir merge
+
+### H. Monitoring
+- [ ] Metric: jumlah test yang berjalan per CI run
+- [ ] Metric: waktu eksekusi test suite
+- [ ] Alert jika jumlah test turun drastis (indikasi test di-skip)
+- [ ] Alert jika test suite gagal berulang
+
+## Pertimbangan yang Perlu Dikonfirmasi
+
+Beberapa hal yang perlu diverifikasi saat audit:
+
+1. **Stack testing**: Jest, Vitest, Playwright, atau kombinasi? Ini mempengaruhi cara ESM di-handle.
+2. **Konfigurasi ESM**: Apakah `package.json` sudah `"type": "module"`, atau masih perlu ekstensi `.mjs`?
+3. **Test browser**: Apakah sudah ada setup Playwright/Cypress, atau perlu dibangun dari awal?
+4. **Kebijakan konflik draf**: Last-write-wins, optimistic locking, atau tolak?
+5. **Laporan yang sudah ada**: Berapa banyak laporan di database yang perlu diuji backward compatibility?
+
+## Posisi Saya
+
+Tidak ada aksi implementasi dari sisi saya. Catatan ini final sebagai bahan audit. Hasil implementasi task ini akan dinilai langsung memakai checklist di atas.
+
+Apakah ada aspek lain yang perlu ditambahkan, atau kita lanjut ke task berikutnya dalam antrean?
