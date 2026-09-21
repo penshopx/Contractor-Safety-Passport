@@ -7,6 +7,7 @@ export interface SafetyBoqItem {
   volume: number;
   unit: string;
   unitPrice: number;
+  migrationKey?: string | null;
   catalogItemId?: string | null;
   priceRegion?: string | null;
   priceSource?: string | null;
@@ -89,6 +90,38 @@ const SEED_BOQ_ITEMS: SafetyBoqItem[] = [
 
 const STORAGE_KEY = 'safety_passport_boq_v1';
 const CATALOG_STORAGE_KEY = 'safety_passport_price_catalog_v1';
+const MIGRATION_SOURCE_STORAGE_KEY = 'safety_passport_boq_migration_source_v1';
+
+export function getBoqMigrationKey(
+  organizationId: string,
+  projectId: number,
+  migrationSourceId: string,
+  localItemId: string,
+) {
+  return `local-boq:${organizationId}:${projectId}:${migrationSourceId}:${localItemId}`;
+}
+
+export function getBoqMigrationItemId(migrationKey: string) {
+  let firstHash = 2166136261;
+  let secondHash = 2166136261;
+  for (let index = 0; index < migrationKey.length; index += 1) {
+    firstHash = Math.imul(firstHash ^ migrationKey.charCodeAt(index), 16777619);
+    secondHash = Math.imul(
+      secondHash ^ migrationKey.charCodeAt(migrationKey.length - index - 1),
+      16777619,
+    );
+  }
+  return `migrated-${(firstHash >>> 0).toString(36)}-${(secondHash >>> 0).toString(36)}`;
+}
+
+function getOrCreateBoqMigrationSourceId() {
+  const stored = localStorage.getItem(MIGRATION_SOURCE_STORAGE_KEY);
+  if (stored) return stored;
+
+  const sourceId = crypto.randomUUID();
+  localStorage.setItem(MIGRATION_SOURCE_STORAGE_KEY, sourceId);
+  return sourceId;
+}
 
 const SEED_CATALOG_ITEMS: SafetyPriceCatalogItem[] = SEED_BOQ_ITEMS.map((item) => ({
   id: `catalog-${item.id}`,
@@ -107,9 +140,11 @@ const SEED_CATALOG_ITEMS: SafetyPriceCatalogItem[] = SEED_BOQ_ITEMS.map((item) =
 export function useLocalSafetyBoqStore() {
   const [items, setItems] = useState<SafetyBoqItem[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [migrationSourceId, setMigrationSourceId] = useState<string | null>(null);
 
   useEffect(() => {
     try {
+      setMigrationSourceId(getOrCreateBoqMigrationSourceId());
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
         setItems(JSON.parse(stored));
@@ -147,7 +182,15 @@ export function useLocalSafetyBoqStore() {
     setItems((prev) => prev.filter((item) => !removedIds.has(item.id)));
   }, []);
 
-  return { items, addItem, updateItem, removeItem, removeItems, isLoaded };
+  return {
+    items,
+    addItem,
+    updateItem,
+    removeItem,
+    removeItems,
+    isLoaded,
+    migrationSourceId,
+  };
 }
 
 export function useLocalSafetyPriceCatalog() {

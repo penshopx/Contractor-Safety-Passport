@@ -3,3 +3,4 @@
 - [Versi profil CSMS](csms-profile-versioning.md) — kunci versi secara atomik saat pertama dipakai; revisi berikutnya harus menjadi versi baru.
 - [Pengujian database bersama](shared-database-tests.md) — jangan jalankan migrasi skema dan integration test secara paralel pada database pengembangan yang sama.
 - [Versi agregat bersama](shared-aggregate-versioning.md) — simpan revisi terpisah dari baris anak agar agregat kosong tetap memiliki kontrol konkurensi.
+- [Identitas migrasi BOQ](boq-migration-identity.md) — pisahkan identitas migrasi dari ID item; retry stale hanya sukses bila payload persis sudah tersimpan.

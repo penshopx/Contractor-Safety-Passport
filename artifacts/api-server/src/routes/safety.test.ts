@@ -655,6 +655,128 @@ describe("isolasi data antar kontraktor", () => {
       .where(eq(projectsTable.id, secondProject.body.id));
   });
 
+  it("tidak menggandakan item BOQ lokal ketika respons migrasi terputus lalu dicoba ulang", async () => {
+    const firstLocalItem = {
+      id: `migrated-device-a-${runId}`,
+      migrationKey: `local-boq:${organizationA}:${projectAId}:device-a:seed-1`,
+      description: "Helm dari penyimpanan lokal",
+      category: "APD & APK",
+      volume: 10,
+      unit: "Bh",
+      unitPrice: 75_000,
+      risk: "Tinggi",
+      stage: "Pelaksanaan",
+      controlNeed: "Wajib digunakan di area kerja",
+    };
+    const secondLocalItem = {
+      ...firstLocalItem,
+      id: `migrated-device-b-${runId}`,
+      migrationKey: `local-boq:${organizationA}:${projectAId}:device-b:seed-1`,
+      description: "Helm dari perangkat anggota lain",
+    };
+    const migratedItems = [firstLocalItem, secondLocalItem];
+
+    const initial = await request(`/projects/${projectAId}/safety-boq`);
+    const firstSave = await request(`/projects/${projectAId}/safety-boq`, {
+      role: "owner",
+      method: "PUT",
+      body: { revision: initial.body.revision, items: migratedItems },
+    });
+    assert.equal(firstSave.status, 200);
+
+    // Simulasikan respons pertama tidak pernah diterima: klien mengirim ulang
+    // payload dan revisi yang sama sementara data lokal masih tersimpan.
+    const retry = await request(`/projects/${projectAId}/safety-boq`, {
+      role: "owner",
+      method: "PUT",
+      body: {
+        revision: initial.body.revision,
+        items: [...migratedItems].reverse(),
+      },
+    });
+
+    assert.equal(retry.status, 200);
+    assert.equal(retry.body.items.length, 2);
+    assert.deepEqual(
+      new Set(retry.body.items.map((item: { migrationKey: string }) => item.migrationKey)),
+      new Set(migratedItems.map((item) => item.migrationKey)),
+    );
+    assert.deepEqual(
+      new Set(retry.body.items.map((item: { id: string }) => item.id)),
+      new Set(migratedItems.map((item) => item.id)),
+    );
+    assert.equal(retry.body.revision, firstSave.body.revision);
+
+    const remotelyEditedItems = retry.body.items.map((item: {
+      id: string;
+      migrationKey: string;
+      description: string;
+      projectId: number;
+      updatedAt: string;
+      [key: string]: unknown;
+    }) => {
+      const {
+        projectId: _projectId,
+        updatedAt: _updatedAt,
+        ...input
+      } = item;
+      return item.id === firstLocalItem.id
+        ? { ...input, description: "Helm yang sudah diedit anggota tim" }
+        : input;
+    });
+    const remoteEdit = await request(`/projects/${projectAId}/safety-boq`, {
+      role: "safety_expert",
+      method: "PUT",
+      body: {
+        revision: retry.body.revision,
+        items: remotelyEditedItems,
+      },
+    });
+    assert.equal(remoteEdit.status, 200);
+
+    const staleRetry = await request(`/projects/${projectAId}/safety-boq`, {
+      role: "owner",
+      method: "PUT",
+      body: {
+        revision: retry.body.revision,
+        items: migratedItems,
+      },
+    });
+    assert.equal(staleRetry.status, 409);
+
+    const reloaded = await request(`/projects/${projectAId}/safety-boq`);
+    const retryAfterRefetch = await request(`/projects/${projectAId}/safety-boq`, {
+      role: "owner",
+      method: "PUT",
+      body: {
+        revision: reloaded.body.revision,
+        items: [
+          ...reloaded.body.items.map((item: {
+            projectId: number;
+            updatedAt: string;
+            [key: string]: unknown;
+          }) => {
+            const {
+              projectId: _projectId,
+              updatedAt: _updatedAt,
+              ...input
+            } = item;
+            return input;
+          }),
+          ...migratedItems,
+        ],
+      },
+    });
+    assert.equal(retryAfterRefetch.status, 200);
+    assert.equal(retryAfterRefetch.body.items.length, 2);
+    assert.equal(
+      retryAfterRefetch.body.items.find(
+        (item: { id: string }) => item.id === firstLocalItem.id,
+      ).description,
+      "Helm yang sudah diedit anggota tim",
+    );
+  });
+
   it("menyimpan, membuka, memperbarui, dan menolak draf bulanan ganda", async () => {
     const report = {
       projectId: projectAId,

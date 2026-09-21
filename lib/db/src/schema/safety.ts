@@ -194,6 +194,7 @@ export const safetyBoqItemsTable = pgTable(
     volume: real("volume").notNull(),
     unit: text("unit").notNull(),
     unitPrice: real("unit_price").notNull(),
+    migrationKey: text("migration_key"),
     catalogItemId: text("catalog_item_id"),
     priceRegion: text("price_region"),
     priceSource: text("price_source"),
@@ -212,6 +213,11 @@ export const safetyBoqItemsTable = pgTable(
       name: "safety_boq_items_organization_project_id_pk",
       columns: [table.organizationId, table.projectId, table.id],
     }),
+    uniqueIndex("safety_boq_items_organization_project_migration_key_idx").on(
+      table.organizationId,
+      table.projectId,
+      table.migrationKey,
+    ),
     index("safety_boq_items_organization_id_idx").on(table.organizationId),
   ],
 );

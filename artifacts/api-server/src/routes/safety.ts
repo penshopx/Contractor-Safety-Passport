@@ -567,6 +567,17 @@ export const createSafetyRouter = (
         res.status(404).json({ error: "Proyek tidak ditemukan" });
         return;
       }
+      const uniqueItems = Array.from(
+        body.data.items.reduce((itemsByIdentity, item) => {
+          const identity = item.migrationKey
+            ? `migration:${item.migrationKey}`
+            : `item:${item.id}`;
+          if (!itemsByIdentity.has(identity)) {
+            itemsByIdentity.set(identity, item);
+          }
+          return itemsByIdentity;
+        }, new Map<string, (typeof body.data.items)[number]>()),
+      ).map(([, item]) => item);
       const result = await db.transaction(async (tx) => {
         await tx
           .insert(safetyBoqDraftsTable)
@@ -585,15 +596,72 @@ export const createSafetyRouter = (
             eq(safetyBoqDraftsTable.revision, body.data.revision),
           ))
           .returning({ revision: safetyBoqDraftsTable.revision });
-        if (!revision) return null;
+        if (!revision) {
+          const [currentDraft] = await tx
+            .select({ revision: safetyBoqDraftsTable.revision })
+            .from(safetyBoqDraftsTable)
+            .where(and(
+              eq(safetyBoqDraftsTable.organizationId, organizationId),
+              eq(safetyBoqDraftsTable.projectId, project.id),
+            ));
+          const currentItems = await tx
+            .select()
+            .from(safetyBoqItemsTable)
+            .where(and(
+              eq(safetyBoqItemsTable.organizationId, organizationId),
+              eq(safetyBoqItemsTable.projectId, project.id),
+            ))
+            .orderBy(asc(safetyBoqItemsTable.createdAt));
+          const comparableInput = uniqueItems.map((item) => ({
+            id: item.id,
+            description: item.description,
+            category: item.category,
+            volume: item.volume,
+            unit: item.unit,
+            unitPrice: item.unitPrice,
+            migrationKey: item.migrationKey ?? null,
+            catalogItemId: item.catalogItemId ?? null,
+            priceRegion: item.priceRegion ?? null,
+            priceSource: item.priceSource ?? null,
+            priceUpdatedAt: item.priceUpdatedAt?.toISOString().slice(0, 10) ?? null,
+            risk: item.risk,
+            stage: item.stage,
+            controlNeed: item.controlNeed,
+          })).sort((first, second) => (
+            (first.migrationKey ?? first.id).localeCompare(second.migrationKey ?? second.id)
+          ));
+          const comparableCurrent = currentItems.map((item) => ({
+            id: item.id,
+            description: item.description,
+            category: item.category,
+            volume: item.volume,
+            unit: item.unit,
+            unitPrice: item.unitPrice,
+            migrationKey: item.migrationKey ?? null,
+            catalogItemId: item.catalogItemId ?? null,
+            priceRegion: item.priceRegion ?? null,
+            priceSource: item.priceSource ?? null,
+            priceUpdatedAt: item.priceUpdatedAt?.toISOString().slice(0, 10) ?? null,
+            risk: item.risk,
+            stage: item.stage,
+            controlNeed: item.controlNeed,
+          })).sort((first, second) => (
+            (first.migrationKey ?? first.id).localeCompare(second.migrationKey ?? second.id)
+          ));
+          const isExactMigrationRetry = uniqueItems.some((item) => item.migrationKey)
+            && JSON.stringify(comparableInput) === JSON.stringify(comparableCurrent);
+          return isExactMigrationRetry
+            ? { revision: currentDraft!.revision, items: currentItems }
+            : null;
+        }
         await tx
           .delete(safetyBoqItemsTable)
           .where(and(eq(safetyBoqItemsTable.organizationId, organizationId), eq(safetyBoqItemsTable.projectId, project.id)));
-        const items = body.data.items.length === 0
+        const items = uniqueItems.length === 0
           ? []
           : await tx
               .insert(safetyBoqItemsTable)
-              .values(body.data.items.map((item) => ({
+              .values(uniqueItems.map((item) => ({
                 ...item,
                 organizationId,
                 projectId: project.id,

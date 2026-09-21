@@ -1224,6 +1224,7 @@ components:
         volume: { type: number, exclusiveMinimum: 0 }
         unit: { type: string }
         unitPrice: { type: number, minimum: 0 }
+        migrationKey: { type: string, nullable: true }
         catalogItemId: { type: string, nullable: true }
         priceRegion: { type: string, nullable: true }
         priceSource: { type: string, nullable: true }
@@ -1242,6 +1243,7 @@ components:
         volume: { type: number, exclusiveMinimum: 0 }
         unit: { type: string, minLength: 1, maxLength: 50 }
         unitPrice: { type: number, minimum: 0 }
+        migrationKey: { type: string, maxLength: 300, nullable: true }
         catalogItemId: { type: string, maxLength: 100, nullable: true }
         priceRegion: { type: string, maxLength: 200, nullable: true }
         priceSource: { type: string, maxLength: 500, nullable: true }

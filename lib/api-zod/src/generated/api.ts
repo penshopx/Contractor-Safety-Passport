@@ -332,6 +332,7 @@ export const GetProjectSafetyBoqResponse = zod.object({
   "volume": zod.number().gt(getProjectSafetyBoqResponseItemsItemVolumeExclusiveMin),
   "unit": zod.string(),
   "unitPrice": zod.number().min(getProjectSafetyBoqResponseItemsItemUnitPriceMin),
+  "migrationKey": zod.string().nullish(),
   "catalogItemId": zod.string().nullish(),
   "priceRegion": zod.string().nullish(),
   "priceSource": zod.string().nullish(),
@@ -368,6 +369,8 @@ export const replaceProjectSafetyBoqBodyItemsItemUnitMax = 50;
 
 export const replaceProjectSafetyBoqBodyItemsItemUnitPriceMin = 0;
 
+export const replaceProjectSafetyBoqBodyItemsItemMigrationKeyMax = 300;
+
 export const replaceProjectSafetyBoqBodyItemsItemCatalogItemIdMax = 100;
 
 export const replaceProjectSafetyBoqBodyItemsItemPriceRegionMax = 200;
@@ -393,6 +396,7 @@ export const ReplaceProjectSafetyBoqBody = zod.object({
   "volume": zod.number().gt(replaceProjectSafetyBoqBodyItemsItemVolumeExclusiveMin),
   "unit": zod.string().min(1).max(replaceProjectSafetyBoqBodyItemsItemUnitMax),
   "unitPrice": zod.number().min(replaceProjectSafetyBoqBodyItemsItemUnitPriceMin),
+  "migrationKey": zod.string().max(replaceProjectSafetyBoqBodyItemsItemMigrationKeyMax).nullish(),
   "catalogItemId": zod.string().max(replaceProjectSafetyBoqBodyItemsItemCatalogItemIdMax).nullish(),
   "priceRegion": zod.string().max(replaceProjectSafetyBoqBodyItemsItemPriceRegionMax).nullish(),
   "priceSource": zod.string().max(replaceProjectSafetyBoqBodyItemsItemPriceSourceMax).nullish(),
@@ -424,6 +428,7 @@ export const ReplaceProjectSafetyBoqResponse = zod.object({
   "volume": zod.number().gt(replaceProjectSafetyBoqResponseItemsItemVolumeExclusiveMin),
   "unit": zod.string(),
   "unitPrice": zod.number().min(replaceProjectSafetyBoqResponseItemsItemUnitPriceMin),
+  "migrationKey": zod.string().nullish(),
   "catalogItemId": zod.string().nullish(),
   "priceRegion": zod.string().nullish(),
   "priceSource": zod.string().nullish(),

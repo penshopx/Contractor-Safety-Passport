@@ -776,6 +776,7 @@ export interface SafetyBoqItem {
   unit: string;
   /** @minimum 0 */
   unitPrice: number;
+  migrationKey?: string | null;
   catalogItemId?: string | null;
   priceRegion?: string | null;
   priceSource?: string | null;
@@ -811,6 +812,8 @@ export interface SafetyBoqItemInput {
   unit: string;
   /** @minimum 0 */
   unitPrice: number;
+  /** @maxLength 300 */
+  migrationKey?: string | null;
   /** @maxLength 100 */
   catalogItemId?: string | null;
   /** @maxLength 200 */

@@ -42,6 +42,8 @@ import {
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { 
+  getBoqMigrationItemId,
+  getBoqMigrationKey,
   useLocalSafetyBoqStore,
   useLocalSafetyPriceCatalog,
   SafetyBoqItem, 
@@ -444,6 +446,7 @@ export default function SafetyBoqPage() {
     removeItem: removeLocalItem,
     removeItems: removeLocalItems,
     isLoaded: isLocalLoaded,
+    migrationSourceId,
   } = useLocalSafetyBoqStore();
   const {
     catalogItems,
@@ -654,19 +657,44 @@ export default function SafetyBoqPage() {
   };
 
   const handleMigrateLocal = () => {
-    if (!canMutateShared || projectId === null || migratableItems.length === 0) return;
-    const serverIds = new Set(projectItems.map((item) => item.id));
-    const migrated = migratableItems.map((item) => ({
-      ...item,
-      id: serverIds.has(item.id) ? crypto.randomUUID() : item.id,
-      projectId,
-    }));
+    if (
+      !canMutateShared
+      || projectId === null
+      || !organization
+      || !migrationSourceId
+      || migratableItems.length === 0
+    ) return;
+    const migrated = migratableItems.map((item) => {
+      const migrationKey = getBoqMigrationKey(
+        organization.organizationId,
+        projectId,
+        migrationSourceId,
+        item.id,
+      );
+      return {
+        ...item,
+        id: getBoqMigrationItemId(migrationKey),
+        migrationKey,
+        projectId,
+      };
+    });
+    const serverMigrationKeys = new Set(
+      projectItems.flatMap((item) => item.migrationKey ? [item.migrationKey] : []),
+    );
+    const pendingMigrations = migrated.filter(
+      (item) => !serverMigrationKeys.has(item.migrationKey),
+    );
+    if (pendingMigrations.length === 0) {
+      removeLocalItems(migratableItems.map((item) => item.id));
+      toast.success(`${migratableItems.length} item lokal sudah tersimpan di draft proyek`);
+      return;
+    }
     replaceSharedDraft.mutate(
       {
         projectId,
         data: {
           revision: sharedItems!.revision,
-          items: [...projectItems, ...migrated].map(
+          items: [...projectItems, ...pendingMigrations].map(
             ({ updatedAt: _updatedAt, projectId: _projectId, ...item }) => item,
           ),
         },
@@ -778,7 +806,7 @@ export default function SafetyBoqPage() {
             <Button
               variant="outline"
               onClick={handleMigrateLocal}
-              disabled={!canMutateShared || replaceSharedDraft.isPending}
+              disabled={!canMutateShared || !migrationSourceId || replaceSharedDraft.isPending}
               className="gap-2"
               data-testid="button-migrate-local-boq"
             >
