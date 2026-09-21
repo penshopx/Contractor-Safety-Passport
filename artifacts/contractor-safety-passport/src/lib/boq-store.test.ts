@@ -1,6 +1,41 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { getBoqMigrationItemId, getBoqMigrationKey } from "./boq-store.ts";
+import {
+  getBoqMigrationItemId,
+  getBoqMigrationKey,
+  parseLegacySafetyPriceCatalog,
+  safetyPriceCatalogItemInputSchema,
+} from "./boq-store.ts";
+
+describe("katalog harga keselamatan", () => {
+  const validCatalogItem = {
+    id: "catalog-1",
+    description: "Helm keselamatan",
+    category: "APD & APK",
+    unit: "Bh",
+    referencePrice: 75_000,
+    region: "Nasional",
+    source: "Pemasok",
+    priceUpdatedAt: "2026-09-21",
+    risk: "Tinggi",
+    stage: "Pelaksanaan",
+    controlNeed: "Pelindung kepala wajib",
+  };
+
+  it("menerima form katalog tanpa field harga BOQ", () => {
+    const { id: _id, ...form } = validCatalogItem;
+    assert.equal(safetyPriceCatalogItemInputSchema.safeParse(form).success, true);
+    assert.equal("unitPrice" in form, false);
+  });
+
+  it("memulihkan hanya item katalog lokal yang valid", () => {
+    const recovered = parseLegacySafetyPriceCatalog(JSON.stringify([
+      validCatalogItem,
+      { ...validCatalogItem, id: "invalid", priceUpdatedAt: "21-09-2026" },
+    ]));
+    assert.deepEqual(recovered, [validCatalogItem]);
+  });
+});
 
 describe("identitas migrasi BOQ lokal", () => {
   it("stabil untuk organisasi, proyek, dan item lokal yang sama", () => {

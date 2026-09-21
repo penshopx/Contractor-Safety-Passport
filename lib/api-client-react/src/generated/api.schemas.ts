@@ -851,6 +851,69 @@ export interface SafetyBoqDraft {
   items: SafetyBoqItem[];
 }
 
+export interface SafetyPriceCatalogItem {
+  id: string;
+  description: string;
+  category: string;
+  unit: string;
+  referencePrice: number;
+  region: string;
+  source: string;
+  /** @pattern ^[0-9]{4}-(0[1-9]|1[0-2])-([0-2][0-9]|3[0-1])$ */
+  priceUpdatedAt: string;
+  risk: string;
+  stage: string;
+  controlNeed: string;
+  updatedAt: string;
+}
+
+export interface SafetyPriceCatalogItemInput {
+  /**
+     * @minLength 1
+     * @maxLength 1000
+     */
+  description: string;
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  category: string;
+  /**
+     * @minLength 1
+     * @maxLength 50
+     */
+  unit: string;
+  /** @minimum 0 */
+  referencePrice: number;
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  region: string;
+  /**
+     * @minLength 1
+     * @maxLength 500
+     */
+  source: string;
+  /** @pattern ^[0-9]{4}-(0[1-9]|1[0-2])-([0-2][0-9]|3[0-1])$ */
+  priceUpdatedAt: string;
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  risk: string;
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  stage: string;
+  /**
+     * @minLength 1
+     * @maxLength 4000
+     */
+  controlNeed: string;
+}
+
 export type EvidenceUploadRequestContentType = typeof EvidenceUploadRequestContentType[keyof typeof EvidenceUploadRequestContentType];
 
 

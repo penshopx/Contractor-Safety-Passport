@@ -28,6 +28,8 @@ tags:
     description: Saved monthly SMKK reports
   - name: safety-boq
     description: Shared project safety BOQ drafts
+  - name: safety-price-catalog
+    description: Organization safety price reference catalog
   - name: storage
     description: Protected evidence file storage
   - name: organizations
@@ -333,6 +335,82 @@ paths:
                 $ref: "#/components/schemas/SafetyBoqDraft"
         "409":
           $ref: "#/components/responses/Conflict"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /safety-price-catalog:
+    get:
+      operationId: listSafetyPriceCatalogItems
+      tags: [safety-price-catalog]
+      summary: List the active workspace safety price catalog
+      responses:
+        "200":
+          description: Organization price catalog
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SafetyPriceCatalogItem"
+    post:
+      operationId: createSafetyPriceCatalogItem
+      tags: [safety-price-catalog]
+      summary: Add an item to the active workspace safety price catalog
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SafetyPriceCatalogItemInput"
+      responses:
+        "201":
+          description: Created catalog item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SafetyPriceCatalogItem"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /safety-price-catalog/{id}:
+    patch:
+      operationId: updateSafetyPriceCatalogItem
+      tags: [safety-price-catalog]
+      summary: Update an item in the active workspace safety price catalog
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 100 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SafetyPriceCatalogItemInput"
+      responses:
+        "200":
+          description: Updated catalog item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SafetyPriceCatalogItem"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteSafetyPriceCatalogItem
+      tags: [safety-price-catalog]
+      summary: Delete an item from the active workspace safety price catalog
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 100 }
+      responses:
+        "204":
+          description: Catalog item deleted
         "403":
           $ref: "#/components/responses/Forbidden"
         "404":
@@ -1275,6 +1353,36 @@ components:
           items:
             $ref: "#/components/schemas/SafetyBoqItem"
       required: [revision, items]
+    SafetyPriceCatalogItem:
+      type: object
+      properties:
+        id: { type: string }
+        description: { type: string }
+        category: { type: string }
+        unit: { type: string }
+        referencePrice: { type: number }
+        region: { type: string }
+        source: { type: string }
+        priceUpdatedAt: { type: string, pattern: "^[0-9]{4}-(0[1-9]|1[0-2])-([0-2][0-9]|3[0-1])$" }
+        risk: { type: string }
+        stage: { type: string }
+        controlNeed: { type: string }
+        updatedAt: { type: string, format: date-time }
+      required: [id, description, category, unit, referencePrice, region, source, priceUpdatedAt, risk, stage, controlNeed, updatedAt]
+    SafetyPriceCatalogItemInput:
+      type: object
+      properties:
+        description: { type: string, minLength: 1, maxLength: 1000 }
+        category: { type: string, minLength: 1, maxLength: 200 }
+        unit: { type: string, minLength: 1, maxLength: 50 }
+        referencePrice: { type: number, minimum: 0 }
+        region: { type: string, minLength: 1, maxLength: 200 }
+        source: { type: string, minLength: 1, maxLength: 500 }
+        priceUpdatedAt: { type: string, pattern: "^[0-9]{4}-(0[1-9]|1[0-2])-([0-2][0-9]|3[0-1])$" }
+        risk: { type: string, minLength: 1, maxLength: 100 }
+        stage: { type: string, minLength: 1, maxLength: 100 }
+        controlNeed: { type: string, minLength: 1, maxLength: 4000 }
+      required: [description, category, unit, referencePrice, region, source, priceUpdatedAt, risk, stage, controlNeed]
     EvidenceUploadRequest:
       type: object
       properties:

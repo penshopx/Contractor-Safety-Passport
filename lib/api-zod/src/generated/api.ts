@@ -442,6 +442,163 @@ export const ReplaceProjectSafetyBoqResponse = zod.object({
 
 
 /**
+ * @summary List the active workspace safety price catalog
+ */
+export const listSafetyPriceCatalogItemsResponsePriceUpdatedAtRegExp = new RegExp('^[0-9]{4}-(0[1-9]|1[0-2])-([0-2][0-9]|3[0-1])$');
+
+
+export const ListSafetyPriceCatalogItemsResponseItem = zod.object({
+  "id": zod.string(),
+  "description": zod.string(),
+  "category": zod.string(),
+  "unit": zod.string(),
+  "referencePrice": zod.number(),
+  "region": zod.string(),
+  "source": zod.string(),
+  "priceUpdatedAt": zod.string().regex(listSafetyPriceCatalogItemsResponsePriceUpdatedAtRegExp),
+  "risk": zod.string(),
+  "stage": zod.string(),
+  "controlNeed": zod.string(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListSafetyPriceCatalogItemsResponse = zod.array(ListSafetyPriceCatalogItemsResponseItem)
+
+
+/**
+ * @summary Add an item to the active workspace safety price catalog
+ */
+export const createSafetyPriceCatalogItemBodyDescriptionMax = 1000;
+
+export const createSafetyPriceCatalogItemBodyCategoryMax = 200;
+
+export const createSafetyPriceCatalogItemBodyUnitMax = 50;
+
+export const createSafetyPriceCatalogItemBodyReferencePriceMin = 0;
+
+export const createSafetyPriceCatalogItemBodyRegionMax = 200;
+
+export const createSafetyPriceCatalogItemBodySourceMax = 500;
+
+export const createSafetyPriceCatalogItemBodyPriceUpdatedAtRegExp = new RegExp('^[0-9]{4}-(0[1-9]|1[0-2])-([0-2][0-9]|3[0-1])$');
+export const createSafetyPriceCatalogItemBodyRiskMax = 100;
+
+export const createSafetyPriceCatalogItemBodyStageMax = 100;
+
+export const createSafetyPriceCatalogItemBodyControlNeedMax = 4000;
+
+
+
+export const CreateSafetyPriceCatalogItemBody = zod.object({
+  "description": zod.string().min(1).max(createSafetyPriceCatalogItemBodyDescriptionMax),
+  "category": zod.string().min(1).max(createSafetyPriceCatalogItemBodyCategoryMax),
+  "unit": zod.string().min(1).max(createSafetyPriceCatalogItemBodyUnitMax),
+  "referencePrice": zod.number().min(createSafetyPriceCatalogItemBodyReferencePriceMin),
+  "region": zod.string().min(1).max(createSafetyPriceCatalogItemBodyRegionMax),
+  "source": zod.string().min(1).max(createSafetyPriceCatalogItemBodySourceMax),
+  "priceUpdatedAt": zod.string().regex(createSafetyPriceCatalogItemBodyPriceUpdatedAtRegExp),
+  "risk": zod.string().min(1).max(createSafetyPriceCatalogItemBodyRiskMax),
+  "stage": zod.string().min(1).max(createSafetyPriceCatalogItemBodyStageMax),
+  "controlNeed": zod.string().min(1).max(createSafetyPriceCatalogItemBodyControlNeedMax)
+})
+
+export const createSafetyPriceCatalogItemResponsePriceUpdatedAtRegExp = new RegExp('^[0-9]{4}-(0[1-9]|1[0-2])-([0-2][0-9]|3[0-1])$');
+
+
+export const CreateSafetyPriceCatalogItemResponse = zod.object({
+  "id": zod.string(),
+  "description": zod.string(),
+  "category": zod.string(),
+  "unit": zod.string(),
+  "referencePrice": zod.number(),
+  "region": zod.string(),
+  "source": zod.string(),
+  "priceUpdatedAt": zod.string().regex(createSafetyPriceCatalogItemResponsePriceUpdatedAtRegExp),
+  "risk": zod.string(),
+  "stage": zod.string(),
+  "controlNeed": zod.string(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update an item in the active workspace safety price catalog
+ */
+export const updateSafetyPriceCatalogItemPathIdMax = 100;
+
+
+
+export const UpdateSafetyPriceCatalogItemParams = zod.object({
+  "id": zod.coerce.string().min(1).max(updateSafetyPriceCatalogItemPathIdMax)
+})
+
+export const updateSafetyPriceCatalogItemBodyDescriptionMax = 1000;
+
+export const updateSafetyPriceCatalogItemBodyCategoryMax = 200;
+
+export const updateSafetyPriceCatalogItemBodyUnitMax = 50;
+
+export const updateSafetyPriceCatalogItemBodyReferencePriceMin = 0;
+
+export const updateSafetyPriceCatalogItemBodyRegionMax = 200;
+
+export const updateSafetyPriceCatalogItemBodySourceMax = 500;
+
+export const updateSafetyPriceCatalogItemBodyPriceUpdatedAtRegExp = new RegExp('^[0-9]{4}-(0[1-9]|1[0-2])-([0-2][0-9]|3[0-1])$');
+export const updateSafetyPriceCatalogItemBodyRiskMax = 100;
+
+export const updateSafetyPriceCatalogItemBodyStageMax = 100;
+
+export const updateSafetyPriceCatalogItemBodyControlNeedMax = 4000;
+
+
+
+export const UpdateSafetyPriceCatalogItemBody = zod.object({
+  "description": zod.string().min(1).max(updateSafetyPriceCatalogItemBodyDescriptionMax),
+  "category": zod.string().min(1).max(updateSafetyPriceCatalogItemBodyCategoryMax),
+  "unit": zod.string().min(1).max(updateSafetyPriceCatalogItemBodyUnitMax),
+  "referencePrice": zod.number().min(updateSafetyPriceCatalogItemBodyReferencePriceMin),
+  "region": zod.string().min(1).max(updateSafetyPriceCatalogItemBodyRegionMax),
+  "source": zod.string().min(1).max(updateSafetyPriceCatalogItemBodySourceMax),
+  "priceUpdatedAt": zod.string().regex(updateSafetyPriceCatalogItemBodyPriceUpdatedAtRegExp),
+  "risk": zod.string().min(1).max(updateSafetyPriceCatalogItemBodyRiskMax),
+  "stage": zod.string().min(1).max(updateSafetyPriceCatalogItemBodyStageMax),
+  "controlNeed": zod.string().min(1).max(updateSafetyPriceCatalogItemBodyControlNeedMax)
+})
+
+export const updateSafetyPriceCatalogItemResponsePriceUpdatedAtRegExp = new RegExp('^[0-9]{4}-(0[1-9]|1[0-2])-([0-2][0-9]|3[0-1])$');
+
+
+export const UpdateSafetyPriceCatalogItemResponse = zod.object({
+  "id": zod.string(),
+  "description": zod.string(),
+  "category": zod.string(),
+  "unit": zod.string(),
+  "referencePrice": zod.number(),
+  "region": zod.string(),
+  "source": zod.string(),
+  "priceUpdatedAt": zod.string().regex(updateSafetyPriceCatalogItemResponsePriceUpdatedAtRegExp),
+  "risk": zod.string(),
+  "stage": zod.string(),
+  "controlNeed": zod.string(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete an item from the active workspace safety price catalog
+ */
+export const deleteSafetyPriceCatalogItemPathIdMax = 100;
+
+
+
+export const DeleteSafetyPriceCatalogItemParams = zod.object({
+  "id": zod.coerce.string().min(1).max(deleteSafetyPriceCatalogItemPathIdMax)
+})
+
+export const DeleteSafetyPriceCatalogItemResponse = zod.void()
+
+
+/**
  * @summary Get stage readiness for the project's active CSMS profile
  */
 

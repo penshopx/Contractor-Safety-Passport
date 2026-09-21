@@ -11,6 +11,7 @@ import {
   projectsTable,
   safetyBoqDraftsTable,
   safetyBoqItemsTable,
+  safetyPriceCatalogItemsTable,
   safetyDocumentsTable,
 } from "@workspace/db";
 import {
@@ -67,6 +68,13 @@ import {
   ReplaceProjectSafetyBoqBody,
   ReplaceProjectSafetyBoqParams,
   ReplaceProjectSafetyBoqResponse,
+  CreateSafetyPriceCatalogItemBody,
+  CreateSafetyPriceCatalogItemResponse,
+  DeleteSafetyPriceCatalogItemParams,
+  ListSafetyPriceCatalogItemsResponse,
+  UpdateSafetyPriceCatalogItemBody,
+  UpdateSafetyPriceCatalogItemParams,
+  UpdateSafetyPriceCatalogItemResponse,
 } from "@workspace/api-zod";
 import {
   requireOrganization,
@@ -508,6 +516,108 @@ export const createSafetyRouter = (
           ),
         ),
       );
+    },
+  );
+
+  router.get("/safety-price-catalog", async (req, res): Promise<void> => {
+    const items = await db
+      .select()
+      .from(safetyPriceCatalogItemsTable)
+      .where(
+        eq(
+          safetyPriceCatalogItemsTable.organizationId,
+          req.organizationContext!.organizationId,
+        ),
+      )
+      .orderBy(asc(safetyPriceCatalogItemsTable.description));
+    res.json(ListSafetyPriceCatalogItemsResponse.parse(items));
+  });
+
+  router.post(
+    "/safety-price-catalog",
+    requireRole("owner", "safety_expert"),
+    async (req, res): Promise<void> => {
+      const body = CreateSafetyPriceCatalogItemBody.safeParse(req.body);
+      if (!body.success) {
+        res.status(400).json({ error: "Data item katalog tidak valid" });
+        return;
+      }
+      const { organizationId, userId } = req.organizationContext!;
+      const [item] = await db
+        .insert(safetyPriceCatalogItemsTable)
+        .values({
+          ...body.data,
+          priceUpdatedAt: dateOnly(body.data.priceUpdatedAt),
+          id: crypto.randomUUID(),
+          organizationId,
+          createdBy: userId,
+        })
+        .returning();
+      res.status(201).json(CreateSafetyPriceCatalogItemResponse.parse(item));
+    },
+  );
+
+  router.patch(
+    "/safety-price-catalog/:id",
+    requireRole("owner", "safety_expert"),
+    async (req, res): Promise<void> => {
+      const params = UpdateSafetyPriceCatalogItemParams.safeParse(req.params);
+      const body = UpdateSafetyPriceCatalogItemBody.safeParse(req.body);
+      if (!params.success || !body.success) {
+        res.status(400).json({ error: "Data item katalog tidak valid" });
+        return;
+      }
+      const [item] = await db
+        .update(safetyPriceCatalogItemsTable)
+        .set({
+          ...body.data,
+          priceUpdatedAt: dateOnly(body.data.priceUpdatedAt),
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(safetyPriceCatalogItemsTable.id, params.data.id),
+            eq(
+              safetyPriceCatalogItemsTable.organizationId,
+              req.organizationContext!.organizationId,
+            ),
+          ),
+        )
+        .returning();
+      if (!item) {
+        res.status(404).json({ error: "Item katalog tidak ditemukan" });
+        return;
+      }
+      res.json(UpdateSafetyPriceCatalogItemResponse.parse(item));
+    },
+  );
+
+  router.delete(
+    "/safety-price-catalog/:id",
+    requireRole("owner", "safety_expert"),
+    async (req, res): Promise<void> => {
+      const params = DeleteSafetyPriceCatalogItemParams.safeParse(req.params);
+      if (!params.success) {
+        res.status(400).json({ error: "ID item katalog tidak valid" });
+        return;
+      }
+      const [item] = await db
+        .delete(safetyPriceCatalogItemsTable)
+        .where(
+          and(
+            eq(safetyPriceCatalogItemsTable.id, params.data.id),
+            eq(
+              safetyPriceCatalogItemsTable.organizationId,
+              req.organizationContext!.organizationId,
+            ),
+          ),
+        )
+        .returning({ id: safetyPriceCatalogItemsTable.id });
+      if (!item) {
+        res.status(404).json({ error: "Item katalog tidak ditemukan" });
+        return;
+      }
+      res.sendStatus(204);
     },
   );
 

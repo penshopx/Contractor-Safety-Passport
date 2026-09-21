@@ -16,6 +16,7 @@ import {
   projectsTable,
   safetyBoqDraftsTable,
   safetyBoqItemsTable,
+  safetyPriceCatalogItemsTable,
   safetyDocumentsTable,
   type OrganizationRole,
 } from "@workspace/db";
@@ -73,7 +74,7 @@ const request = async (
     },
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
   });
-  const body: any = await response.json();
+  const body: any = response.status === 204 ? undefined : await response.json();
   return { status: response.status, body };
 };
 
@@ -145,6 +146,19 @@ const csmsProfileBody = (suffix: string) => ({
       validations: ["Dokumen masih berlaku"],
     },
   ],
+});
+
+const catalogItemBody = (suffix: string) => ({
+  description: `Helm keselamatan ${suffix}`,
+  category: "APD & APK",
+  unit: "Bh",
+  referencePrice: 75_000,
+  region: "Nasional",
+  source: `Pemasok ${suffix}`,
+  priceUpdatedAt: "2026-09-21",
+  risk: "Tinggi",
+  stage: "Pelaksanaan",
+  controlNeed: "Pelindung kepala wajib",
 });
 
 const isForeignKeyViolation = (error: unknown) =>
@@ -295,6 +309,9 @@ after(async () => {
     .delete(safetyBoqDraftsTable)
     .where(inArray(safetyBoqDraftsTable.organizationId, organizationIds));
   await db
+    .delete(safetyPriceCatalogItemsTable)
+    .where(inArray(safetyPriceCatalogItemsTable.organizationId, organizationIds));
+  await db
     .delete(certificatesTable)
     .where(inArray(certificatesTable.organizationId, organizationIds));
   await db
@@ -324,6 +341,67 @@ after(async () => {
 });
 
 describe("isolasi data antar kontraktor", () => {
+  it("membagikan katalog dalam organisasi dan membatasi perubahan berdasarkan peran", async () => {
+    const forbiddenCreate = await request("/safety-price-catalog", {
+      role: "viewer",
+      method: "POST",
+      body: catalogItemBody("ditolak"),
+    });
+    assert.equal(forbiddenCreate.status, 403);
+
+    const created = await request("/safety-price-catalog", {
+      role: "owner",
+      method: "POST",
+      body: catalogItemBody("A"),
+    });
+    assert.equal(created.status, 201);
+    assert.equal(created.body.referencePrice, 75_000);
+    assert.equal(created.body.priceUpdatedAt, "2026-09-21");
+
+    const visibleToMember = await request("/safety-price-catalog", {
+      role: "field_officer",
+    });
+    assert.equal(visibleToMember.status, 200);
+    assert.equal(visibleToMember.body.length, 1);
+    assert.equal(visibleToMember.body[0].id, created.body.id);
+
+    const hiddenFromOtherOrganization = await request("/safety-price-catalog", {
+      organizationId: organizationB,
+      role: "viewer",
+    });
+    assert.equal(hiddenFromOtherOrganization.status, 200);
+    assert.equal(hiddenFromOtherOrganization.body.length, 0);
+
+    const forbiddenUpdate = await request(`/safety-price-catalog/${created.body.id}`, {
+      role: "field_officer",
+      method: "PATCH",
+      body: catalogItemBody("tidak sah"),
+    });
+    assert.equal(forbiddenUpdate.status, 403);
+
+    const updated = await request(`/safety-price-catalog/${created.body.id}`, {
+      role: "safety_expert",
+      method: "PATCH",
+      body: { ...catalogItemBody("revisi"), referencePrice: 90_000 },
+    });
+    assert.equal(updated.status, 200);
+    assert.equal(updated.body.referencePrice, 90_000);
+    assert.equal(updated.body.priceUpdatedAt, "2026-09-21");
+
+    const crossOrganizationDelete = await request(`/safety-price-catalog/${created.body.id}`, {
+      organizationId: organizationB,
+      role: "owner",
+      method: "DELETE",
+    });
+    assert.equal(crossOrganizationDelete.status, 404);
+
+    const deleted = await request(`/safety-price-catalog/${created.body.id}`, {
+      role: "owner",
+      method: "DELETE",
+    });
+    assert.equal(deleted.status, 204);
+  });
+
   it("menolak data keselamatan untuk organisasi yang tidak ada", async () => {
     await assert.rejects(
       db.insert(projectsTable).values({

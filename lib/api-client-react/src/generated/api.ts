@@ -60,6 +60,8 @@ import type {
   SafetyBoqDraft,
   SafetyBoqDraftInput,
   SafetyDocument,
+  SafetyPriceCatalogItem,
+  SafetyPriceCatalogItemInput,
   UnauthorizedResponse
 } from './api.schemas';
 
@@ -1457,6 +1459,334 @@ export const useReplaceProjectSafetyBoq = <TError = ErrorType<ForbiddenResponse 
         TContext
       > => {
       return useMutation(getReplaceProjectSafetyBoqMutationOptions(options));
+    }
+
+export const getListSafetyPriceCatalogItemsUrl = () => {
+
+
+
+
+  return `/api/safety-price-catalog`
+}
+
+/**
+ * @summary List the active workspace safety price catalog
+ */
+export const listSafetyPriceCatalogItems = async ( options?: Parameters<typeof customFetch>[1]): Promise<SafetyPriceCatalogItem[]> => {
+
+  return customFetch<SafetyPriceCatalogItem[]>(getListSafetyPriceCatalogItemsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListSafetyPriceCatalogItemsQueryKey = () => {
+    return [
+    `/api/safety-price-catalog`
+    ] as const;
+    }
+
+
+export const getListSafetyPriceCatalogItemsQueryOptions = <TData = Awaited<ReturnType<typeof listSafetyPriceCatalogItems>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSafetyPriceCatalogItems>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListSafetyPriceCatalogItemsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listSafetyPriceCatalogItems>>> = ({ signal }) => listSafetyPriceCatalogItems({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listSafetyPriceCatalogItems>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListSafetyPriceCatalogItemsQueryResult = NonNullable<Awaited<ReturnType<typeof listSafetyPriceCatalogItems>>>
+export type ListSafetyPriceCatalogItemsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List the active workspace safety price catalog
+ */
+
+export function useListSafetyPriceCatalogItems<TData = Awaited<ReturnType<typeof listSafetyPriceCatalogItems>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSafetyPriceCatalogItems>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListSafetyPriceCatalogItemsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateSafetyPriceCatalogItemUrl = () => {
+
+
+
+
+  return `/api/safety-price-catalog`
+}
+
+/**
+ * @summary Add an item to the active workspace safety price catalog
+ */
+export const createSafetyPriceCatalogItem = async (safetyPriceCatalogItemInput: SafetyPriceCatalogItemInput, options?: Parameters<typeof customFetch>[1]): Promise<SafetyPriceCatalogItem> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<SafetyPriceCatalogItem>(getCreateSafetyPriceCatalogItemUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(safetyPriceCatalogItemInput)
+  }
+);}
+
+
+
+
+
+export const getCreateSafetyPriceCatalogItemMutationKey = () => ['createSafetyPriceCatalogItem'] as const;
+
+export const getCreateSafetyPriceCatalogItemMutationOptions = <TError = ErrorType<ForbiddenResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSafetyPriceCatalogItem>>, TError,CreateSafetyPriceCatalogItemMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createSafetyPriceCatalogItem>>, TError,CreateSafetyPriceCatalogItemMutationVariables, TContext> => {
+
+const mutationKey = getCreateSafetyPriceCatalogItemMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createSafetyPriceCatalogItem>>, CreateSafetyPriceCatalogItemMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  createSafetyPriceCatalogItem(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateSafetyPriceCatalogItemMutationResult = NonNullable<Awaited<ReturnType<typeof createSafetyPriceCatalogItem>>>
+    export type CreateSafetyPriceCatalogItemMutationBody = BodyType<SafetyPriceCatalogItemInput>
+    export type CreateSafetyPriceCatalogItemMutationError = ErrorType<ForbiddenResponse>
+    export type CreateSafetyPriceCatalogItemMutationVariables = {data: BodyType<SafetyPriceCatalogItemInput>}
+
+    /**
+ * @summary Add an item to the active workspace safety price catalog
+ */
+export const useCreateSafetyPriceCatalogItem = <TError = ErrorType<ForbiddenResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSafetyPriceCatalogItem>>, TError,CreateSafetyPriceCatalogItemMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createSafetyPriceCatalogItem>>,
+        TError,
+        CreateSafetyPriceCatalogItemMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreateSafetyPriceCatalogItemMutationOptions(options));
+    }
+
+export const getUpdateSafetyPriceCatalogItemUrl = (id: string,) => {
+
+
+
+
+  return `/api/safety-price-catalog/${id}`
+}
+
+/**
+ * @summary Update an item in the active workspace safety price catalog
+ */
+export const updateSafetyPriceCatalogItem = async (id: string,
+    safetyPriceCatalogItemInput: SafetyPriceCatalogItemInput, options?: Parameters<typeof customFetch>[1]): Promise<SafetyPriceCatalogItem> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<SafetyPriceCatalogItem>(getUpdateSafetyPriceCatalogItemUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(safetyPriceCatalogItemInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateSafetyPriceCatalogItemMutationKey = () => ['updateSafetyPriceCatalogItem'] as const;
+
+export const getUpdateSafetyPriceCatalogItemMutationOptions = <TError = ErrorType<ForbiddenResponse | NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSafetyPriceCatalogItem>>, TError,UpdateSafetyPriceCatalogItemMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateSafetyPriceCatalogItem>>, TError,UpdateSafetyPriceCatalogItemMutationVariables, TContext> => {
+
+const mutationKey = getUpdateSafetyPriceCatalogItemMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateSafetyPriceCatalogItem>>, UpdateSafetyPriceCatalogItemMutationVariables> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateSafetyPriceCatalogItem(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateSafetyPriceCatalogItemMutationResult = NonNullable<Awaited<ReturnType<typeof updateSafetyPriceCatalogItem>>>
+    export type UpdateSafetyPriceCatalogItemMutationBody = BodyType<SafetyPriceCatalogItemInput>
+    export type UpdateSafetyPriceCatalogItemMutationError = ErrorType<ForbiddenResponse | NotFoundResponse>
+    export type UpdateSafetyPriceCatalogItemMutationVariables = {id: string;data: BodyType<SafetyPriceCatalogItemInput>}
+
+    /**
+ * @summary Update an item in the active workspace safety price catalog
+ */
+export const useUpdateSafetyPriceCatalogItem = <TError = ErrorType<ForbiddenResponse | NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSafetyPriceCatalogItem>>, TError,UpdateSafetyPriceCatalogItemMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateSafetyPriceCatalogItem>>,
+        TError,
+        UpdateSafetyPriceCatalogItemMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdateSafetyPriceCatalogItemMutationOptions(options));
+    }
+
+export const getDeleteSafetyPriceCatalogItemUrl = (id: string,) => {
+
+
+
+
+  return `/api/safety-price-catalog/${id}`
+}
+
+/**
+ * @summary Delete an item from the active workspace safety price catalog
+ */
+export const deleteSafetyPriceCatalogItem = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getDeleteSafetyPriceCatalogItemUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteSafetyPriceCatalogItemMutationKey = () => ['deleteSafetyPriceCatalogItem'] as const;
+
+export const getDeleteSafetyPriceCatalogItemMutationOptions = <TError = ErrorType<ForbiddenResponse | NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteSafetyPriceCatalogItem>>, TError,DeleteSafetyPriceCatalogItemMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteSafetyPriceCatalogItem>>, TError,DeleteSafetyPriceCatalogItemMutationVariables, TContext> => {
+
+const mutationKey = getDeleteSafetyPriceCatalogItemMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteSafetyPriceCatalogItem>>, DeleteSafetyPriceCatalogItemMutationVariables> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteSafetyPriceCatalogItem(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteSafetyPriceCatalogItemMutationResult = NonNullable<Awaited<ReturnType<typeof deleteSafetyPriceCatalogItem>>>
+
+    export type DeleteSafetyPriceCatalogItemMutationError = ErrorType<ForbiddenResponse | NotFoundResponse>
+    export type DeleteSafetyPriceCatalogItemMutationVariables = {id: string}
+
+    /**
+ * @summary Delete an item from the active workspace safety price catalog
+ */
+export const useDeleteSafetyPriceCatalogItem = <TError = ErrorType<ForbiddenResponse | NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteSafetyPriceCatalogItem>>, TError,DeleteSafetyPriceCatalogItemMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteSafetyPriceCatalogItem>>,
+        TError,
+        DeleteSafetyPriceCatalogItemMutationVariables,
+        TContext
+      > => {
+      return useMutation(getDeleteSafetyPriceCatalogItemMutationOptions(options));
     }
 
 export const getGetProjectCsmsReadinessUrl = (projectId: number,) => {

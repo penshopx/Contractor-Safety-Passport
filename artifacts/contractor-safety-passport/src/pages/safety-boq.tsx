@@ -37,17 +37,24 @@ import {
   getGetProjectSafetyBoqQueryKey,
   useGetOrganizationContext,
   useGetProjectSafetyBoq,
+  useListSafetyPriceCatalogItems,
+  getListSafetyPriceCatalogItemsQueryKey,
+  useCreateSafetyPriceCatalogItem,
+  useUpdateSafetyPriceCatalogItem,
+  useDeleteSafetyPriceCatalogItem,
   useListProjects,
   useReplaceProjectSafetyBoq,
+  type SafetyPriceCatalogItem,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { 
   getBoqMigrationItemId,
   getBoqMigrationKey,
+  readLegacySafetyPriceCatalog,
+  safetyPriceCatalogItemInputSchema,
   useLocalSafetyBoqStore,
-  useLocalSafetyPriceCatalog,
+  writeLegacySafetyPriceCatalog,
   SafetyBoqItem, 
-  SafetyPriceCatalogItem,
   CATEGORIES, 
   RISKS, 
   STAGES 
@@ -87,14 +94,8 @@ const boqSchema = z.object({
 
 type BoqFormValues = z.infer<typeof boqSchema>;
 
-const catalogSchema = boqSchema.omit({ volume: true }).extend({
-  referencePrice: z.coerce.number().min(0, "Harga acuan tidak boleh negatif"),
-  region: z.string().min(1, "Wilayah wajib diisi"),
-  source: z.string().min(1, "Sumber harga wajib diisi"),
-  priceUpdatedAt: z.string().min(1, "Tanggal pembaruan wajib diisi"),
-});
-
-type CatalogFormValues = z.infer<typeof catalogSchema>;
+const catalogSchema = safetyPriceCatalogItemInputSchema;
+type CatalogFormValues = z.infer<typeof safetyPriceCatalogItemInputSchema>;
 
 function CatalogItemDialog({
   isOpen,
@@ -448,21 +449,32 @@ export default function SafetyBoqPage() {
     isLoaded: isLocalLoaded,
     migrationSourceId,
   } = useLocalSafetyBoqStore();
-  const {
-    catalogItems,
-    addCatalogItem,
-    updateCatalogItem,
-    removeCatalogItem,
-    isCatalogLoaded,
-  } = useLocalSafetyPriceCatalog();
   const { data: projects } = useListProjects();
   const { data: organization } = useGetOrganizationContext();
+  const {
+    data: catalogItems = [],
+    isLoading: isCatalogLoading,
+    isError: isCatalogError,
+    refetch: refetchCatalog,
+  } = useListSafetyPriceCatalogItems({
+    query: {
+      queryKey: getListSafetyPriceCatalogItemsQueryKey(),
+      staleTime: 10_000,
+      refetchInterval: 15_000,
+      refetchOnWindowFocus: true,
+    },
+  });
+  const createCatalogItem = useCreateSafetyPriceCatalogItem();
+  const updateCatalogItem = useUpdateSafetyPriceCatalogItem();
+  const deleteCatalogItem = useDeleteSafetyPriceCatalogItem();
   
   const [selectedProjectId, setSelectedProjectId] = useState<string>('all');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<SafetyBoqItem | null>(null);
   const [isCatalogDialogOpen, setIsCatalogDialogOpen] = useState(false);
   const [editingCatalogItem, setEditingCatalogItem] = useState<SafetyPriceCatalogItem | null>(null);
+  const [legacyCatalogItems, setLegacyCatalogItems] = useState(readLegacySafetyPriceCatalog);
+  const [isImportingLegacyCatalog, setIsImportingLegacyCatalog] = useState(false);
   const [conflictingEdit, setConflictingEdit] = useState<{
     base: SafetyBoqItem[];
     proposed: SafetyBoqItem[];
@@ -486,6 +498,7 @@ export default function SafetyBoqPage() {
   });
   const replaceSharedDraft = useReplaceProjectSafetyBoq();
   const canEditShared = organization?.role === "owner" || organization?.role === "safety_expert";
+  const canEditCatalog = canEditShared;
   const canMutateShared = projectId !== null && canEditShared && isSharedReady && !isRefreshingShared;
 
   const projectItems = useMemo(() => {
@@ -648,11 +661,68 @@ export default function SafetyBoqPage() {
 
   const handleSaveCatalogItem = (data: CatalogFormValues) => {
     if (editingCatalogItem) {
-      updateCatalogItem(editingCatalogItem.id, data);
-      toast.success("Item katalog diperbarui tanpa mengubah draft lama");
+      updateCatalogItem.mutate(
+        { id: editingCatalogItem.id, data },
+        {
+          onSuccess: async () => {
+            await queryClient.invalidateQueries({ queryKey: getListSafetyPriceCatalogItemsQueryKey() });
+            toast.success("Item katalog diperbarui tanpa mengubah draft lama");
+          },
+          onError: () => toast.error("Item katalog gagal diperbarui"),
+        },
+      );
     } else {
-      addCatalogItem(data);
-      toast.success("Item standar disimpan ke katalog");
+      createCatalogItem.mutate(
+        { data },
+        {
+          onSuccess: async () => {
+            await queryClient.invalidateQueries({ queryKey: getListSafetyPriceCatalogItemsQueryKey() });
+            toast.success("Item standar disimpan ke katalog workspace");
+          },
+          onError: () => toast.error("Item katalog gagal ditambahkan"),
+        },
+      );
+    }
+  };
+
+  const handleDeleteCatalogItem = (id: string) => {
+    if (!canEditCatalog || !window.confirm("Hapus item katalog ini? Draft BOQ yang sudah memakai item tetap aman.")) return;
+    deleteCatalogItem.mutate(
+      { id },
+      {
+        onSuccess: async () => {
+          await queryClient.invalidateQueries({ queryKey: getListSafetyPriceCatalogItemsQueryKey() });
+          toast.success("Item katalog dihapus. Draft lama tetap tidak berubah.");
+        },
+        onError: () => toast.error("Item katalog gagal dihapus"),
+      },
+    );
+  };
+
+  const handleImportLegacyCatalog = async () => {
+    if (!canEditCatalog || legacyCatalogItems.length === 0 || isImportingLegacyCatalog) return;
+    setIsImportingLegacyCatalog(true);
+    let remaining = [...legacyCatalogItems];
+    let importedCount = 0;
+    try {
+      for (const { id, ...data } of legacyCatalogItems) {
+        await createCatalogItem.mutateAsync({ data });
+        remaining = remaining.filter((item) => item.id !== id);
+        writeLegacySafetyPriceCatalog(remaining);
+        setLegacyCatalogItems(remaining);
+        importedCount += 1;
+      }
+      await queryClient.invalidateQueries({ queryKey: getListSafetyPriceCatalogItemsQueryKey() });
+      toast.success(`${importedCount} item katalog perangkat dipindahkan ke workspace`);
+    } catch {
+      await queryClient.invalidateQueries({ queryKey: getListSafetyPriceCatalogItemsQueryKey() });
+      toast.error(
+        importedCount > 0
+          ? `${importedCount} item berhasil dipindahkan. Item tersisa tetap aman di perangkat.`
+          : "Katalog perangkat belum berhasil dipindahkan dan tetap aman.",
+      );
+    } finally {
+      setIsImportingLegacyCatalog(false);
     }
   };
 
@@ -756,7 +826,7 @@ export default function SafetyBoqPage() {
     toast.success("CSV berhasil diekspor");
   };
 
-  if (!isLocalLoaded || !isCatalogLoaded) return null;
+  if (!isLocalLoaded) return null;
 
   return (
     <div className="space-y-8 pb-12 animate-in fade-in duration-500">
@@ -882,23 +952,53 @@ export default function SafetyBoqPage() {
             <CardTitle className="flex items-center gap-2 text-lg"><BookOpen className="h-5 w-5 text-primary" />Katalog Harga Keselamatan</CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">Pilih harga acuan untuk membuat salinan di BOQ. Perubahan katalog berikutnya tidak mengubah harga draft lama.</p>
           </div>
-          <Button variant="outline" onClick={() => { setEditingCatalogItem(null); setIsCatalogDialogOpen(true); }} data-testid="button-create-catalog-item">
-            <Plus className="mr-2 h-4 w-4" />Item Katalog
-          </Button>
+          {canEditCatalog && (
+            <div className="flex flex-wrap justify-end gap-2">
+              {legacyCatalogItems.length > 0 && (
+                <Button
+                  variant="outline"
+                  onClick={() => void handleImportLegacyCatalog()}
+                  disabled={isImportingLegacyCatalog}
+                  data-testid="button-import-legacy-catalog"
+                >
+                  {isImportingLegacyCatalog ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CloudUpload className="mr-2 h-4 w-4" />}
+                  Impor {legacyCatalogItems.length} Item Perangkat
+                </Button>
+              )}
+              <Button variant="outline" onClick={() => { setEditingCatalogItem(null); setIsCatalogDialogOpen(true); }} data-testid="button-create-catalog-item">
+                <Plus className="mr-2 h-4 w-4" />Item Katalog
+              </Button>
+            </div>
+          )}
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {catalogItems.map((item) => (
+            {isCatalogLoading ? (
+              <div className="col-span-full py-8 text-center text-muted-foreground">
+                <Loader2 className="mx-auto h-6 w-6 animate-spin" />
+              </div>
+            ) : isCatalogError ? (
+              <div className="col-span-full flex items-center justify-between gap-4 rounded-lg border border-destructive/40 bg-destructive/5 p-4">
+                <p className="text-sm text-destructive">Katalog workspace gagal dimuat.</p>
+                <Button variant="outline" size="sm" onClick={() => void refetchCatalog()}>Coba Lagi</Button>
+              </div>
+            ) : catalogItems.length === 0 ? (
+              <p className="col-span-full py-8 text-center text-sm text-muted-foreground">
+                Belum ada item dalam katalog workspace.
+              </p>
+            ) : catalogItems.map((item) => (
               <div key={item.id} className="rounded-lg border border-border/60 bg-background/40 p-4" data-testid={`card-catalog-${item.id}`}>
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="font-semibold text-foreground">{item.description}</p>
                     <p className="mt-1 text-lg font-bold text-primary">{formatCurrency(item.referencePrice)} <span className="text-xs font-normal text-muted-foreground">/ {item.unit}</span></p>
                   </div>
-                  <div className="flex">
-                    <Button variant="ghost" size="icon" onClick={() => { setEditingCatalogItem(item); setIsCatalogDialogOpen(true); }} data-testid={`button-edit-catalog-${item.id}`}><Pencil className="h-4 w-4" /></Button>
-                    <Button variant="ghost" size="icon" onClick={() => { if (window.confirm("Hapus item katalog ini? Draft BOQ yang sudah memakai item tetap aman.")) removeCatalogItem(item.id); }} data-testid={`button-delete-catalog-${item.id}`}><Trash2 className="h-4 w-4" /></Button>
-                  </div>
+                  {canEditCatalog && (
+                    <div className="flex">
+                      <Button variant="ghost" size="icon" onClick={() => { setEditingCatalogItem(item); setIsCatalogDialogOpen(true); }} data-testid={`button-edit-catalog-${item.id}`}><Pencil className="h-4 w-4" /></Button>
+                      <Button variant="ghost" size="icon" onClick={() => handleDeleteCatalogItem(item.id)} disabled={deleteCatalogItem.isPending} data-testid={`button-delete-catalog-${item.id}`}><Trash2 className="h-4 w-4" /></Button>
+                    </div>
+                  )}
                 </div>
                 <div className="mt-3 space-y-1 text-xs text-muted-foreground">
                   <p className="flex items-center gap-2"><MapPin className="h-3.5 w-3.5" />{item.region}</p>

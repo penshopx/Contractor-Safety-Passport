@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import * as z from "zod";
 
 export interface SafetyBoqItem {
   id: string;
@@ -19,19 +20,26 @@ export interface SafetyBoqItem {
   updatedAt?: string;
 }
 
-export interface SafetyPriceCatalogItem {
+export const safetyPriceCatalogItemInputSchema = z.object({
+  description: z.string().min(1, "Deskripsi wajib diisi"),
+  category: z.string().min(1, "Kategori wajib dipilih"),
+  unit: z.string().min(1, "Satuan wajib diisi"),
+  referencePrice: z.coerce.number().min(0, "Harga acuan tidak boleh negatif"),
+  region: z.string().min(1, "Wilayah wajib diisi"),
+  source: z.string().min(1, "Sumber harga wajib diisi"),
+  priceUpdatedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Tanggal pembaruan tidak valid"),
+  risk: z.string().min(1, "Risiko wajib dipilih"),
+  stage: z.string().min(1, "Tahapan wajib dipilih"),
+  controlNeed: z.string().min(1, "Kebutuhan pengendalian wajib diisi"),
+});
+
+export type SafetyPriceCatalogItemInput = z.infer<
+  typeof safetyPriceCatalogItemInputSchema
+>;
+
+export type LegacySafetyPriceCatalogItem = SafetyPriceCatalogItemInput & {
   id: string;
-  description: string;
-  category: string;
-  unit: string;
-  referencePrice: number;
-  region: string;
-  source: string;
-  priceUpdatedAt: string;
-  risk: string;
-  stage: string;
-  controlNeed: string;
-}
+};
 
 export const CATEGORIES = [
   "Dokumen RKK",
@@ -89,8 +97,35 @@ const SEED_BOQ_ITEMS: SafetyBoqItem[] = [
 ];
 
 const STORAGE_KEY = 'safety_passport_boq_v1';
-const CATALOG_STORAGE_KEY = 'safety_passport_price_catalog_v1';
+export const LEGACY_CATALOG_STORAGE_KEY = 'safety_passport_price_catalog_v1';
 const MIGRATION_SOURCE_STORAGE_KEY = 'safety_passport_boq_migration_source_v1';
+
+export function parseLegacySafetyPriceCatalog(serialized: string | null) {
+  if (!serialized) return [];
+  try {
+    const parsed = JSON.parse(serialized);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.flatMap((item) => {
+      if (!item || typeof item !== "object" || typeof item.id !== "string") return [];
+      const result = safetyPriceCatalogItemInputSchema.safeParse(item);
+      return result.success ? [{ ...result.data, id: item.id }] : [];
+    });
+  } catch {
+    return [];
+  }
+}
+
+export function readLegacySafetyPriceCatalog() {
+  return parseLegacySafetyPriceCatalog(localStorage.getItem(LEGACY_CATALOG_STORAGE_KEY));
+}
+
+export function writeLegacySafetyPriceCatalog(items: LegacySafetyPriceCatalogItem[]) {
+  if (items.length === 0) {
+    localStorage.removeItem(LEGACY_CATALOG_STORAGE_KEY);
+    return;
+  }
+  localStorage.setItem(LEGACY_CATALOG_STORAGE_KEY, JSON.stringify(items));
+}
 
 export function getBoqMigrationKey(
   organizationId: string,
@@ -122,20 +157,6 @@ function getOrCreateBoqMigrationSourceId() {
   localStorage.setItem(MIGRATION_SOURCE_STORAGE_KEY, sourceId);
   return sourceId;
 }
-
-const SEED_CATALOG_ITEMS: SafetyPriceCatalogItem[] = SEED_BOQ_ITEMS.map((item) => ({
-  id: `catalog-${item.id}`,
-  description: item.description,
-  category: item.category,
-  unit: item.unit,
-  referencePrice: item.unitPrice,
-  region: "Nasional",
-  source: "Katalog awal Safety Passport",
-  priceUpdatedAt: "2026-01-01",
-  risk: item.risk,
-  stage: item.stage,
-  controlNeed: item.controlNeed,
-}));
 
 export function useLocalSafetyBoqStore() {
   const [items, setItems] = useState<SafetyBoqItem[]>([]);
@@ -190,47 +211,5 @@ export function useLocalSafetyBoqStore() {
     removeItems,
     isLoaded,
     migrationSourceId,
-  };
-}
-
-export function useLocalSafetyPriceCatalog() {
-  const [catalogItems, setCatalogItems] = useState<SafetyPriceCatalogItem[]>([]);
-  const [isCatalogLoaded, setIsCatalogLoaded] = useState(false);
-
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(CATALOG_STORAGE_KEY);
-      setCatalogItems(stored ? JSON.parse(stored) : SEED_CATALOG_ITEMS);
-    } catch (error) {
-      console.error("Failed to load safety price catalog", error);
-      setCatalogItems(SEED_CATALOG_ITEMS);
-    }
-    setIsCatalogLoaded(true);
-  }, []);
-
-  useEffect(() => {
-    if (isCatalogLoaded) {
-      localStorage.setItem(CATALOG_STORAGE_KEY, JSON.stringify(catalogItems));
-    }
-  }, [catalogItems, isCatalogLoaded]);
-
-  const addCatalogItem = useCallback((item: Omit<SafetyPriceCatalogItem, "id">) => {
-    setCatalogItems((previous) => [...previous, { ...item, id: crypto.randomUUID() }]);
-  }, []);
-
-  const updateCatalogItem = useCallback((id: string, updates: Omit<SafetyPriceCatalogItem, "id">) => {
-    setCatalogItems((previous) => previous.map((item) => item.id === id ? { ...item, ...updates } : item));
-  }, []);
-
-  const removeCatalogItem = useCallback((id: string) => {
-    setCatalogItems((previous) => previous.filter((item) => item.id !== id));
-  }, []);
-
-  return {
-    catalogItems,
-    addCatalogItem,
-    updateCatalogItem,
-    removeCatalogItem,
-    isCatalogLoaded,
   };
 }

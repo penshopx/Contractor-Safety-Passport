@@ -91,4 +91,6 @@ export * from './safetyBoqItemInput';
 export * from './safetyDocument';
 export * from './safetyDocumentStandard';
 export * from './safetyDocumentStatus';
+export * from './safetyPriceCatalogItem';
+export * from './safetyPriceCatalogItemInput';
 export * from './unauthorizedResponse';

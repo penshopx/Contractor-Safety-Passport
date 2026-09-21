@@ -245,6 +245,39 @@ export const safetyBoqDraftsTable = pgTable(
   ],
 );
 
+export const safetyPriceCatalogItemsTable = pgTable(
+  "safety_price_catalog_items",
+  {
+    id: text("id").notNull(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizationsTable.id, { onDelete: "restrict" }),
+    createdBy: text("created_by").notNull(),
+    description: text("description").notNull(),
+    category: text("category").notNull(),
+    unit: text("unit").notNull(),
+    referencePrice: real("reference_price").notNull(),
+    region: text("region").notNull(),
+    source: text("source").notNull(),
+    priceUpdatedAt: date("price_updated_at", { mode: "string" }).notNull(),
+    risk: text("risk").notNull(),
+    stage: text("stage").notNull(),
+    controlNeed: text("control_need").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    primaryKey({
+      name: "safety_price_catalog_items_organization_id_pk",
+      columns: [table.organizationId, table.id],
+    }),
+    index("safety_price_catalog_items_organization_id_idx").on(table.organizationId),
+  ],
+);
+
 export const certificatesTable = pgTable(
   "certificates",
   {
@@ -334,6 +367,15 @@ export const insertSafetyBoqItemSchema = createInsertSchema(safetyBoqItemsTable)
   createdAt: true,
   updatedAt: true,
 });
+export const insertSafetyPriceCatalogItemSchema = createInsertSchema(
+  safetyPriceCatalogItemsTable,
+).omit({
+  id: true,
+  organizationId: true,
+  createdBy: true,
+  createdAt: true,
+  updatedAt: true,
+});
 export const insertCertificateSchema = createInsertSchema(certificatesTable).omit({
   id: true,
   organizationId: true,
@@ -351,5 +393,8 @@ export type InsertPerson = z.infer<typeof insertPersonSchema>;
 export type InsertDocument = z.infer<typeof insertDocumentSchema>;
 export type InsertMonthlyReport = z.infer<typeof insertMonthlyReportSchema>;
 export type InsertSafetyBoqItem = z.infer<typeof insertSafetyBoqItemSchema>;
+export type InsertSafetyPriceCatalogItem = z.infer<
+  typeof insertSafetyPriceCatalogItemSchema
+>;
 export type InsertCertificate = z.infer<typeof insertCertificateSchema>;
 export type InsertFieldActivity = z.infer<typeof insertFieldActivitySchema>;
