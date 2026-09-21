@@ -1,0 +1,331 @@
+Baik, saya kerjakan task pembersihan foto yatim. Ini masalah klasik dari pola "upload first, reference later" yang diperparah oleh mode offline — foto bisa diunggah dari mobile tapi aktivitasnya baru tersinkronisasi berjam-jam kemudian.
+
+## Analisis Sumber Foto Yatim
+
+Foto yatim muncul ketika:
+1. Mobile upload foto ke Object Storage → URL diterima
+2. User membatalkan aktivitas sebelum submit → URL tidak pernah direferensikan
+3. Sinkronisasi offline gagal di tengah jalan → foto terupload, aktivitas tidak tersimpan
+4. Network error saat save aktivitas → foto terlanjur di storage
+5. User menutup aplikasi sebelum aktivitas selesai disimpan
+
+Karena aplikasi mendukung offline mode, grace period pembersihan harus cukup panjang — minimal 24-48 jam untuk mengakomodasi user yang sync manual di akhir shift.
+
+## Inventaris Kolom Referensi Foto
+
+Sebelum cleanup, kita perlu tahu semua kolom yang menyimpan URL foto. Berdasarkan skema yang sudah dikoreksi:
+
+```sql
+-- Inventaris kolom yang kemungkinan menyimpan URL foto
+SELECT table_name, column_name, data_type
+FROM information_schema.columns
+WHERE table_schema = 'public'
+    AND (
+        column_name ILIKE '%photo%'
+        OR column_name ILIKE '%image%'
+        OR column_name ILIKE '%picture%'
+        OR column_name ILIKE '%attachment%'
+        OR column_name ILIKE '%file_url%'
+    )
+ORDER BY table_name;
+```
+
+Kemungkinan besar kolom yang perlu dipindai:
+- `field_activities.photos` (array URL atau JSON)
+- `safety_documents.file_url`
+- Tabel inspeksi dan toolbox meeting (jika ada kolom foto)
+
+## Strategi Dua Lapis
+
+### Lapis 1: Cleanup Berkala Berbasis Inventaris
+
+Prinsip: Bandingkan semua file di storage dengan URL yang direferensikan di database.
+
+```typescript
+// src/jobs/orphan-photo-cleanup.ts
+import { listStorageFiles } from '@/lib/storage';
+import { db } from '@/lib/db';
+
+interface CleanupResult {
+  scanned: number;
+  referenced: number;
+  orphaned: number;
+  deleted: number;
+  failed: string[];
+  dryRun: boolean;
+}
+
+export async function cleanupOrphanPhotos(options: {
+  dryRun?: boolean;
+  gracePeriodHours?: number;
+  batchSize?: number;
+} = {}): Promise<CleanupResult> {
+  const {
+    dryRun = true,
+    gracePeriodHours = 48,
+    batchSize = 100,
+  } = options;
+
+  const graceCutoff = new Date(Date.now() - gracePeriodHours * 60 * 60 * 1000);
+
+  // 1. Ambil semua URL foto yang direferensikan di database
+  const referencedUrls = await collectReferencedPhotoUrls();
+
+  // 2. List semua file di storage (dengan filter grace period)
+  const allFiles = await listStorageFiles({
+    olderThan: graceCutoff,
+  });
+
+  // 3. Identifikasi foto yatim
+  const orphaned = allFiles.filter(file => !referencedUrls.has(file.url));
+
+  // 4. Hapus (atau dry-run)
+  const result: CleanupResult = {
+    scanned: allFiles.length,
+    referenced: referencedUrls.size,
+    orphaned: orphaned.length,
+    deleted: 0,
+    failed: [],
+    dryRun,
+  };
+
+  if (!dryRun) {
+    for (let i = 0; i < orphaned.length; i += batchSize) {
+      const batch = orphaned.slice(i, i + batchSize);
+      for (const file of batch) {
+        try {
+          await deleteStorageFile(file.key);
+          await logDeletion(file, 'orphan_cleanup');
+          result.deleted++;
+        } catch (err) {
+          result.failed.push(file.key);
+        }
+      }
+    }
+  }
+
+  return result;
+}
+
+async function collectReferencedPhotoUrls(): Promise<Set<string>> {
+  const urls = new Set<string>();
+
+  // Field activities — kolom photos (array/JSON)
+  const activities = await db.query(`
+    SELECT photos FROM field_activities
+    WHERE photos IS NOT NULL
+  `);
+  for (const row of activities.rows) {
+    const photos = parsePhotos(row.photos);
+    for (const url of photos) urls.add(url);
+  }
+
+  // Safety documents
+  const docs = await db.query(`
+    SELECT file_url FROM safety_documents
+    WHERE file_url IS NOT NULL
+  `);
+  for (const row of docs.rows) urls.add(row.file_url);
+
+  // Tambahkan tabel lain yang menyimpan URL foto
+  // ...
+
+  return urls;
+}
+
+function parsePhotos(value: unknown): string[] {
+  if (!value) return [];
+  if (Array.isArray(value)) return value.filter(v => typeof v === 'string');
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed.filter(v => typeof v === 'string') : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+```
+
+### Lapis 2: Pending Upload dengan Expiry (Defense-in-Depth)
+
+Untuk kasus edge di mana inventaris database tidak menangkap semua referensi (misal URL di kolom JSON yang strukturnya berubah), tambahkan mekanisme eksplisit:
+
+```typescript
+// Saat upload foto
+export async function uploadActivityPhoto(file: File, organizationId: string) {
+  const uploaded = await putToStorage(file, {
+    metadata: {
+      organizationId,
+      status: 'pending',
+      uploadedAt: new Date().toISOString(),
+    },
+  });
+
+  // Catat di tabel pending_uploads untuk audit
+  await db.query(`
+    INSERT INTO pending_uploads (storage_key, url, organization_id, uploaded_at)
+    VALUES ($1, $2, $3, NOW())
+  `, [uploaded.key, uploaded.url, organizationId]);
+
+  return uploaded;
+}
+
+// Saat aktivitas berhasil disimpan — tandai foto sebagai linked
+export async function linkPhotosToActivity(activityId: string, photoUrls: string[]) {
+  await db.query(`
+    UPDATE field_activities SET photos = $1 WHERE id = $2
+  `, [JSON.stringify(photoUrls), activityId]);
+
+  // Tandai sebagai linked di pending_uploads
+  await db.query(`
+    UPDATE pending_uploads
+    SET status = 'linked', linked_at = NOW()
+    WHERE url = ANY($1)
+  `, [photoUrls]);
+}
+```
+
+Tabel `pending_uploads` ini berguna untuk:
+- Audit trail upload yang tidak pernah linked
+- Cleanup lapis kedua yang lebih presisi
+- Monitoring kesehatan pipeline upload
+
+## Grace Period dan Race Condition
+
+**Mengapa 48 jam?**
+- User offline bisa sync di akhir shift (8-12 jam)
+- Network error bisa memaksa retry berhari-hari
+- Memberi buffer cukup untuk kasus edge
+
+**Race condition yang perlu dihindari:**
+- Foto baru diupload, cleanup berjalan sebelum aktivitas tersimpan → foto terhapus
+- Solusi: grace period + filter `olderThan` di list storage
+
+**Implementasi filter di storage:**
+```typescript
+async function listStorageFiles(options: { olderThan: Date }) {
+  // Implementasi tergantung provider (Vercel Blob, S3, R2)
+  // Filter berdasarkan LastModified < olderThan
+}
+```
+
+## Dry-Run dan Audit Log
+
+**Selalu jalankan dry-run dulu** sebelum eksekusi nyata:
+
+```typescript
+// Cron job atau admin endpoint
+export async function runOrphanCleanup(dryRun: boolean) {
+  // Dry-run pertama
+  const preview = await cleanupOrphanPhotos({ dryRun: true });
+  console.log('[cleanup] Preview:', preview);
+
+  // Kirim notifikasi ke admin jika jumlah yatim signifikan
+  if (preview.orphaned > 100) {
+    await notifyAdmin(`Found ${preview.orphaned} orphan photos. Review before cleanup.`);
+    return;
+  }
+
+  // Eksekusi nyata
+  if (!dryRun) {
+    const result = await cleanupOrphanPhotos({ dryRun: false });
+    console.log('[cleanup] Executed:', result);
+  }
+}
+```
+
+**Audit log** untuk setiap penghapusan:
+```sql
+CREATE TABLE storage_cleanup_log (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  storage_key text NOT NULL,
+  url text NOT NULL,
+  organization_id text,
+  reason text NOT NULL, -- 'orphan_cleanup', 'expired_pending', 'manual'
+  deleted_at timestamptz NOT NULL DEFAULT NOW(),
+  size_bytes bigint,
+  metadata jsonb
+);
+```
+
+## Integrasi dengan Cron dan Admin
+
+### Cron Job (Vercel Cron atau node-cron)
+
+```typescript
+// src/cron/orphan-cleanup.ts
+import { runOrphanCleanup } from '@/jobs/orphan-photo-cleanup';
+
+export async function handler() {
+  // Jalankan dry-run setiap hari
+  await runOrphanCleanup(true);
+
+  // Jalankan eksekusi nyata setiap minggu (Minggu dini hari)
+  const now = new Date();
+  if (now.getDay() === 0 && now.getHours() === 3) {
+    await runOrphanCleanup(false);
+  }
+}
+```
+
+### Admin Endpoint
+
+```typescript
+// src/app/api/admin/cleanup-orphan-photos/route.ts
+export async function POST(req: Request) {
+  const { dryRun = true, gracePeriodHours = 48 } = await req.json();
+
+  // Autentikasi + otorisasi admin
+  const session = await requireAdminSession();
+
+  const result = await cleanupOrphanPhotos({
+    dryRun,
+    gracePeriodHours,
+  });
+
+  return Response.json(result);
+}
+```
+
+## Edge Cases yang Perlu Ditangani
+
+1. **Foto dihapus manual oleh user** — URL masih di storage tapi sudah dihapus dari aktivitas. Cleanup tidak akan menghapusnya karena tidak ada di storage list. Tidak masalah.
+
+2. **URL duplikat di beberapa aktivitas** — Set `referencedUrls` otomatis menangani ini.
+
+3. **Foto dari organisasi yang sudah dihapus** — Karena FK `organization_id` di `pending_uploads` pakai `RESTRICT`, organisasi tidak bisa dihapus selama masih ada pending upload. Tapi foto yatim dari aktivitas lama yang sudah committed tetap bisa dibersihkan.
+
+4. **Format URL berbeda** — Normalisasi URL sebelum perbandingan (hapus query string, trailing slash, dll).
+
+5. **Storage provider rate limit** — Batch deletion dengan throttle.
+
+## Checklist Penyelesaian Task
+
+- [ ] Inventaris semua kolom yang menyimpan URL foto
+- [ ] Implementasi `collectReferencedPhotoUrls` untuk semua kolom
+- [ ] Implementasi `listStorageFiles` dengan filter grace period
+- [ ] Implementasi `cleanupOrphanPhotos` dengan dry-run default
+- [ ] Buat tabel `pending_uploads` untuk audit lapis kedua
+- [ ] Update upload handler untuk mencatat ke `pending_uploads`
+- [ ] Update activity save handler untuk menandai foto sebagai linked
+- [ ] Buat tabel `storage_cleanup_log` untuk audit penghapusan
+- [ ] Setup cron job untuk dry-run harian
+- [ ] Setup cron job untuk eksekusi mingguan
+- [ ] Buat admin endpoint untuk trigger manual
+- [ ] Test dengan foto yatim buatan (upload tanpa save aktivitas)
+- [ ] Test grace period — foto baru tidak terhapus
+- [ ] Test race condition — concurrent upload dan cleanup
+- [ ] Monitoring: dashboard jumlah foto yatim per minggu
+- [ ] Alert jika foto yatim > threshold (misal 500 foto)
+
+## Pertimbangan Tambahan
+
+**Monitoring cost storage**: Tambahkan metric `orphan_photo_bytes` untuk track pemborosan storage dari waktu ke waktu. Ini membantu justifikasi investasi di pembersihan.
+
+**User notification**: Jika foto yatim berasal dari aktivitas yang dibatalkan user, pertimbangkan notifikasi "Kami menemukan foto yang tidak terpakai. Hapus sekarang?" — tapi ini opsional, bisa jadi over-engineering.
+
+**Integrasi dengan Task #21**: Cleanup ini bergantung pada integritas `organization_id`. Jika FK di Task #21 sudah terpasang, kita bisa filter cleanup per organisasi — berguna jika ada organisasi yang ingin retain semua fotonya.
+
+Apakah Anda ingin saya fokus ke salah satu bagian — misalnya implementasi `collectReferencedPhotoUrls` yang akurat, atau mekanisme `pending_uploads` lapis kedua?
