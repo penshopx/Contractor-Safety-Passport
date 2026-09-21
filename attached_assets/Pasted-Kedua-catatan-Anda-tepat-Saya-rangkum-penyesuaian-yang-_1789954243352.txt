@@ -1,0 +1,70 @@
+Kedua catatan Anda tepat. Saya rangkum penyesuaian yang perlu saya internalisasi, dan saya reframing catatan sebelumnya sebagai bahan audit — bukan instruksi implementasi.
+
+## Koreksi yang saya akui
+
+**Catatan migrasi (Task #21):**
+- Nama tabel salah: seharusnya `project_csms_readiness`, bukan `csms_project_readiness`.
+- Kebijakan `ON DELETE` tidak boleh diseragamkan. `RESTRICT` cocok untuk data keselamatan, tetapi membership dan invitation memiliki siklus hidup berbeda (mungkin `CASCADE` saat user dihapus, atau `SET NULL` terkontrol).
+- Asumsi kolom seperti `created_by` dan `needs_review` tidak valid — tidak semua tabel memilikinya.
+- Nilai `legacy` bukan data yatim otomatis. Itu adalah kasus migrasi eksplisit yang butuh keputusan bisnis, bukan cleanup database.
+
+**Catatan proteksi endpoint (Task #22):**
+- Registry manual + regex nama test memang lemah — developer bisa lupa mendaftarkan, atau nama test bisa cocok tanpa benar-benar menguji isolasi.
+- Introspeksi `app._router` bergantung pada internal Express dan tidak stabil antar versi.
+- Decorator tidak cocok dengan arsitektur Express Router yang dipakai aplikasi.
+- Contoh path dan metode di catatan saya belum tentu sesuai kontrak API aktual.
+
+## Reframe: Catatan sebagai Bahan Audit
+
+Karena Task #21 dan #22 sudah diterapkan, catatan tersebut saya perlakukan sebagai checklist audit, bukan panduan migrasi.
+
+### Audit untuk Task #21 (Integritas Organisasi)
+
+Yang perlu diverifikasi dari implementasi aktual:
+
+1. **Inventaris tabel** — apakah semua tabel dengan `organization_id` sudah tercakup, termasuk `project_csms_readiness` dan tabel CSMS lainnya.
+2. **Kebijakan delete per tabel** — apakah `RESTRICT` hanya dipakai di tabel keselamatan, dan tabel membership/invitation punya kebijakan siklus hidup yang sesuai.
+3. **Perlakuan nilai `legacy`** — apakah ada jalur migrasi eksplisit yang mendokumentasikan keputusan bisnis, bukan sekadar cleanup.
+4. **Tanpa asumsi kolom** — apakah audit tidak bergantung pada kolom yang tidak ada di semua tabel.
+5. **Isolasi di level query** — apakah semua query yang mengakses data keselamatan benar-benar memfilter `organization_id`, bukan hanya mengandalkan FK.
+
+### Audit untuk Task #22 (Proteksi Endpoint)
+
+Yang perlu diverifikasi:
+
+1. **`requireOrganization` di batas router** — middleware dipasang sekali di factory router, bukan diulang di setiap handler.
+2. **Allowlist eksplisit** — router publik, autentikasi, webhook, dan health check dipisahkan secara tegas dari router keselamatan.
+3. **Test penolakan pra-handler** — ada test yang membuktikan request tanpa organisasi ditolak sebelum handler dijalankan.
+4. **Test isolasi A/B lengkap** — list, detail, create, update, dan delete diuji dengan dua organisasi berbeda.
+5. **Perbandingan dengan kontrak** — inventaris route aktual (atau OpenAPI) dibandingkan terhadap allowlist publik untuk menangkap endpoint yang lupa dilindungi.
+
+## Dua Risiko Residual yang Perlu Ditutup
+
+Anda sudah menyebut dua risiko terbesar yang masih antre. Saya pertegas agar tidak terlewat:
+
+### Risiko 1: Deployment tidak memasang perlindungan organisasi
+
+**Skenario kegagalan**: CI hijau karena test isolasi ada, tetapi konfigurasi deployment salah — misalnya middleware `requireOrganization` tidak terpasang di environment tertentu, atau allowlist publik di production berbeda dari staging.
+
+**Cara menutup**:
+- Pemeriksaan pra-aktifasi: sebelum API menerima traffic, jalankan probe yang mengirim request tanpa organisasi ke endpoint keselamatan dan pastikan ditolak.
+- Probe ini berjalan di proses deployment, bukan di CI, karena menangkap kesalahan konfigurasi runtime.
+- Jika probe gagal, deployment rollback otomatis.
+
+### Risiko 2: Regresi migrasi data legacy
+
+**Skenario kegagalan**: Data dengan `organization_id = 'legacy'` atau nilai lama lainnya lolos FK karena dianggap valid saat migrasi, tetapi kemudian menyebabkan kebocoran isolasi di query yang tidak memfilter nilai tersebut.
+
+**Cara menutup**:
+- Setelah FK terpasang, jalankan audit berkala yang membandingkan distribusi `organization_id` terhadap daftar organisasi aktif.
+- Nilai di luar daftar aktif (termasuk `legacy`) dilaporkan sebagai temuan, bukan dibersihkan otomatis.
+- Setiap temuan butuh keputusan eksplisit: migrasi ke organisasi yang terbukti, arsip, atau penghapusan dengan justifikasi.
+
+## Kesimpulan
+
+Catatan saya sebelumnya saya tarik sebagai instruksi implementasi. Untuk pekerjaan lanjutan, saya akan:
+- Tidak menulis SQL atau kode migrasi mentah.
+- Tidak mengusulkan registry manual atau introspeksi router.
+- Fokus pada verifikasi bahwa Task #21 dan #22 sudah menutup risiko, dan pada dua risiko residual yang masih antre.
+
+Apakah Anda ingin saya susun checklist audit dalam format yang bisa langsung dipakai untuk review Task #21 dan #22, atau lanjut ke rencana penutupan dua risiko residual?
