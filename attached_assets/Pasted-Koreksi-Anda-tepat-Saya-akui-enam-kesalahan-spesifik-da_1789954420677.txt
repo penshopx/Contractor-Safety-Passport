@@ -1,0 +1,99 @@
+Koreksi Anda tepat. Saya akui enam kesalahan spesifik dalam catatan saya, dan saya reframe sebagai bahan audit — bukan panduan implementasi.
+
+## Enam Kesalahan yang Saya Akui
+
+| No | Kesalahan saya | Fakta aktual |
+|---|---|---|
+| 1 | Bandingkan URL, normalisasi signed URL | Bandingkan `objectPath` — identitas stabil |
+| 2 | Asumsi `photos` array URL, `safety_documents.file_url` | Aktual: `field_activities.photo_object_path`, `photo_data_url` untuk migrasi |
+| 3 | Tidak melindungi path legacy | `/objects/legacy-field-activities/...` harus dilindungi sampai migrasi selesai |
+| 4 | Klaim race condition "tidak masalah" | Race nyata antara snapshot referensi dan linking baru |
+| 5 | Klaim foto yang dihapus dari aktivitas "tidak jadi yatim" | Justru menjadi yatim setelah grace period |
+| 6 | Metadata organisasi opsional | Metadata `organizationId` wajib, batasi prefix area aplikasi |
+
+## Reframe: Catatan sebagai Bahan Audit
+
+Karena Task #23 sedang dikerjakan, catatan saya saya perlakukan sebagai checklist audit untuk memverifikasi implementasi aktual.
+
+### Audit Identitas Objek
+
+- [ ] Cleanup membandingkan `objectPath`, bukan URL
+- [ ] Tidak ada normalisasi signed URL di logika cleanup
+- [ ] Inventaris kolom referensi berasal dari skema aktual (`photo_object_path`, `photo_data_url`)
+
+### Audit Proteksi Legacy
+
+- [ ] Path `/objects/legacy-field-activities/...` dieksplisitkan sebagai exclude list
+- [ ] Exclude list hanya dibuka setelah:
+  - migrasi database selesai,
+  - `photo_object_path` tersimpan di semua baris relevan,
+  - `photo_data_url` sudah ditangani,
+  - retry migrasi dipastikan tidak akan terjadi
+- [ ] Ada flag atau tabel status migrasi yang bisa diverifikasi
+
+### Audit Race Condition
+
+Ini risiko terbesar. Dua lapis pertahanan yang perlu diverifikasi:
+
+**Lapis 1 — Re-check atomik sebelum delete:**
+- [ ] Tepat sebelum `deleteObject`, query ulang referensi di database
+- [ ] Jika `objectPath` muncul di referensi, skip penghapusan
+- [ ] Query ini berjalan dalam transaksi singkat atau dengan isolation level yang menjamin konsistensi
+
+**Lapis 2 — Lease/ownership (jika lapis 1 tidak cukup):**
+- [ ] Objek yang sedang diproses oleh cleanup ditandai dengan lease
+- [ ] Linking foto menolak menulis ke objek yang sedang di-lease, atau lease di-break dengan verifikasi ulang
+- [ ] Lease punya TTL untuk menghindari deadlock
+
+### Audit Batasan Ruang Lingkup
+
+- [ ] Pemindaian dibatasi ke prefix objek yang dikelola aplikasi (misal `/objects/uploads/...`)
+- [ ] Objek di luar prefix tidak pernah disentuh, bahkan jika tidak direferensikan
+- [ ] Metadata `organizationId` dibaca dan dicatat di audit log
+- [ ] Objek tanpa metadata organisasi ditangani eksplisit (karantina, bukan hapus)
+
+### Audit Edge Case
+
+- [ ] Foto yang dihapus dari aktivitas (referensi dihapus, objek masih ada) terdeteksi sebagai yatim setelah grace period
+- [ ] Grace period dihitung dari `LastModified` objek, bukan dari waktu cleanup
+- [ ] Objek yang baru diupload (dalam grace period) tidak pernah masuk kandidat hapus
+
+### Audit Log dan Peringatan
+
+- [ ] Audit log mencatat: `objectPath`, `organizationId`, `deletedAt`, `sizeBytes`, `reason`
+- [ ] Peringatan didasarkan pada **kegagalan berulang**, bukan hanya jumlah objek yatim
+- [ ] Threshold kegagalan: misal 3 kali gagal berturut-turut pada batch yang sama → alert
+- [ ] Threshold objek yatim tetap ada sebagai metrik operasional, tapi bukan pemicu alert utama
+
+## Dua Risiko Residual yang Sudah Tercatat
+
+Anda menyebut dua risiko terpenting sebagai pekerjaan lanjutan. Saya pertegas agar tidak terlewat saat review:
+
+### Risiko A: Race antara linking dan cleanup
+
+**Skenario**: Cleanup mengambil snapshot referensi → user sync aktivitas baru yang menautkan foto → cleanup menghapus foto berdasarkan snapshot lama.
+
+**Penutupan yang perlu diverifikasi**:
+- Re-check atomik sebelum delete (lapis 1)
+- Atau lease/ownership (lapis 2)
+- Test konkurensi: satu proses cleanup berjalan paralel dengan proses sync yang menautkan foto yang sama
+
+### Risiko B: Kegagalan cleanup berulang
+
+**Skenario**: Cleanup gagal terus-menerus karena rate limit storage, error transient, atau objek terkunci. Tanpa deteksi, ini menjadi pemborosan storage yang tidak terlihat.
+
+**Penutupan yang perlu diverifikasi**:
+- Counter kegagalan per objek atau per batch
+- Alert setelah N kegagalan berturut-turut
+- Backoff eksponensial untuk objek yang gagal
+- Dashboard operational: objek yatim terakumulasi, tingkat keberhasilan cleanup, objek yang gagal berulang
+
+## Kesimpulan
+
+Catatan saya sebelumnya saya tarik sebagai panduan implementasi. Untuk pekerjaan lanjutan, saya fokus pada:
+
+1. **Verifikasi** bahwa Task #23 sudah menutup enam poin audit di atas
+2. **Penutupan** dua risiko residual (race condition dan kegagalan berulang)
+3. **Tidak menulis** kode cleanup mentah, karena struktur aktual (`objectPath`, `photo_object_path`, exclude list legacy) hanya diketahui oleh implementasi yang sedang berjalan
+
+Apakah Anda ingin saya susun checklist audit ini dalam format yang bisa langsung dipakai untuk review Task #23, atau lanjut ke rencana penutupan dua risiko residual dengan skenario pengujian konkurensi?
