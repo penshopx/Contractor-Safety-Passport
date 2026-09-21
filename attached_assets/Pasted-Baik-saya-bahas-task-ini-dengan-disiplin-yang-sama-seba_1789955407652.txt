@@ -1,0 +1,188 @@
+Baik, saya bahas task ini dengan disiplin yang sama — sebagai bahan audit, bukan panduan implementasi mentah.
+
+## Skenario Kegagalan yang Harus Ditutup
+
+Tanggal aktivitas yang tidak divalidasi dengan benar dapat menyebabkan beberapa mode kegagalan:
+
+| Mode kegagalan | Dampak |
+|---|---|
+| Tanggal null | Aktivitas tidak masuk bulan mana pun, atau masuk bulan default yang salah |
+| Tanggal string kosong | Parsing error atau hasil aneh tergantung library |
+| Tanggal format salah (misal "2025-13-45") | Error runtime atau hasil tidak terduga |
+| Tanggal mustahil (misal "2025-02-30") | Library bisa auto-correct ke "2025-03-02" tanpa peringatan |
+| Tanggal di luar rentang masuk akal (tahun 1900, 3000) | Laporan menjadi sangat besar atau salah periode |
+| Zona waktu tidak konsisten | Aktivitas masuk bulan berbeda tergantung zona waktu server vs client |
+| Tanggal berubah setelah laporan dibuat | Laporan historis berubah, audit trail rusak |
+| Timestamp dengan offset tidak valid | Parsing gagal atau hasil salah |
+
+Kasus kritis di konteks K3: laporan bulanan yang salah periode bisa berakibat pada temuan audit regulasi yang tidak valid, atau pengendalian risiko yang salah sasaran.
+
+## Prinsip Validasi Tanggal yang Ketat
+
+### 1. Tolak di Batas Masuk
+
+Validasi harus terjadi di beberapa lapis:
+- **Database**: kolom tanggal dengan tipe `DATE` atau `TIMESTAMPTZ`, bukan `TEXT`
+- **API**: validasi format, rentang, dan kewajaran sebelum diproses
+- **UI**: date picker yang membatasi pilihan ke rentang yang masuk akal
+
+Jika tanggal tidak valid, tolak dengan error eksplisit — jangan auto-correct atau pakai default.
+
+### 2. Normalisasi Zona Waktu
+
+Keputusan yang perlu ditegakkan secara eksplisit:
+- Apakah tanggal aktivitas disimpan sebagai `DATE` (tanpa zona waktu) atau `TIMESTAMPTZ` (dengan zona waktu)?
+- Jika `TIMESTAMPTZ`, zona waktu apa yang dipakai sebagai referensi untuk pengelompokan bulan?
+- Apakah semua client mengirim tanggal dalam UTC, atau ada konversi di server?
+
+Konsistensi penting: jika server memakai UTC untuk pengelompokan bulan, client juga harus tahu bahwa "Januari 2025" berarti Januari dalam UTC, bukan waktu lokal user.
+
+### 3. Snapshot Tanggal Saat Laporan Dibuat
+
+Laporan yang sudah dibuat harus mengunci periode berdasarkan tanggal aktivitas **pada saat laporan dibuat**, bukan saat dirender ulang. Ini mencegah:
+- Laporan Januari berubah jika ada aktivitas yang tanggalnya dikoreksi setelah laporan dibuat
+- Audit trail rusak karena data historis berubah
+
+### 4. Rentang Kewajaran yang Eksplisit
+
+Definisikan rentang tanggal yang masuk akal untuk aplikasi K3:
+- **Minimum**: tanggal tidak boleh lebih lama dari tanggal proyek dimulai (atau batas wajar, misal 2000-01-01)
+- **Maksimum**: tanggal tidak boleh lebih baru dari hari ini + buffer kecil (misal 1 hari untuk antisipasi zona waktu)
+
+Tanggal di luar rentang ini harus ditolak, bukan diterima dengan asumsi "mungkin benar".
+
+### 5. Penanganan Data Lama
+
+Jika ada data lama dengan tanggal tidak valid:
+- Audit data yang terdampak
+- Tandai sebagai `needs_review`
+- Jangan otomatis dikoreksi atau dibuang
+- Beri jalur eksplisit untuk koreksi manual
+
+## Test Case yang Diperlukan
+
+### Test Dasar
+
+1. **Tanggal null ditolak**
+   - Kirim aktivitas dengan tanggal null → API tolak dengan error eksplisit
+   - Aktivitas tidak tersimpan
+
+2. **Tanggal string kosong ditolak**
+   - Kirim aktivitas dengan tanggal "" → API tolak
+   - Bukan auto-correct ke tanggal hari ini
+
+3. **Tanggal format salah ditolak**
+   - Kirim "2025-13-45" → API tolak
+   - Kirim "not-a-date" → API tolak
+   - Kirim "2025/01/15" (format salah) → API tolak atau parse sesuai kebijakan eksplisit
+
+4. **Tanggal mustahil ditolak**
+   - Kirim "2025-02-30" → API tolak
+   - Bukan auto-correct ke "2025-03-02"
+
+5. **Tanggal di luar rentang ditolak**
+   - Kirim "1900-01-01" → API tolak
+   - Kirim "3000-01-01" → API tolak
+   - Kirim tanggal besok (jika buffer 1 hari) → API tolak atau terima sesuai kebijakan
+
+### Test Edge Cases
+
+6. **Zona waktu berbeda**
+   - Kirim aktivitas dengan timestamp "2025-01-31T23:30:00-05:00" (EST)
+   - Server pakai UTC → aktivitas masuk Februari 2025 dalam UTC
+   - Pastikan UI menampilkan zona waktu yang dipakai
+
+7. **Tanggal berubah setelah laporan dibuat**
+   - Buat laporan Januari dengan aktivitas tanggal 2025-01-15
+   - Koreksi tanggal aktivitas ke 2025-02-01
+   - Render ulang laporan Januari → aktivitas tidak muncul (karena snapshot)
+   - Atau: laporan tetap menampilkan data asli dengan catatan "snapshot"
+
+8. **Timestamp dengan offset tidak valid**
+   - Kirim "2025-01-15T10:00:00+99:00" → API tolak
+
+9. **Leap year**
+   - Kirim "2024-02-29" → API terima (2024 tahun kabisat)
+   - Kirim "2025-02-29" → API tolak (2025 bukan tahun kabisat)
+
+10. **Aktivitas offline dengan tanggal tidak valid**
+    - User input aktivitas offline dengan tanggal rusak
+    - Aplikasi tolak di client sebelum sync
+    - Atau: sync ditolak server dengan error yang jelas
+
+11. **Laporan dengan campuran tanggal valid dan tidak valid**
+    - Beberapa aktivitas tanggal valid, beberapa tidak
+    - Laporan hanya menampilkan aktivitas valid
+    - Aktivitas tidak valid dilaporkan terpisah sebagai "data perlu koreksi"
+
+12. **Migrasi data lama dengan tanggal tidak valid**
+    - Data lama punya tanggal null atau format salah
+    - Audit menemukan data terdampak
+    - Data ditandai `needs_review`, bukan dihapus atau dikoreksi otomatis
+
+## Checklist Audit
+
+### A. Validasi di Batas Masuk
+- [ ] Database: kolom tanggal bertipe `DATE` atau `TIMESTAMPTZ`, bukan `TEXT`
+- [ ] API: validasi format tanggal sebelum diproses
+- [ ] API: validasi rentang tanggal (minimum dan maksimum)
+- [ ] API: validasi kewajaran tanggal (bukan tanggal mustahil)
+- [ ] API: tolak tanggal tidak valid dengan error eksplisit, bukan auto-correct
+- [ ] UI: date picker membatasi pilihan ke rentang yang masuk akal
+
+### B. Normalisasi Zona Waktu
+- [ ] Kebijakan zona waktu ditegakkan secara eksplisit (UTC atau zona tertentu)
+- [ ] Semua client mengirim tanggal dalam format yang konsisten
+- [ ] Pengelompokan bulan berdasarkan zona waktu yang sudah diputuskan
+- [ ] UI menampilkan zona waktu yang dipakai untuk pengelompokan
+
+### C. Snapshot Laporan
+- [ ] Laporan yang sudah dibuat mengunci periode berdasarkan tanggal aktivitas pada saat dibuat
+- [ ] Koreksi tanggal aktivitas setelah laporan dibuat tidak mengubah laporan yang sudah ada
+- [ ] Audit trail mencatat jika ada perubahan tanggal aktivitas
+
+### D. Rentang Kewajaran
+- [ ] Minimum tanggal didefinisikan (misal tanggal proyek dimulai atau batas wajar)
+- [ ] Maksimum tanggal didefinisikan (misal hari ini + buffer)
+- [ ] Tanggal di luar rentang ditolak dengan error eksplisit
+
+### E. Penanganan Data Lama
+- [ ] Audit data lama dengan tanggal tidak valid
+- [ ] Data terdampak ditandai `needs_review`
+- [ ] Tidak ada koreksi otomatis tanpa verifikasi
+- [ ] Jalur eksplisit untuk koreksi manual
+
+### F. Test Konkurensi dan Edge Cases
+- [ ] Tanggal null, kosong, format salah, mustahil, di luar rentang → ditolak
+- [ ] Zona waktu berbeda → pengelompokan bulan konsisten
+- [ ] Tanggal berubah setelah laporan dibuat → laporan tidak berubah
+- [ ] Leap year → penanganan benar
+- [ ] Aktivitas offline dengan tanggal rusak → ditolak di client atau server
+- [ ] Migrasi data lama → ambiguitas ditandai
+
+### G. Monitoring
+- [ ] Metric: jumlah aktivitas yang ditolak karena tanggal tidak valid
+- [ ] Metric: jumlah laporan dengan aktivitas `needs_review`
+- [ ] Alert jika jumlah penolakan tanggal meningkat drastis (indikasi bug client)
+
+### H. Error Response
+- [ ] Error message jelas dan dapat ditindaklanjuti
+- [ ] Error menyertakan nilai tanggal yang ditolak (untuk debugging)
+- [ ] Error menyertakan rentang yang diterima
+- [ ] Client bisa menampilkan error ke user dengan bahasa yang jelas
+
+## Pertimbangan yang Perlu Dikonfirmasi
+
+Beberapa hal yang saya belum tahu dari implementasi aktual dan perlu diverifikasi saat audit:
+
+1. **Tipe kolom tanggal**: Apakah sudah `DATE`/`TIMESTAMPTZ`, atau masih `TEXT`?
+2. **Kebijakan zona waktu**: UTC, waktu lokal server, atau waktu lokal user?
+3. **Rentang kewajaran**: Apakah sudah didefinisikan, atau masih terbuka?
+4. **Snapshot laporan**: Apakah laporan sudah mengunci periode, atau dirender ulang dari data terkini?
+5. **Data legacy**: Apakah ada data lama dengan tanggal tidak valid?
+
+## Posisi Saya
+
+Tidak ada aksi implementasi dari sisi saya. Catatan ini final sebagai bahan audit. Hasil implementasi task ini akan dinilai langsung memakai checklist di atas.
+
+Apakah ada aspek lain yang perlu ditambahkan, atau kita lanjut ke task berikutnya dalam antrean?
