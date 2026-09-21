@@ -63,6 +63,58 @@ export async function createEvidenceUploadTarget(contentType: string) {
   return { uploadURL: body.signed_url, objectPath };
 }
 
+export type EvidenceObjectCandidate = {
+  objectPath: string;
+  sizeBytes: number;
+  updatedAt: Date;
+  generation: string;
+  metageneration: string;
+};
+
+export async function listEvidenceUploadCandidates(): Promise<EvidenceObjectCandidate[]> {
+  const { bucketName, objectName } = parsePath(`${privateDir()}/uploads`);
+  const prefix = `${objectName.replace(/\/$/, "")}/`;
+  const [files] = await objectStorageClient.bucket(bucketName).getFiles({ prefix });
+  const candidates: EvidenceObjectCandidate[] = [];
+
+  for (const file of files) {
+    const [metadata] = await file.getMetadata();
+    const updatedAtValue = metadata.updated ?? metadata.timeCreated;
+    const updatedAt = updatedAtValue ? new Date(updatedAtValue) : null;
+    const sizeBytes = Number(metadata.size);
+    if (
+      !updatedAt
+      || Number.isNaN(updatedAt.getTime())
+      || !Number.isSafeInteger(sizeBytes)
+      || sizeBytes < 0
+      || !metadata.generation
+      || !metadata.metageneration
+    ) {
+      continue;
+    }
+    candidates.push({
+      objectPath: `/objects/${file.name.slice(privateDirObjectPrefix().length)}`,
+      sizeBytes,
+      updatedAt,
+      generation: String(metadata.generation),
+      metageneration: String(metadata.metageneration),
+    });
+  }
+
+  return candidates;
+}
+
+export async function deleteEvidenceUploadCandidate(candidate: EvidenceObjectCandidate) {
+  await evidenceFile(candidate.objectPath).delete(evidenceDeletePreconditions(candidate));
+}
+
+export function evidenceDeletePreconditions(candidate: EvidenceObjectCandidate) {
+  return {
+    ifGenerationMatch: candidate.generation,
+    ifMetagenerationMatch: candidate.metageneration,
+  };
+}
+
 export async function tagEvidence(objectPath: string, organizationId: string) {
   const file = evidenceFile(objectPath);
   const [exists] = await file.exists();
@@ -162,4 +214,9 @@ export function canReadEvidence(
 ) {
   return metadata?.evidenceVerified === "true"
     && metadata.organizationId === organizationId;
+}
+
+function privateDirObjectPrefix() {
+  const { objectName } = parsePath(`${privateDir()}/placeholder`);
+  return objectName.slice(0, -"placeholder".length);
 }

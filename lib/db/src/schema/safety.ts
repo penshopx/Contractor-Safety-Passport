@@ -266,6 +266,7 @@ export const fieldActivitiesTable = pgTable(
       table.clientId,
     ).where(sql`${table.clientId} <> 'legacy'`),
     index("field_activities_organization_id_idx").on(table.organizationId),
+    index("field_activities_photo_object_path_idx").on(table.photoObjectPath),
   ],
 );
 

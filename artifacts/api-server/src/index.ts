@@ -1,6 +1,15 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { migrateFieldActivityPhotos } from "./lib/migrateFieldActivityPhotos.ts";
+import { cleanupOrphanedEvidence } from "./lib/cleanupOrphanedEvidence.ts";
+
+const EVIDENCE_CLEANUP_INTERVAL_MS = 6 * 60 * 60_000;
+
+function runEvidenceCleanup() {
+  void cleanupOrphanedEvidence().catch((error) => {
+    logger.error({ err: error }, "Orphaned evidence cleanup failed");
+  });
+}
 
 const rawPort = process.env["PORT"];
 
@@ -26,6 +35,9 @@ async function start() {
     void migrateFieldActivityPhotos().catch((error) => {
       logger.error({ err: error }, "Legacy field photo migration failed");
     });
+    runEvidenceCleanup();
+    const cleanupTimer = setInterval(runEvidenceCleanup, EVIDENCE_CLEANUP_INTERVAL_MS);
+    cleanupTimer.unref();
   });
 }
 
