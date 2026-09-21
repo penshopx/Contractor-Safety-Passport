@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  applyQueueRetention,
+  dedupeByKey,
   recoverQueue,
+  SYNCED_ACTIVITY_RETENTION_LIMIT,
   syncQueuedActivities,
   type QueuedActivity,
 } from './fieldActivityQueue.ts';
@@ -21,6 +24,68 @@ const activity = (
 });
 
 describe('antrean aktivitas lapangan', () => {
+  it('membatasi riwayat tersinkron tanpa menghapus item yang masih perlu ditangani', () => {
+    const unresolved = [
+      activity('pending', 'pending'),
+      activity('failed', 'failed'),
+      activity('syncing', 'syncing'),
+    ];
+    const synced = Array.from(
+      { length: SYNCED_ACTIVITY_RETENTION_LIMIT + 2 },
+      (_, index) => activity(`synced-${index}`, 'synced'),
+    );
+
+    const retained = applyQueueRetention([
+      synced[0]!,
+      unresolved[0]!,
+      ...synced.slice(1),
+      unresolved[1]!,
+      unresolved[2]!,
+    ]);
+
+    assert.equal(
+      retained.filter((item) => item.localStatus === 'synced').length,
+      SYNCED_ACTIVITY_RETENTION_LIMIT,
+    );
+    assert.deepEqual(
+      retained.filter((item) => item.localStatus !== 'synced').map((item) => item.clientId),
+      ['pending', 'failed', 'syncing'],
+    );
+    assert.ok(retained.some((item) => item.clientId === 'synced-0'));
+    assert.ok(!retained.some((item) => item.clientId === `synced-${SYNCED_ACTIVITY_RETENTION_LIMIT + 1}`));
+  });
+
+  it('menerapkan retensi dan memulihkan kiriman terputus saat aplikasi dibuka kembali', () => {
+    const stored = JSON.stringify([
+      activity('terputus', 'syncing'),
+      activity('gagal', 'failed'),
+      ...Array.from(
+        { length: SYNCED_ACTIVITY_RETENTION_LIMIT + 1 },
+        (_, index) => activity(`lama-${index}`, 'synced'),
+      ),
+    ]);
+
+    const restored = recoverQueue(JSON.parse(stored) as QueuedActivity[]);
+
+    assert.equal(restored.find((item) => item.clientId === 'terputus')?.localStatus, 'pending');
+    assert.ok(restored.some((item) => item.clientId === 'gagal'));
+    assert.equal(
+      restored.filter((item) => item.localStatus === 'synced').length,
+      SYNCED_ACTIVITY_RETENTION_LIMIT,
+    );
+  });
+
+  it('menghapus duplikat server berdasarkan clientId setelah riwayat lokal dibersihkan', () => {
+    const rows = dedupeByKey([
+      activity('unik', 'synced'),
+      activity('duplikat', 'synced'),
+      { ...activity('duplikat', 'synced'), title: 'Salinan server' },
+    ], (item) => item.clientId);
+
+    assert.deepEqual(rows.map((item) => item.clientId), ['unik', 'duplikat']);
+    assert.equal(rows[1]?.title, 'Inspeksi duplikat');
+  });
+
   it('memulihkan item yang sedang dikirim setelah aplikasi ditutup paksa', () => {
     const stored = JSON.stringify([
       activity('belum-dikirim'),

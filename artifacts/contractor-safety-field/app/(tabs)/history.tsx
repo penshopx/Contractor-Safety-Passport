@@ -1,6 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 import { useListFieldActivities } from '@workspace/api-client-react';
 import { useFieldActivities } from '@/context/FieldActivityContext';
+import { dedupeByKey } from '@/context/fieldActivityQueue';
 import { useColors } from '@/hooks/useColors';
 import { ActivityIndicator, FlatList, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -11,11 +12,16 @@ export default function HistoryScreen() {
   const { queue, isSyncing, syncNow } = useFieldActivities();
   const { data: serverActivities, isLoading } = useListFieldActivities();
   const pending = queue.filter((item) => item.localStatus !== 'synced');
-  const syncedIds = new Set(queue.filter((item) => item.localStatus === 'synced').map((item) => item.clientId));
+  const pendingIds = new Set(pending.map((item) => item.clientId));
+  const uniqueServerActivities = dedupeByKey(
+    serverActivities ?? [],
+    (item) => String(('clientId' in item && item.clientId) || item.id),
+  );
   const rows = [
     ...pending.map((item) => ({ ...item, id: item.clientId, local: true })),
-    ...(serverActivities ?? []).filter((item) => !syncedIds.has(item.clientId)).map((item) => ({ ...item, local: false })),
-    ...(serverActivities ?? []).filter((item) => syncedIds.has(item.clientId)).map((item) => ({ ...item, local: false })),
+    ...uniqueServerActivities
+      .filter((item) => !('clientId' in item) || !pendingIds.has(String(item.clientId)))
+      .map((item) => ({ ...item, local: false })),
   ];
 
   return (

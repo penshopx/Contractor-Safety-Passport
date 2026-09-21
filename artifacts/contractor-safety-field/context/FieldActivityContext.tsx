@@ -13,6 +13,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { AppState } from 'react-native';
 import { fetch as expoFetch } from 'expo/fetch';
 import {
+  applyQueueRetention,
   recoverQueue,
   syncQueuedActivities,
   type QueuedActivity,
@@ -90,9 +91,13 @@ export function FieldActivityProvider({ children }: { children: React.ReactNode 
     setIsReady(false);
     updateQueue([]);
     AsyncStorage.getItem(storageKey)
-      .then((value) => {
+      .then(async (value) => {
         const stored = value ? (JSON.parse(value) as QueuedActivity[]) : [];
-        updateQueue(recoverQueue(stored));
+        const recovered = recoverQueue(stored);
+        updateQueue(recovered);
+        if (recovered.length !== stored.length || recovered.some((item, index) => item !== stored[index])) {
+          await AsyncStorage.setItem(storageKey, JSON.stringify(recovered));
+        }
       })
       .finally(() => setIsReady(true));
   }, [storageKey, updateQueue]);
@@ -103,7 +108,7 @@ export function FieldActivityProvider({ children }: { children: React.ReactNode 
     if (!storageKey) throw new Error('Ruang kerja belum tersedia');
     let result = queueRef.current;
     const write = async () => {
-      result = updater(queueRef.current);
+      result = applyQueueRetention(updater(queueRef.current));
       updateQueue(result);
       await AsyncStorage.setItem(storageKey, JSON.stringify(result));
     };

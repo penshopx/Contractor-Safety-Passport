@@ -8,12 +8,38 @@ export type QueuedActivity = FieldActivityInput & {
   lastError?: string;
 };
 
+export const SYNCED_ACTIVITY_RETENTION_LIMIT = 100;
+
+export function applyQueueRetention(
+  items: QueuedActivity[],
+  syncedLimit = SYNCED_ACTIVITY_RETENTION_LIMIT,
+): QueuedActivity[] {
+  let retainedSynced = 0;
+  return items.filter((item) => {
+    if (item.localStatus !== 'synced') return true;
+    retainedSynced += 1;
+    return retainedSynced <= syncedLimit;
+  });
+}
+
 export function recoverQueue(items: QueuedActivity[]): QueuedActivity[] {
-  return items.map((item) =>
-    item.localStatus === 'syncing'
-      ? { ...item, localStatus: 'pending', lastError: undefined }
-      : item,
+  return applyQueueRetention(
+    items.map((item) =>
+      item.localStatus === 'syncing'
+        ? { ...item, localStatus: 'pending', lastError: undefined }
+        : item,
+    ),
   );
+}
+
+export function dedupeByKey<T>(items: T[], getKey: (item: T) => string): T[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = getKey(item);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 type SyncItem = (
