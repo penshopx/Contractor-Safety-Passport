@@ -1,0 +1,204 @@
+Baik, saya bahas task ini dengan disiplin yang sama — sebagai bahan audit, bukan panduan implementasi mentah.
+
+## Skenario Kegagalan yang Harus Ditutup
+
+Lost update pada BOQ bersama dapat terjadi dalam beberapa mode:
+
+| Mode kegagalan | Dampak |
+|---|---|
+| Dua user simpan hampir bersamaan | Perubahan user pertama hilang tanpa disadari |
+| User edit lama, simpan setelah user lain update | Perubahan user lain tertimpa |
+| User tidak sadar ada perubahan terbaru | BOQ final tidak mencerminkan semua input tim |
+| Katalog harga diperbarui saat user edit | Harga di BOQ tidak konsisten dengan katalog terkini |
+| User edit item berbeda di BOQ yang sama | Seharusnya bisa digabung otomatis, tapi malah ditolak |
+| Disconnect lalu reconnect | User tidak tahu ada perubahan selama offline |
+
+Kasus kritis di konteks K3: BOQ keselamatan yang salah bisa berakibat pada alokasi anggaran yang tidak memadai untuk pengendalian risiko.
+
+## Prinsip Kontrol Versi untuk BOQ
+
+### 1. Version Number atau ETag
+
+Setiap BOQ harus punya identifier versi yang berubah setiap kali ada perubahan:
+- **Version number** (integer increment) — sederhana, mudah dipahami
+- **ETag** (hash dari konten) — lebih robust, mendeteksi perubahan apa pun
+- **Updated timestamp** — sederhana tapi bisa race condition jika resolusi waktu rendah
+
+Pilihan tergantung stack, tetapi yang penting: **versi berubah setiap kali ada perubahan, dan bisa dibandingkan**.
+
+### 2. Optimistic Concurrency Control
+
+Pola yang cocok untuk kolaborasi tanpa locking:
+- User mengambil BOQ + version number
+- User edit secara lokal
+- User kirim simpan dengan BOQ + version number asli
+- Server cek: apakah version number di database masih sama?
+  - Jika sama → simpan, increment version number
+  - Jika berbeda → tolak dengan error "konflik versi"
+
+### 3. Penanganan Konflik yang Eksplisit
+
+Saat konflik terdeteksi, user harus diberi opsi yang jelas:
+- **Muat ulang versi terbaru** — kehilangan perubahan lokal, dapat versi terbaru
+- **Gabungkan secara manual** — tampilkan diff, user pilih perubahan mana yang dipakai
+- **Batal** — kembali ke editor tanpa menyimpan
+
+### 4. Diff Viewer untuk BOQ
+
+BOQ adalah structured data (baris dengan risiko, pengendalian, volume, biaya), sehingga diff bisa ditampilkan sebagai:
+- Baris yang ditambahkan user lain
+- Baris yang dihapus user lain
+- Baris yang diubah user lain (dengan nilai lama vs baru)
+
+User bisa pilih per baris: pakai versi lokal, pakai versi remote, atau gabungkan manual.
+
+### 5. Auto-Merge untuk Item Berbeda
+
+Jika user A edit item 1 dan user B edit item 2 di BOQ yang sama:
+- Server bisa deteksi bahwa perubahan tidak overlap
+- Auto-merge: gabungkan kedua perubahan
+- Version number tetap increment
+
+Ini meningkatkan kolaborasi tanpa kehilangan data.
+
+### 6. Penanganan Katalog Harga
+
+Jika katalog harga diperbarui saat user sedang edit BOQ:
+- BOQ yang sudah disimpan tetap pakai harga lama (snapshot)
+- Atau: BOQ otomatis update ke harga baru dengan notifikasi
+- Keputusan tergantung kebijakan bisnis, tetapi harus eksplisit
+
+## Test Case yang Diperlukan
+
+### Test Dasar
+
+1. **Dua user simpan hampir bersamaan**
+   - User A dan User B buka BOQ yang sama (versi 1)
+   - User A simpan perubahan → berhasil, versi jadi 2
+   - User B simpan perubahan → ditolak dengan error "konflik versi"
+   - User B diberi opsi: muat ulang atau gabungkan
+
+2. **Muat ulang versi terbaru**
+   - User B pilih "muat ulang"
+   - BOQ lokal diganti dengan versi 2 dari server
+   - Perubahan lokal User B hilang
+   - User B bisa edit lagi dari versi terbaru
+
+3. **Gabungkan secara manual**
+   - User B pilih "gabungkan"
+   - Tampilkan diff: perubahan User A vs perubahan lokal User B
+   - User B pilih per item: pakai versi A atau versi lokal
+   - Setelah merge, simpan berhasil, versi jadi 3
+
+4. **Edit item berbeda, auto-merge**
+   - User A edit item 1, User B edit item 2
+   - User A simpan → berhasil
+   - User B simpan → auto-merge (karena item berbeda)
+   - Versi jadi 2, kedua perubahan tersimpan
+
+### Test Edge Cases
+
+5. **Multiple conflicts berantai**
+   - User A, B, C buka BOQ versi 1
+   - User A simpan → versi 2
+   - User B simpan → konflik, muat ulang versi 2, edit, simpan → versi 3
+   - User C simpan → konflik, muat ulang versi 3, edit, simpan → versi 4
+   - Semua perubahan tersimpan tanpa lost update
+
+6. **Disconnect dan reconnect**
+   - User A buka BOQ versi 1
+   - User A disconnect (offline)
+   - User B simpan perubahan → versi 2
+   - User A reconnect, simpan perubahan → konflik
+   - User A diberi opsi: muat ulang atau gabungkan
+
+7. **Katalog harga berubah saat edit**
+   - User A buka BOQ dengan harga lama
+   - Katalog harga diperbarui
+   - User A simpan → apakah pakai harga lama atau baru?
+   - Kebijakan eksplisit: snapshot atau auto-update
+
+8. **Race condition simulasi**
+   - Dua request simpan dikirim pada waktu yang hampir sama
+   - Database transaction atau optimistic locking mencegah lost update
+   - Salah satu request berhasil, yang lain ditolak
+
+9. **Version number overflow**
+   - Version number mencapai batas maksimum (jika pakai integer)
+   - Bagaimana handle? Wrap around? Error?
+   - Kebijakan eksplisit
+
+10. **User edit BOQ yang sudah dihapus**
+    - User A buka BOQ
+    - User B hapus BOQ (jika diizinkan)
+    - User A simpan → error "BOQ tidak ditemukan"
+    - Bukan lost update, tapi error eksplisit
+
+## Checklist Audit
+
+### A. Kontrol Versi
+- [ ] BOQ punya version number atau ETag yang berubah setiap kali ada perubahan
+- [ ] Setiap simpan menyertakan version number yang diedit
+- [ ] Server cek version number sebelum simpan
+- [ ] Jika version tidak cocok, tolak dengan error eksplisit
+- [ ] Version number increment setelah simpan berhasil
+
+### B. Penanganan Konflik
+- [ ] User diberi opsi: muat ulang, gabungkan, atau batal
+- [ ] UI menampilkan diff antara versi lokal dan versi terbaru
+- [ ] User bisa pilih perubahan per item (versi lokal vs versi remote)
+- [ ] Setelah merge, version number diperbarui
+- [ ] Pesan error jelas dan dapat ditindaklanjuti
+
+### C. Auto-Merge
+- [ ] Jika perubahan tidak overlap (item berbeda), auto-merge dilakukan
+- [ ] Auto-merge tidak menyebabkan lost update
+- [ ] User diberi notifikasi bahwa auto-merge dilakukan
+
+### D. Race Condition
+- [ ] Simpan simultan ditangani dengan database transaction atau optimistic locking
+- [ ] Tidak ada lost update bahkan jika dua request tiba pada waktu yang hampir sama
+- [ ] Test konkurensi membuktikan tidak ada race condition
+
+### E. Edge Cases
+- [ ] Multiple conflicts berantai ditangani dengan benar
+- [ ] Disconnect dan reconnect → konflik terdeteksi saat reconnect
+- [ ] Katalog harga berubah saat edit → kebijakan eksplisit (snapshot atau auto-update)
+- [ ] Version number overflow → kebijakan eksplisit
+- [ ] BOQ dihapus saat user edit → error eksplisit
+
+### F. UX
+- [ ] Diff viewer mudah dipahami (baris ditambah, dihapus, diubah)
+- [ ] Tombol "muat ulang", "gabungkan", "batal" jelas
+- [ ] Indikator loading saat memuat versi terbaru
+- [ ] Pesan error dalam bahasa yang user-friendly
+
+### G. Testing
+- [ ] Test dua user simpan simultan → konflik terdeteksi
+- [ ] Test conflict resolution (muat ulang dan gabungkan)
+- [ ] Test auto-merge untuk item berbeda
+- [ ] Test multiple conflicts berantai
+- [ ] Test disconnect/reconnect
+- [ ] Test race condition dengan request simultan
+
+### H. Monitoring
+- [ ] Metric: jumlah konflik yang terdeteksi per hari
+- [ ] Metric: berapa user pilih muat ulang vs gabungkan
+- [ ] Metric: waktu rata-rata untuk resolve konflik
+- [ ] Alert jika jumlah konflik meningkat drastis (indikasi UX buruk atau workflow bermasalah)
+
+## Pertimbangan yang Perlu Dikonfirmasi
+
+Beberapa hal yang saya belum tahu dari implementasi aktual dan perlu diverifikasi saat audit:
+
+1. **Struktur data BOQ**: Apakah BOQ disimpan sebagai satu dokumen JSON, atau sebagai baris-baris terpisah di database?
+2. **Granularitas versi**: Apakah versi per BOQ keseluruhan, atau per item?
+3. **Kebijakan katalog harga**: Snapshot atau auto-update?
+4. **Stack database**: PostgreSQL, MongoDB, atau lainnya? Ini mempengaruhi cara implementasi optimistic locking.
+5. **Jumlah user tipikal**: Berapa banyak user yang biasanya edit BOQ yang sama? (untuk menentukan apakah auto-merge perlu)
+
+## Posisi Saya
+
+Tidak ada aksi implementasi dari sisi saya. Catatan ini final sebagai bahan audit. Hasil implementasi task ini akan dinilai langsung memakai checklist di atas.
+
+Apakah ada aspek lain yang perlu ditambahkan, atau kita lanjut ke task berikutnya dalam antrean?
