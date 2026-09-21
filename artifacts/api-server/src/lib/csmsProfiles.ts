@@ -183,6 +183,8 @@ export const buildCsmsReadiness = (
   itemStatuses: Record<string, CsmsReadinessStatus>,
   updatedAt: Date | null,
   revision = 0,
+  updatedBy: string | null = null,
+  updatedByName: string | null = null,
 ) => {
   const validStatuses: Record<string, CsmsReadinessStatus> = {};
   const stages = profile.stages.map((stage) => {
@@ -232,6 +234,8 @@ export const buildCsmsReadiness = (
       status,
     })),
     stages,
+    updatedBy,
+    updatedByName,
     updatedAt,
   };
 };

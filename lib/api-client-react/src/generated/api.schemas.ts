@@ -463,6 +463,10 @@ export interface ProjectCsmsReadiness {
   itemStatuses: CsmsReadinessItemStatus[];
   stages: CsmsReadinessStage[];
   /** @nullable */
+  updatedBy: string | null;
+  /** @nullable */
+  updatedByName: string | null;
+  /** @nullable */
   updatedAt: string | null;
 }
 

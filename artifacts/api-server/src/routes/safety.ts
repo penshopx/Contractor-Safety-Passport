@@ -1,3 +1,4 @@
+import { clerkClient } from "@clerk/express";
 import { Router, type IRouter, type RequestHandler } from "express";
 import { and, asc, count, desc, eq, inArray, sql } from "drizzle-orm";
 import {
@@ -7,6 +8,7 @@ import {
   fieldActivitiesTable,
   monthlyReportsTable,
   peopleTable,
+  projectCsmsReadinessHistoryTable,
   projectCsmsReadinessTable,
   projectsTable,
   safetyBoqDraftsTable,
@@ -90,6 +92,7 @@ import { tagEvidence } from "../lib/objectStorage.ts";
 
 type SafetyRouterHooks = {
   beforeSafetyBoqItemsRead?: () => Promise<void>;
+  resolveUserName?: (userId: string) => Promise<string>;
 };
 
 export const createSafetyRouter = (
@@ -98,6 +101,21 @@ export const createSafetyRouter = (
 ): IRouter => {
   const router: IRouter = Router();
   router.use(organizationMiddleware);
+
+  const resolveUserName =
+    hooks.resolveUserName ??
+    (async (userId: string) => {
+      try {
+        const user = await clerkClient.users.getUser(userId);
+        return (
+          [user.firstName, user.lastName].filter(Boolean).join(" ") ||
+          user.primaryEmailAddress?.emailAddress?.split("@")[0] ||
+          userId
+        );
+      } catch {
+        return userId;
+      }
+    });
 
   const initialsFor = (name: string) =>
     name
@@ -429,6 +447,9 @@ export const createSafetyRouter = (
     const profile =
       (await findAvailableCsmsProfile(organizationId, saved?.profileId)) ??
       { ...csmsProfiles[0]!, locked: true, builtIn: true };
+    const updatedByName = saved?.updatedBy
+      ? await resolveUserName(saved.updatedBy)
+      : null;
     res.json(
       GetProjectCsmsReadinessResponse.parse(
         buildCsmsReadiness(
@@ -437,6 +458,8 @@ export const createSafetyRouter = (
           saved?.itemStatuses ?? {},
           saved?.updatedAt ?? null,
           saved?.revision ?? 0,
+          saved?.updatedBy ?? null,
+          updatedByName,
         ),
       ),
     );
@@ -465,6 +488,7 @@ export const createSafetyRouter = (
         body.data.itemStatuses.map((item) => [item.key, item.status]),
       );
       const builtInProfile = findCsmsProfile(body.data.profileId);
+      const updatedByName = await resolveUserName(userId);
       const result = await db.transaction(async (tx) => {
         const profile = builtInProfile
           ? { ...builtInProfile, locked: true, builtIn: true }
@@ -514,6 +538,16 @@ export const createSafetyRouter = (
               .returning();
         const saved = updated ?? inserted;
         if (!saved) return { conflict: true as const };
+        await tx.insert(projectCsmsReadinessHistoryTable).values({
+          organizationId,
+          projectId: project.id,
+          profileId: saved.profileId,
+          itemStatuses: saved.itemStatuses,
+          revision: saved.revision,
+          changedBy: userId,
+          changedByName: updatedByName,
+          changedAt: saved.updatedAt,
+        });
         if (!builtInProfile) {
           await tx
             .update(csmsProfileVersionsTable)
@@ -550,6 +584,9 @@ export const createSafetyRouter = (
         const latestProfile =
           (await findAvailableCsmsProfile(organizationId, latest?.profileId)) ??
           { ...csmsProfiles[0]!, locked: true, builtIn: true };
+        const updatedByName = latest?.updatedBy
+          ? await resolveUserName(latest.updatedBy)
+          : null;
         res.status(409).json(
           GetProjectCsmsReadinessResponse.parse(
             buildCsmsReadiness(
@@ -558,6 +595,8 @@ export const createSafetyRouter = (
               latest?.itemStatuses ?? {},
               latest?.updatedAt ?? null,
               latest?.revision ?? 0,
+              latest?.updatedBy ?? null,
+              updatedByName,
             ),
           ),
         );
@@ -571,6 +610,8 @@ export const createSafetyRouter = (
             result.saved.itemStatuses,
             result.saved.updatedAt,
             result.saved.revision,
+            result.saved.updatedBy,
+            updatedByName,
           ),
         ),
       );

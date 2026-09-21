@@ -1132,8 +1132,12 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/CsmsReadinessStage"
+        updatedBy:
+          type: ["string", "null"]
+        updatedByName:
+          type: ["string", "null"]
         updatedAt: { type: ["string", "null"], format: date-time }
-      required: [projectId, profileId, issuer, version, title, revision, overallProgress, completed, followUp, total, itemStatuses, stages, updatedAt]
+      required: [projectId, profileId, issuer, version, title, revision, overallProgress, completed, followUp, total, itemStatuses, stages, updatedBy, updatedByName, updatedAt]
     ProjectCsmsReadinessUpdate:
       type: object
       properties:

@@ -10,7 +10,7 @@ import {
   type ProjectCsmsReadiness,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, CheckCircle2, Circle, Loader2, ShieldCheck } from "lucide-react";
+import { AlertCircle, CheckCircle2, Circle, Clock3, Loader2, ShieldCheck, UserRound } from "lucide-react";
 import { toast } from "sonner";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
@@ -190,6 +190,18 @@ export default function ReadinessPage() {
                   <CardDescription className="mt-1">
                     {readiness.issuer} · {readiness.version}
                   </CardDescription>
+                  {readiness.updatedAt && readiness.updatedByName && (
+                    <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                      <span className="inline-flex items-center gap-1.5">
+                        <UserRound className="h-3.5 w-3.5" />
+                        Terakhir diubah oleh {readiness.updatedByName}
+                      </span>
+                      <span className="inline-flex items-center gap-1.5">
+                        <Clock3 className="h-3.5 w-3.5" />
+                        {formatUpdatedAt(readiness.updatedAt)}
+                      </span>
+                    </div>
+                  )}
                 </div>
                 {updateReadiness.isPending && (
                   <Badge variant="outline" className="gap-1.5">
@@ -234,6 +246,12 @@ export default function ReadinessPage() {
     </div>
   );
 }
+
+const formatUpdatedAt = (value: string) =>
+  new Intl.DateTimeFormat("id-ID", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
 
 const getReadinessConflict = (error: unknown): ProjectCsmsReadiness | null => {
   if (

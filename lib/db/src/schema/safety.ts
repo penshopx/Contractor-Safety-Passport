@@ -68,6 +68,31 @@ export const projectCsmsReadinessTable = pgTable(
   ],
 );
 
+export const projectCsmsReadinessHistoryTable = pgTable(
+  "project_csms_readiness_history",
+  {
+    id: serial("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizationsTable.id, { onDelete: "restrict" }),
+    projectId: integer("project_id").notNull(),
+    profileId: text("profile_id").notNull(),
+    itemStatuses: jsonb("item_statuses")
+      .$type<Record<string, "complete" | "follow_up">>()
+      .notNull(),
+    revision: integer("revision").notNull(),
+    changedBy: text("changed_by").notNull(),
+    changedByName: text("changed_by_name").notNull(),
+    changedAt: timestamp("changed_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("project_csms_readiness_history_organization_project_idx").on(
+      table.organizationId,
+      table.projectId,
+    ),
+  ],
+);
+
 export const csmsProfileVersionsTable = pgTable(
   "csms_profile_versions",
   {

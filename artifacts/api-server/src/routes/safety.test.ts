@@ -11,6 +11,7 @@ import {
   organizationMembershipsTable,
   organizationsTable,
   peopleTable,
+  projectCsmsReadinessHistoryTable,
   pool,
   projectCsmsReadinessTable,
   projectsTable,
@@ -278,6 +279,8 @@ before(async () => {
   );
   app.use(createSafetyRouter(contextMiddleware, {
     beforeSafetyBoqItemsRead: () => beforeSafetyBoqItemsRead?.() ?? Promise.resolve(),
+    resolveUserName: async (userId) =>
+      userId === userIds.safety_expert ? "Ahli K3" : "Pemilik Workspace",
   }));
   const server = app.listen(0, "127.0.0.1");
   await new Promise<void>((resolve, reject) => {
@@ -317,6 +320,11 @@ after(async () => {
   await db
     .delete(safetyDocumentsTable)
     .where(inArray(safetyDocumentsTable.organizationId, organizationIds));
+  await db
+    .delete(projectCsmsReadinessHistoryTable)
+    .where(
+      inArray(projectCsmsReadinessHistoryTable.organizationId, organizationIds),
+    );
   await db
     .delete(projectCsmsReadinessTable)
     .where(inArray(projectCsmsReadinessTable.organizationId, organizationIds));
@@ -719,10 +727,40 @@ describe("isolasi data antar kontraktor", () => {
 
     assert.equal(firstUpdate.status, 200);
     assert.equal(firstUpdate.body.revision, firstSnapshot.body.revision + 1);
+    assert.equal(firstUpdate.body.updatedBy, userIds.safety_expert);
+    assert.equal(firstUpdate.body.updatedByName, "Ahli K3");
+    assert.ok(Date.parse(firstUpdate.body.updatedAt));
     assert.equal(staleUpdate.status, 409);
     assert.equal(staleUpdate.body.revision, firstUpdate.body.revision);
     assert.equal(staleUpdate.body.profileId, firstUpdate.body.profileId);
     assert.deepEqual(staleUpdate.body.itemStatuses, firstUpdate.body.itemStatuses);
+    assert.equal(staleUpdate.body.updatedBy, userIds.safety_expert);
+    assert.equal(staleUpdate.body.updatedByName, "Ahli K3");
+
+    const history = await db
+      .select()
+      .from(projectCsmsReadinessHistoryTable)
+      .where(
+        and(
+          eq(projectCsmsReadinessHistoryTable.organizationId, organizationA),
+          eq(projectCsmsReadinessHistoryTable.projectId, projectAId),
+        ),
+      );
+    assert.ok(
+      history.some(
+        (entry) =>
+          entry.revision === firstUpdate.body.revision &&
+          entry.changedBy === userIds.safety_expert &&
+          entry.changedByName === "Ahli K3",
+      ),
+    );
+    assert.ok(
+      history.every(
+        (entry) =>
+          entry.organizationId === organizationA &&
+          entry.projectId === projectAId,
+      ),
+    );
     assert.ok(
       staleUpdate.body.itemStatuses.some(
         (item: { key: string; status: string }) =>

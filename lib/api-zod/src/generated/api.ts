@@ -658,6 +658,8 @@ export const GetProjectCsmsReadinessResponse = zod.object({
   "total": zod.number().int().min(getProjectCsmsReadinessResponseStagesItemTotalMin),
   "progress": zod.number().int().min(getProjectCsmsReadinessResponseStagesItemProgressMin).max(getProjectCsmsReadinessResponseStagesItemProgressMax)
 })),
+  "updatedBy": zod.string().nullable(),
+  "updatedByName": zod.string().nullable(),
   "updatedAt": zod.coerce.date().nullable()
 })
 
@@ -737,6 +739,8 @@ export const UpdateProjectCsmsReadinessResponse = zod.object({
   "total": zod.number().int().min(updateProjectCsmsReadinessResponseStagesItemTotalMin),
   "progress": zod.number().int().min(updateProjectCsmsReadinessResponseStagesItemProgressMin).max(updateProjectCsmsReadinessResponseStagesItemProgressMax)
 })),
+  "updatedBy": zod.string().nullable(),
+  "updatedByName": zod.string().nullable(),
   "updatedAt": zod.coerce.date().nullable()
 })
 
