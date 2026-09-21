@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import {
+  getGetMonthlyReportQueryOptions,
   getListMonthlyReportsQueryKey,
   useCreateMonthlyReport,
   useListFieldActivities,
@@ -47,6 +48,7 @@ export default function SmkkReportsPage() {
   const [approvedBy, setApprovedBy] = useState("");
   
   const [isGenerating, setIsGenerating] = useState(false);
+  const [openingReportId, setOpeningReportId] = useState<number | null>(null);
   const [openedReportId, setOpenedReportId] = useState<number | null>(null);
   const [archiveProjectId, setArchiveProjectId] = useState("all");
   const [archivePeriod, setArchivePeriod] = useState("");
@@ -111,16 +113,26 @@ export default function SmkkReportsPage() {
     setArchiveStatus("all");
   };
 
-  const openReport = (report: MonthlyReport) => {
-    setOpenedReportId(report.id);
-    setSelectedProjectId(String(report.projectId));
-    setSelectedMonth(report.period);
-    setEvaluation(report.evaluation);
-    setNotes(report.notes);
-    setPreparedBy(report.preparedBy);
-    setReviewedBy(report.reviewedBy);
-    setApprovedBy(report.approvedBy);
-    toast.success("Laporan tersimpan dibuka");
+  const openReport = async (reportId: number) => {
+    setOpeningReportId(reportId);
+    try {
+      const report = await queryClient.fetchQuery(
+        getGetMonthlyReportQueryOptions(reportId),
+      );
+      setOpenedReportId(report.id);
+      setSelectedProjectId(String(report.projectId));
+      setSelectedMonth(report.period);
+      setEvaluation(report.evaluation);
+      setNotes(report.notes);
+      setPreparedBy(report.preparedBy);
+      setReviewedBy(report.reviewedBy);
+      setApprovedBy(report.approvedBy);
+      toast.success("Laporan tersimpan dibuka");
+    } catch {
+      toast.error("Gagal membuka laporan tersimpan");
+    } finally {
+      setOpeningReportId(null);
+    }
   };
 
   const saveReport = (status: "draft" | "final") => {
@@ -295,8 +307,20 @@ export default function SmkkReportsPage() {
                       <p>Diperiksa: {report.reviewedBy || "-"}</p>
                       <p>Disetujui: {report.approvedBy || "-"}</p>
                     </div>
-                    <Button variant="outline" size="sm" className="w-full gap-2" onClick={() => openReport(report)}>
-                      <FolderOpen className="h-4 w-4" /> Buka laporan
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full gap-2"
+                      onClick={() => void openReport(report.id)}
+                      disabled={openingReportId !== null}
+                      data-testid={`button-open-report-${report.id}`}
+                    >
+                      {openingReportId === report.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <FolderOpen className="h-4 w-4" />
+                      )}
+                      Buka laporan
                     </Button>
                   </div>
                 ))}
