@@ -1,0 +1,173 @@
+Baik, saya bahas task ini dengan disiplin yang sama — sebagai bahan audit, bukan panduan implementasi mentah.
+
+## Skenario Kegagalan yang Harus Ditutup
+
+Riwayat lokal yang tidak dikelola menyebabkan beberapa mode kegagalan:
+
+| Mode kegagalan | Dampak |
+|---|---|
+| AsyncStorage penuh | Aplikasi crash saat menulis data baru |
+| AsyncStorage mendekati batas | OS Android/iOS bisa memaksa clear storage aplikasi |
+| Startup lambat | Membaca ribuan item dari AsyncStorage memperlambat aplikasi |
+| Sinkronisasi lambat | Proses sync harus membandingkan banyak item lokal vs server |
+| Data basi ditampilkan | User melihat data lama yang seharusnya diambil dari server |
+| Konflik data | Data lokal yang sudah basi bisa menimpa data server saat sync berikutnya |
+
+Kasus kritis: pengguna lapangan yang memakai aplikasi berbulan-bulan tanpa reinstall, dengan dashboard server sebagai sumber riwayat utama.
+
+## Prinsip Retensi Lokal
+
+### 1. Kategorisasi Item Berdasarkan Kebutuhan
+
+Tidak semua item lokal punya kebutuhan retensi yang sama:
+
+| Kategori | Kebutuhan retensi | Alasan |
+|---|---|---|
+| Item pending sync | **Wajib disimpan** sampai sync berhasil | Data belum sampai ke server |
+| Item sedang diedit offline | **Wajib disimpan** sampai submit | Perubahan user belum tersimpan |
+| Konflik sync yang belum diselesaikan | **Wajib disimpan** sampai user pilih versi | Data belum direkonsiliasi |
+| Item tersinkron yang baru diakses | **Dipertahankan sementara** | Cache untuk tampilan offline cepat |
+| Item tersinkron yang lama tidak diakses | **Boleh dibuang** | Server adalah sumber kebenaran |
+| Foto bukti yang sudah tersinkron | **Boleh dibuang** (referensi saja) | File besar, server sudah punya |
+
+### 2. Kebijakan Retensi yang Eksplisit
+
+Setiap kategori harus punya aturan yang jelas:
+
+- **TTL (time-to-live)**: item tersinkron dibuang setelah N hari sejak sync terakhir
+- **LRU (least recently used)**: jika total ukuran melebihi batas, item yang paling lama tidak diakses dibuang dulu
+- **Batas jumlah per kategori**: misal maksimal 1000 item tersinkron, 500 foto cache
+- **Batas ukuran total**: misal maksimal 50MB untuk seluruh AsyncStorage aplikasi
+
+### 3. Pemisahan Sumber Kebenaran
+
+Aplikasi harus tahu dengan tegas:
+- **Sumber kebenaran lokal**: item pending, item yang sedang diedit, konflik
+- **Sumber kebenaran server**: item tersinkron yang sudah melewati TTL
+
+Saat user membuka riwayat, aplikasi harus:
+1. Cek lokal dulu (cepat)
+2. Jika tidak ada atau sudah basi, ambil dari server
+3. Cache hasil server dengan TTL baru
+
+### 4. Kompaksi Berkala
+
+Proses cleanup harus berjalan:
+- Setelah sync berhasil (opportunistic)
+- Saat aplikasi dibuka (startup)
+- Berkala saat idle (background)
+
+Proses ini harus:
+- Tidak mengganggu operasi user
+- Bisa dihentikan jika user kembali aktif
+- Melaporkan metrik: jumlah item dibuang, ukuran dibebaskan
+
+## Test Case yang Diperlukan
+
+### Test Dasar
+
+1. **Item tersinkron lama dibuang setelah TTL**
+   - Sync item → tunggu TTL → buka aplikasi → item tidak ada di lokal
+   - Ambil dari server → tampil normal
+
+2. **Item pending tidak dibuang**
+   - Buat item offline → tunggu melebihi TTL → item tetap ada di lokal
+   - Sync berhasil → item dipindahkan ke kategori tersinkron
+
+3. **Item yang sedang diedit tidak dibuang**
+   - Edit item → tunggu TTL → item tetap ada
+   - Submit → sync → item dipindahkan ke kategori tersinkron
+
+4. **Batas ukuran total dihormati**
+   - Isi AsyncStorage mendekati batas → trigger cleanup → ukuran turun di bawah batas
+   - Aplikasi tetap berfungsi
+
+### Test Edge Cases
+
+5. **User offline berhari-hari**
+   - User offline 7 hari dengan banyak aktivitas → TTL tidak boleh membuang item pending
+   - Saat online kembali, semua item pending sync berhasil
+
+6. **User buka laporan lama yang sudah diarsipkan server**
+   - Laporan sudah diarsipkan di server → tidak ada di lokal
+   - User buka → aplikasi ambil dari server (atau arsip)
+   - Tidak error, tidak data hilang
+
+7. **Foto cache dibuang tapi referensinya tetap**
+   - Foto tersinkron → cache lokal dibuang → referensinya (objectPath) tetap ada
+   - User buka → foto dimuat dari server via objectPath
+
+8. **Konflik sync tertunda**
+   - Konflik sync → user belum pilih versi → tunggu TTL → item tetap ada
+   - User pilih versi → konflik selesai → item dipindahkan ke kategori tersinkron
+
+9. **Startup dengan AsyncStorage penuh**
+   - AsyncStorage hampir penuh → startup → cleanup berjalan → ruang tersedia
+   - Aplikasi bisa menerima data baru
+
+10. **Cleanup saat user aktif**
+    - User sedang input data → cleanup berjalan di background
+    - Data yang sedang diedit tidak terganggu
+    - Cleanup berhenti atau ditunda jika user kembali aktif
+
+## Checklist Audit
+
+### A. Kategorisasi Item
+- [ ] Item dibedakan minimal menjadi: pending sync, sedang diedit, konflik, tersinkron baru, tersinkron lama
+- [ ] Setiap kategori punya aturan retensi yang eksplisit
+- [ ] Aturan retensi didokumentasikan dan bisa dikonfigurasi
+
+### B. Kebijakan Retensi
+- [ ] TTL berlaku untuk item tersinkron, bukan item pending
+- [ ] LRU dipakai jika ada batas ukuran total
+- [ ] Batas jumlah per kategori ditegakkan
+- [ ] Batas ukuran total ditegakkan
+- [ ] TTL dan batas bisa dikonfigurasi tanpa rebuild aplikasi
+
+### C. Pemisahan Sumber Kebenaran
+- [ ] Aplikasi tahu kapan harus ambil dari lokal vs server
+- [ ] Data basi tidak ditampilkan sebagai data terkini
+- [ ] Fallback ke server berjalan mulus saat data lokal tidak ada
+- [ ] Cache hasil server punya TTL sendiri
+
+### D. Kompaksi Berkala
+- [ ] Cleanup berjalan setelah sync berhasil
+- [ ] Cleanup berjalan saat startup
+- [ ] Cleanup berjalan saat idle (jika didukung platform)
+- [ ] Cleanup tidak mengganggu operasi user
+- [ ] Cleanup melaporkan metrik: jumlah item dibuang, ukuran dibebaskan
+
+### E. Edge Cases
+- [ ] User offline berhari-hari → item pending tidak terbuang
+- [ ] Laporan lama yang diarsipkan server tetap bisa diakses
+- [ ] Foto cache dibuang tapi referensi tetap ada
+- [ ] Konflik sync yang belum diselesaikan tidak terbuang
+- [ ] Startup dengan AsyncStorage penuh → cleanup berjalan → aplikasi berfungsi
+
+### F. Monitoring
+- [ ] Metric: ukuran AsyncStorage per kategori
+- [ ] Metric: jumlah item dibuang per cleanup
+- [ ] Metric: hit rate cache lokal vs server
+- [ ] Alert jika ukuran AsyncStorage mendekati batas kritis
+- [ ] Alert jika hit rate cache turun drastis (indikasi TTL terlalu agresif)
+
+### G. Test Konkurensi
+- [ ] Cleanup berjalan paralel dengan sync → tidak ada item pending terbuang
+- [ ] Cleanup berjalan saat user edit data → data yang diedit tidak terganggu
+- [ ] Multiple tab/window → cleanup tidak race condition
+
+## Pertimbangan yang Perlu Dikonfirmasi
+
+Beberapa hal yang saya belum tahu dari implementasi aktual dan perlu diverifikasi saat audit:
+
+1. **Stack penyimpanan**: AsyncStorage, SQLite, atau kombinasi? Ini mempengaruhi atomicity dan performa query.
+2. **Struktur data**: Apakah item disimpan per kategori atau campur dalam satu store?
+3. **Pola sync**: Push-based, pull-based, atau hybrid? Ini mempengaruhi kapan cleanup aman dijalankan.
+4. **Foto cache**: Apakah foto di-cache terpisah dari data aktivitas?
+5. **Konfigurasi TTL**: Hardcoded atau bisa diubah via remote config?
+
+## Posisi Saya
+
+Tidak ada aksi implementasi dari sisi saya. Catatan ini final sebagai bahan audit. Hasil implementasi task ini akan dinilai langsung memakai checklist di atas.
+
+Apakah ada aspek lain yang perlu ditambahkan, atau kita lanjut ke task berikutnya dalam antrean?
