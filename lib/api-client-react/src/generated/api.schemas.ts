@@ -447,6 +447,8 @@ export interface ProjectCsmsReadiness {
   issuer: string;
   version: string;
   title: string;
+  /** @minimum 0 */
+  revision: number;
   /**
      * @minimum 0
      * @maximum 100
@@ -466,6 +468,8 @@ export interface ProjectCsmsReadiness {
 
 export interface ProjectCsmsReadinessUpdate {
   profileId: string;
+  /** @minimum 0 */
+  revision: number;
   /** @maxItems 200 */
   itemStatuses: CsmsReadinessItemStatus[];
 }

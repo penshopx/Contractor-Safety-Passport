@@ -9,6 +9,8 @@ import type { CsmsReadinessItemStatus } from './csmsReadinessItemStatus';
 
 export interface ProjectCsmsReadinessUpdate {
   profileId: string;
+  /** @minimum 0 */
+  revision: number;
   /** @maxItems 200 */
   itemStatuses: CsmsReadinessItemStatus[];
 }

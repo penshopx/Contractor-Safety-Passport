@@ -182,6 +182,7 @@ export const buildCsmsReadiness = (
   profile: CsmsProfile,
   itemStatuses: Record<string, CsmsReadinessStatus>,
   updatedAt: Date | null,
+  revision = 0,
 ) => {
   const validStatuses: Record<string, CsmsReadinessStatus> = {};
   const stages = profile.stages.map((stage) => {
@@ -221,6 +222,7 @@ export const buildCsmsReadiness = (
     issuer: profile.issuer,
     version: profile.version,
     title: profile.title,
+    revision,
     overallProgress: total ? Math.round((completed / total) * 100) : 0,
     completed,
     followUp,

@@ -458,6 +458,12 @@ paths:
                 $ref: "#/components/schemas/ProjectCsmsReadiness"
         "403":
           $ref: "#/components/responses/Forbidden"
+        "409":
+          description: Readiness was changed by another editor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectCsmsReadiness"
         "404":
           $ref: "#/components/responses/NotFound"
   /projects/{id}:
@@ -1113,6 +1119,7 @@ components:
         issuer: { type: string }
         version: { type: string }
         title: { type: string }
+        revision: { type: integer, minimum: 0 }
         overallProgress: { type: integer, minimum: 0, maximum: 100 }
         completed: { type: integer, minimum: 0 }
         followUp: { type: integer, minimum: 0 }
@@ -1126,17 +1133,18 @@ components:
           items:
             $ref: "#/components/schemas/CsmsReadinessStage"
         updatedAt: { type: ["string", "null"], format: date-time }
-      required: [projectId, profileId, issuer, version, title, overallProgress, completed, followUp, total, itemStatuses, stages, updatedAt]
+      required: [projectId, profileId, issuer, version, title, revision, overallProgress, completed, followUp, total, itemStatuses, stages, updatedAt]
     ProjectCsmsReadinessUpdate:
       type: object
       properties:
         profileId: { type: string }
+        revision: { type: integer, minimum: 0 }
         itemStatuses:
           type: array
           maxItems: 200
           items:
             $ref: "#/components/schemas/CsmsReadinessItemStatus"
-      required: [profileId, itemStatuses]
+      required: [profileId, revision, itemStatuses]
     GeneratedDocumentInput:
       type: object
       properties:

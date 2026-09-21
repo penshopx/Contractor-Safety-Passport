@@ -7,6 +7,7 @@ import {
   useListCsmsProfiles,
   useUpdateProjectCsmsReadiness,
   type CsmsReadinessItemStatusStatus,
+  type ProjectCsmsReadiness,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, CheckCircle2, Circle, Loader2, ShieldCheck } from "lucide-react";
@@ -57,9 +58,16 @@ export default function ReadinessPage() {
     profileId: string,
     nextStatuses: Array<{ key: string; status: CsmsReadinessItemStatusStatus }>,
   ) => {
-    if (projectId === null) return;
+    if (projectId === null || !readiness) return;
     updateReadiness.mutate(
-      { projectId, data: { profileId, itemStatuses: nextStatuses } },
+      {
+        projectId,
+        data: {
+          profileId,
+          revision: readiness.revision,
+          itemStatuses: nextStatuses,
+        },
+      },
       {
         onSuccess: (result) => {
           queryClient.setQueryData(
@@ -67,7 +75,20 @@ export default function ReadinessPage() {
             result,
           );
         },
-        onError: () => toast.error("Status kesiapan gagal disimpan"),
+        onError: (error) => {
+          const conflict = getReadinessConflict(error);
+          if (conflict) {
+            queryClient.setQueryData(
+              getGetProjectCsmsReadinessQueryKey(projectId),
+              conflict,
+            );
+            toast.warning(
+              "Perubahan tidak disimpan karena kesiapan telah diubah pengguna lain. Status terbaru sudah dimuat.",
+            );
+            return;
+          }
+          toast.error("Status kesiapan gagal disimpan");
+        },
       },
     );
   };
@@ -213,6 +234,29 @@ export default function ReadinessPage() {
     </div>
   );
 }
+
+const getReadinessConflict = (error: unknown): ProjectCsmsReadiness | null => {
+  if (
+    !error ||
+    typeof error !== "object" ||
+    !("status" in error) ||
+    error.status !== 409 ||
+    !("data" in error)
+  ) {
+    return null;
+  }
+  const data = error.data;
+  if (
+    !data ||
+    typeof data !== "object" ||
+    !("projectId" in data) ||
+    !("revision" in data) ||
+    !("itemStatuses" in data)
+  ) {
+    return null;
+  }
+  return data as ProjectCsmsReadiness;
+};
 
 function ItemGroup({
   title, kind, stageCode, items, statuses, disabled, onUpdate,

@@ -1909,7 +1909,7 @@ return customFetch<ProjectCsmsReadiness>(getUpdateProjectCsmsReadinessUrl(projec
 
 export const getUpdateProjectCsmsReadinessMutationKey = () => ['updateProjectCsmsReadiness'] as const;
 
-export const getUpdateProjectCsmsReadinessMutationOptions = <TError = ErrorType<ForbiddenResponse | NotFoundResponse>,
+export const getUpdateProjectCsmsReadinessMutationOptions = <TError = ErrorType<ForbiddenResponse | NotFoundResponse | ProjectCsmsReadiness>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateProjectCsmsReadiness>>, TError,UpdateProjectCsmsReadinessMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof updateProjectCsmsReadiness>>, TError,UpdateProjectCsmsReadinessMutationVariables, TContext> => {
 
@@ -1938,13 +1938,13 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type UpdateProjectCsmsReadinessMutationResult = NonNullable<Awaited<ReturnType<typeof updateProjectCsmsReadiness>>>
     export type UpdateProjectCsmsReadinessMutationBody = BodyType<ProjectCsmsReadinessUpdate>
-    export type UpdateProjectCsmsReadinessMutationError = ErrorType<ForbiddenResponse | NotFoundResponse>
+    export type UpdateProjectCsmsReadinessMutationError = ErrorType<ForbiddenResponse | NotFoundResponse | ProjectCsmsReadiness>
     export type UpdateProjectCsmsReadinessMutationVariables = {projectId: number;data: BodyType<ProjectCsmsReadinessUpdate>}
 
     /**
  * @summary Set the active CSMS profile and item statuses for a project
  */
-export const useUpdateProjectCsmsReadiness = <TError = ErrorType<ForbiddenResponse | NotFoundResponse>,
+export const useUpdateProjectCsmsReadiness = <TError = ErrorType<ForbiddenResponse | NotFoundResponse | ProjectCsmsReadiness>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateProjectCsmsReadiness>>, TError,UpdateProjectCsmsReadinessMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof updateProjectCsmsReadiness>>,

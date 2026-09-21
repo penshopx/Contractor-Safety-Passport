@@ -570,10 +570,17 @@ describe("isolasi data antar kontraktor", () => {
       method: "POST",
       body: csmsProfileBody(`readiness-${runId}`),
     });
+    const currentReadiness = await request(
+      `/projects/${projectAId}/csms-readiness`,
+    );
     const readiness = await request(`/projects/${projectAId}/csms-readiness`, {
       role: "safety_expert",
       method: "PUT",
-      body: { profileId: readinessProfile.body.id, itemStatuses: [] },
+      body: {
+        profileId: readinessProfile.body.id,
+        revision: currentReadiness.body.revision,
+        itemStatuses: [],
+      },
     });
     const updateAfterReadiness = await request(
       `/csms-profiles/${readinessProfile.body.id}`,
@@ -636,6 +643,9 @@ describe("isolasi data antar kontraktor", () => {
       ...csmsProfileBody(`race-${runId}`),
       title: `Judul pembaruan ${runId}`,
     };
+    const currentReadiness = await request(
+      `/projects/${projectAId}/csms-readiness`,
+    );
     const [updated, readiness] = await Promise.all([
       request(`/csms-profiles/${created.body.id}`, {
         role: "owner",
@@ -645,7 +655,11 @@ describe("isolasi data antar kontraktor", () => {
       request(`/projects/${projectAId}/csms-readiness`, {
         role: "owner",
         method: "PUT",
-        body: { profileId: created.body.id, itemStatuses: [] },
+        body: {
+          profileId: created.body.id,
+          revision: currentReadiness.body.revision,
+          itemStatuses: [],
+        },
       }),
     ]);
     assert.equal(readiness.status, 200);
@@ -661,6 +675,70 @@ describe("isolasi data antar kontraktor", () => {
       locked.title,
       updated.status === 200 ? replacement.title : created.body.title,
     );
+  });
+
+  it("menolak revisi kesiapan lama dan mengembalikan status terbaru", async () => {
+    const alternateProfile = await request("/csms-profiles", {
+      role: "owner",
+      method: "POST",
+      body: csmsProfileBody(`stale-switch-${runId}`),
+    });
+    const firstSnapshot = await request(
+      `/projects/${projectAId}/csms-readiness`,
+    );
+    const secondSnapshot = await request(
+      `/projects/${projectAId}/csms-readiness`,
+    );
+    const firstKey = `${firstSnapshot.body.stages[0].code}:question:0`;
+    const secondKey = `${firstSnapshot.body.stages[0].code}:evidence:0`;
+
+    const firstUpdate = await request(
+      `/projects/${projectAId}/csms-readiness`,
+      {
+        role: "safety_expert",
+        method: "PUT",
+        body: {
+          profileId: firstSnapshot.body.profileId,
+          revision: firstSnapshot.body.revision,
+          itemStatuses: [{ key: firstKey, status: "complete" }],
+        },
+      },
+    );
+    const staleUpdate = await request(
+      `/projects/${projectAId}/csms-readiness`,
+      {
+        role: "owner",
+        method: "PUT",
+        body: {
+          profileId: alternateProfile.body.id,
+          revision: secondSnapshot.body.revision,
+          itemStatuses: [{ key: secondKey, status: "follow_up" }],
+        },
+      },
+    );
+
+    assert.equal(firstUpdate.status, 200);
+    assert.equal(firstUpdate.body.revision, firstSnapshot.body.revision + 1);
+    assert.equal(staleUpdate.status, 409);
+    assert.equal(staleUpdate.body.revision, firstUpdate.body.revision);
+    assert.equal(staleUpdate.body.profileId, firstUpdate.body.profileId);
+    assert.deepEqual(staleUpdate.body.itemStatuses, firstUpdate.body.itemStatuses);
+    assert.ok(
+      staleUpdate.body.itemStatuses.some(
+        (item: { key: string; status: string }) =>
+          item.key === firstKey && item.status === "complete",
+      ),
+    );
+    assert.ok(
+      staleUpdate.body.itemStatuses.every(
+        (item: { key: string }) => item.key !== secondKey,
+      ),
+    );
+    const profiles = await request("/csms-profiles", { role: "owner" });
+    const alternateAfterConflict = profiles.body.find(
+      (profile: { id: string }) => profile.id === alternateProfile.body.id,
+    );
+    assert.equal(alternateAfterConflict.locked, false);
   });
 
   it("membagikan draft BOQ proyek dengan isolasi organisasi dan izin peran", async () => {

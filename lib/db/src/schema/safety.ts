@@ -52,6 +52,7 @@ export const projectCsmsReadinessTable = pgTable(
       .$type<Record<string, "complete" | "follow_up">>()
       .notNull()
       .default({}),
+    revision: integer("revision").notNull().default(0),
     updatedBy: text("updated_by").notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()

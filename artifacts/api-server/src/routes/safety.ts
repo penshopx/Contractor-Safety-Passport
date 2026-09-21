@@ -431,7 +431,13 @@ export const createSafetyRouter = (
       { ...csmsProfiles[0]!, locked: true, builtIn: true };
     res.json(
       GetProjectCsmsReadinessResponse.parse(
-        buildCsmsReadiness(project.id, profile, saved?.itemStatuses ?? {}, saved?.updatedAt ?? null),
+        buildCsmsReadiness(
+          project.id,
+          profile,
+          saved?.itemStatuses ?? {},
+          saved?.updatedAt ?? null,
+          saved?.revision ?? 0,
+        ),
       ),
     );
   });
@@ -464,46 +470,97 @@ export const createSafetyRouter = (
           ? { ...builtInProfile, locked: true, builtIn: true }
           : (
               await tx
-                .update(csmsProfileVersionsTable)
-                .set({ locked: true })
+                .select()
+                .from(csmsProfileVersionsTable)
                 .where(
                   and(
                     eq(csmsProfileVersionsTable.id, body.data.profileId),
                     eq(csmsProfileVersionsTable.organizationId, organizationId),
                   ),
                 )
-                .returning()
+                .for("update")
             )[0];
         if (!profile) return undefined;
-        const [saved] = await tx
-          .insert(projectCsmsReadinessTable)
-          .values({
-            organizationId,
-            projectId: project.id,
+        const [updated] = await tx
+          .update(projectCsmsReadinessTable)
+          .set({
             profileId: profile.id,
             itemStatuses,
+            revision: sql`${projectCsmsReadinessTable.revision} + 1`,
             updatedBy: userId,
+            updatedAt: new Date(),
           })
-          .onConflictDoUpdate({
-            target: [
-              projectCsmsReadinessTable.organizationId,
-              projectCsmsReadinessTable.projectId,
-            ],
-            set: {
-              profileId: profile.id,
-              itemStatuses,
-              updatedBy: userId,
-              updatedAt: new Date(),
-            },
-          })
+          .where(
+            and(
+              eq(projectCsmsReadinessTable.organizationId, organizationId),
+              eq(projectCsmsReadinessTable.projectId, project.id),
+              eq(projectCsmsReadinessTable.revision, body.data.revision),
+            ),
+          )
           .returning();
+        const [inserted] = updated
+          ? []
+          : await tx
+              .insert(projectCsmsReadinessTable)
+              .values({
+                organizationId,
+                projectId: project.id,
+                profileId: profile.id,
+                itemStatuses,
+                revision: 1,
+                updatedBy: userId,
+              })
+              .onConflictDoNothing()
+              .returning();
+        const saved = updated ?? inserted;
+        if (!saved) return { conflict: true as const };
+        if (!builtInProfile) {
+          await tx
+            .update(csmsProfileVersionsTable)
+            .set({ locked: true })
+            .where(
+              and(
+                eq(csmsProfileVersionsTable.id, profile.id),
+                eq(csmsProfileVersionsTable.organizationId, organizationId),
+              ),
+            );
+        }
         return {
-          profile: builtInProfile ? profile : { ...profile, builtIn: false },
-          saved: saved!,
+          conflict: false as const,
+          profile: builtInProfile
+            ? profile
+            : { ...profile, locked: true, builtIn: false },
+          saved,
         };
       });
       if (!result) {
         res.status(400).json({ error: "Profil CSMS tidak valid" });
+        return;
+      }
+      if (result.conflict) {
+        const [latest] = await db
+          .select()
+          .from(projectCsmsReadinessTable)
+          .where(
+            and(
+              eq(projectCsmsReadinessTable.projectId, project.id),
+              eq(projectCsmsReadinessTable.organizationId, organizationId),
+            ),
+          );
+        const latestProfile =
+          (await findAvailableCsmsProfile(organizationId, latest?.profileId)) ??
+          { ...csmsProfiles[0]!, locked: true, builtIn: true };
+        res.status(409).json(
+          GetProjectCsmsReadinessResponse.parse(
+            buildCsmsReadiness(
+              project.id,
+              latestProfile,
+              latest?.itemStatuses ?? {},
+              latest?.updatedAt ?? null,
+              latest?.revision ?? 0,
+            ),
+          ),
+        );
         return;
       }
       res.json(
@@ -513,6 +570,7 @@ export const createSafetyRouter = (
             result.profile,
             result.saved.itemStatuses,
             result.saved.updatedAt,
+            result.saved.revision,
           ),
         ),
       );

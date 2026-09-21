@@ -608,6 +608,8 @@ export const GetProjectCsmsReadinessParams = zod.object({
   "projectId": zod.coerce.number().int().min(1)
 })
 
+export const getProjectCsmsReadinessResponseRevisionMin = 0;
+
 export const getProjectCsmsReadinessResponseOverallProgressMin = 0;
 export const getProjectCsmsReadinessResponseOverallProgressMax = 100;
 
@@ -634,6 +636,7 @@ export const GetProjectCsmsReadinessResponse = zod.object({
   "issuer": zod.string(),
   "version": zod.string(),
   "title": zod.string(),
+  "revision": zod.number().int().min(getProjectCsmsReadinessResponseRevisionMin),
   "overallProgress": zod.number().int().min(getProjectCsmsReadinessResponseOverallProgressMin).max(getProjectCsmsReadinessResponseOverallProgressMax),
   "completed": zod.number().int().min(getProjectCsmsReadinessResponseCompletedMin),
   "followUp": zod.number().int().min(getProjectCsmsReadinessResponseFollowUpMin),
@@ -669,17 +672,22 @@ export const UpdateProjectCsmsReadinessParams = zod.object({
   "projectId": zod.coerce.number().int().min(1)
 })
 
+export const updateProjectCsmsReadinessBodyRevisionMin = 0;
+
 export const updateProjectCsmsReadinessBodyItemStatusesMax = 200;
 
 
 
 export const UpdateProjectCsmsReadinessBody = zod.object({
   "profileId": zod.string(),
+  "revision": zod.number().int().min(updateProjectCsmsReadinessBodyRevisionMin),
   "itemStatuses": zod.array(zod.object({
   "key": zod.string(),
   "status": zod.enum(['complete', 'follow_up'])
 })).max(updateProjectCsmsReadinessBodyItemStatusesMax)
 })
+
+export const updateProjectCsmsReadinessResponseRevisionMin = 0;
 
 export const updateProjectCsmsReadinessResponseOverallProgressMin = 0;
 export const updateProjectCsmsReadinessResponseOverallProgressMax = 100;
@@ -707,6 +715,7 @@ export const UpdateProjectCsmsReadinessResponse = zod.object({
   "issuer": zod.string(),
   "version": zod.string(),
   "title": zod.string(),
+  "revision": zod.number().int().min(updateProjectCsmsReadinessResponseRevisionMin),
   "overallProgress": zod.number().int().min(updateProjectCsmsReadinessResponseOverallProgressMin).max(updateProjectCsmsReadinessResponseOverallProgressMax),
   "completed": zod.number().int().min(updateProjectCsmsReadinessResponseCompletedMin),
   "followUp": zod.number().int().min(updateProjectCsmsReadinessResponseFollowUpMin),

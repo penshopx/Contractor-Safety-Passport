@@ -14,6 +14,8 @@ export interface ProjectCsmsReadiness {
   issuer: string;
   version: string;
   title: string;
+  /** @minimum 0 */
+  revision: number;
   /**
      * @minimum 0
      * @maximum 100
