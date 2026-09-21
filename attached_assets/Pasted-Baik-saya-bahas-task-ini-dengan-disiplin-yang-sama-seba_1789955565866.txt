@@ -1,0 +1,225 @@
+Baik, saya bahas task ini dengan disiplin yang sama — sebagai bahan audit, bukan panduan implementasi mentah.
+
+## Skenario Kegagalan yang Harus Ditutup
+
+Arsip laporan yang membesar tanpa mekanisme pencarian yang tepat menyebabkan beberapa mode kegagalan:
+
+| Mode kegagalan | Dampak |
+|---|---|
+| Daftar hanya menampilkan terbaru | User harus scroll ratusan entri untuk menemukan laporan lama |
+| Filter tidak efisien | Query database lambat saat arsip besar |
+| Pencarian teks tanpa indeks | Full table scan pada ribuan laporan |
+| Pagination tidak ada | Response API sangat besar, UI lambat |
+| Filter tidak menggabungkan kriteria | User harus filter manual berulang kali |
+| Hasil tidak relevan | Pencarian "Alpha" mengembalikan proyek "Beta Alpha" dan "Alpha Beta" tanpa prioritas |
+| Periode tidak dinormalisasi | Pencarian "Januari 2025" tidak menemukan "2025-01" |
+| Laporan tersaring keluar dari konteks organisasi | Isolasi organisasi bocor lewat pencarian |
+| Pencarian case-sensitive | "alpha" tidak menemukan "Alpha" |
+| Pencarian tidak toleran typo | "Proyek Alpa" tidak menemukan "Proyek Alpha" |
+
+Kasus kritis di konteks K3: auditor atau supervisor yang butuh laporan spesifik dari 6 bulan lalu tidak boleh terhambat oleh UI yang tidak mendukung pencarian.
+
+## Prinsip Pencarian yang Efektif
+
+### 1. Filter Terstruktur di API
+
+API harus mendukung kombinasi filter yang eksplisit, bukan hanya pencarian teks bebas:
+- **Organisasi**: wajib, dari konteks user (isolasi)
+- **Proyek**: berdasarkan `project_id`, bukan nama
+- **Periode**: bulan dan tahun, dinormalisasi (misal "2025-01")
+- **Status**: draft, final, archived
+- **Pencarian teks**: opsional, untuk nama proyek atau catatan
+
+Filter harus bisa digabungkan: "laporan Proyek Alpha, Januari 2025, status final".
+
+### 2. Indeks Database yang Tepat
+
+Query pencarian harus didukung indeks yang sesuai:
+- Indeks pada `organization_id` + `project_id` + `period` (composite)
+- Indeks pada kolom yang sering difilter
+- Indeks teks (jika didukung database) untuk pencarian fuzzy
+
+Tanpa indeks, query akan melakukan full table scan yang lambat saat arsip besar.
+
+### 3. Pagination yang Konsisten
+
+API harus mengembalikan hasil dalam halaman:
+- Parameter `limit` dan `offset` (atau cursor-based)
+- Total count untuk UI menampilkan "1-50 dari 342"
+- Urutan yang stabil (misal `period DESC, project_name ASC`)
+
+Tanpa pagination, response API bisa sangat besar dan membebani client.
+
+### 4. Pencarian Teks yang Toleran
+
+Jika ada pencarian teks bebas:
+- Case-insensitive
+- Toleran terhadap aksen (jika relevan)
+- Mendukung substring (cari "Alpha" menemukan "Proyek Alpha")
+- Urutan berdasarkan relevansi (exact match > prefix > substring)
+
+### 5. Isolasi Organisasi di Setiap Query
+
+Setiap query pencarian **wajib** memfilter berdasarkan `organization_id` dari konteks user. Pencarian tidak boleh bocor ke organisasi lain, bahkan jika user tahu nama proyek organisasi lain.
+
+### 6. UI yang Mendukung
+
+UI harus menyediakan:
+- Dropdown filter untuk proyek, periode, status
+- Input pencarian teks dengan debounce
+- Indikator loading saat query berjalan
+- Pesan "tidak ada hasil" yang jelas
+- Kemampuan reset filter
+
+## Test Case yang Diperlukan
+
+### Test Dasar
+
+1. **Filter berdasarkan proyek**
+   - Organisasi punya 10 proyek, masing-masing punya 12 laporan (1 tahun)
+   - Filter "Proyek Alpha" → hanya 12 laporan Alpha yang muncul
+   - Laporan proyek lain tidak muncul
+
+2. **Filter berdasarkan periode**
+   - Filter "Januari 2025" → hanya laporan Januari 2025 yang muncul
+   - Laporan bulan lain tidak muncul, meskipun dari proyek yang sama
+
+3. **Filter gabungan**
+   - Filter "Proyek Alpha" + "Januari 2025" + "status final"
+   - Hanya laporan yang memenuhi ketiga kriteria yang muncul
+
+4. **Pencarian teks**
+   - Cari "Alpha" → laporan Proyek Alpha muncul
+   - Case-insensitive: "alpha" dan "ALPHA" memberikan hasil sama
+
+5. **Pagination**
+   - 342 laporan cocok filter
+   - API mengembalikan 50 per halaman
+   - Total count = 342
+   - Halaman berikutnya mengembalikan 50 laporan berbeda
+
+### Test Edge Cases
+
+6. **Pencarian dengan banyak hasil**
+   - Cari "Proyek" → semua proyek dengan kata "Proyek" muncul
+   - Pagination bekerja dengan benar
+   - Query selesai dalam waktu wajar (<1 detik untuk ribuan laporan)
+
+7. **Pencarian tanpa hasil**
+   - Cari "XYZ123" → tidak ada hasil
+   - UI menampilkan "tidak ada laporan yang cocok"
+   - Tidak error
+
+8. **Isolasi organisasi**
+   - User organisasi A cari "Alpha"
+   - Hanya laporan Proyek Alpha organisasi A yang muncul
+   - Proyek Alpha organisasi B tidak muncul, meskipun namanya sama
+
+9. **Periode dinormalisasi**
+   - Laporan disimpan dengan periode "2025-01"
+   - User cari "Januari 2025" atau "01/2025" atau "2025-01" → semua menemukan laporan yang sama
+
+10. **Laporan draft vs final**
+    - Filter status "final" → draft tidak muncul
+    - Filter status "draft" → final tidak muncul
+    - Tanpa filter status → semua muncul
+
+11. **Proyek dihapus**
+    - Laporan dari proyek yang sudah dihapus masih muncul di arsip
+    - Nama proyek tetap ditampilkan (snapshot)
+    - Filter berdasarkan `project_id` proyek yang dihapus → tidak ada hasil (atau hasil tetap muncul dengan catatan "proyek dihapus")
+
+12. **Performa pada arsip besar**
+    - 10.000 laporan di database
+    - Query dengan filter kompleks selesai dalam <1 detik
+    - Pagination tidak memperlambat query
+
+13. **Pencarian fuzzy**
+    - Cari "Alpa" (typo) → apakah menemukan "Alpha"?
+    - Kebijakan: toleran typo atau eksak?
+    - Jika tidak toleran, error message jelas
+
+14. **Sortir hasil**
+    - Default: periode terbaru dulu
+    - Opsi: periode terlama dulu, nama proyek A-Z, nama proyek Z-A
+    - Sortir stabil (tidak berubah-ubah saat refresh)
+
+## Checklist Audit
+
+### A. Filter API
+- [ ] API mendukung filter berdasarkan `organization_id` (wajib, dari konteks user)
+- [ ] API mendukung filter berdasarkan `project_id`
+- [ ] API mendukung filter berdasarkan periode (bulan + tahun)
+- [ ] API mendukung filter berdasarkan status (draft, final, archived)
+- [ ] API mendukung pencarian teks bebas (opsional)
+- [ ] Filter bisa digabungkan dalam satu query
+
+### B. Indeks Database
+- [ ] Indeks composite pada `organization_id` + `project_id` + `period`
+- [ ] Indeks pada kolom yang sering difilter
+- [ ] Indeks teks untuk pencarian fuzzy (jika dipakai)
+- [ ] Query execution plan menunjukkan indeks dipakai, bukan full table scan
+
+### C. Pagination
+- [ ] API mengembalikan hasil dalam halaman (`limit` + `offset` atau cursor)
+- [ ] Total count disertakan dalam response
+- [ ] Urutan hasil stabil (tidak berubah-ubah)
+- [ ] Client bisa navigasi halaman berikutnya/sebelumnya
+
+### D. Pencarian Teks
+- [ ] Case-insensitive
+- [ ] Mendukung substring
+- [ ] Urutan berdasarkan relevansi (jika ada)
+- [ ] Debounce di UI untuk menghindari query berlebihan
+
+### E. Isolasi Organisasi
+- [ ] Setiap query pencarian memfilter berdasarkan `organization_id` user
+- [ ] Tidak ada jalur untuk mencari laporan organisasi lain
+- [ ] Test: user organisasi A tidak bisa melihat laporan organisasi B lewat pencarian
+
+### F. Normalisasi Periode
+- [ ] Periode disimpan dalam format konsisten (misal "2025-01")
+- [ ] UI menampilkan periode dalam format yang user-friendly (misal "Januari 2025")
+- [ ] Pencarian menerima berbagai format input dan menormalisasi ke format database
+
+### G. Performa
+- [ ] Query dengan filter kompleks selesai dalam <1 detik untuk ribuan laporan
+- [ ] Pagination tidak memperlambat query
+- [ ] Tidak ada N+1 query problem
+- [ ] Monitoring: query time per endpoint pencarian
+
+### H. UX
+- [ ] Dropdown filter untuk proyek, periode, status
+- [ ] Input pencarian teks dengan debounce
+- [ ] Indikator loading saat query berjalan
+- [ ] Pesan "tidak ada hasil" yang jelas
+- [ ] Kemampuan reset filter
+- [ ] Sortir hasil (default: terbaru dulu)
+
+### I. Edge Cases
+- [ ] Proyek dihapus → laporan tetap muncul dengan snapshot nama
+- [ ] Pencarian tanpa hasil → pesan jelas, tidak error
+- [ ] Typo di pencarian → kebijakan eksplisit (toleran atau eksak)
+- [ ] Laporan dari periode yang sama tapi proyek berbeda → tidak tercampur
+
+### J. Monitoring
+- [ ] Metric: query time per endpoint pencarian
+- [ ] Metric: jumlah hasil rata-rata per pencarian
+- [ ] Metric: filter yang paling sering dipakai
+- [ ] Alert jika query time > threshold (indikasi perlu optimasi indeks)
+
+## Pertimbangan yang Perlu Dikonfirmasi
+
+Beberapa hal yang saya belum tahu dari implementasi aktual dan perlu diverifikasi saat audit:
+
+1. **Struktur tabel laporan**: Apakah sudah ada kolom `project_id`, `period`, `status`?
+2. **Indeks yang ada**: Indeks apa saja yang sudah ada di tabel laporan?
+3. **Kebijakan pencarian fuzzy**: Toleran typo atau eksak?
+4. **Format periode**: Bagaimana periode disimpan di database?
+5. **Jumlah laporan tipikal**: Berapa banyak laporan per organisasi? (untuk menentukan threshold performa)
+
+## Posisi Saya
+
+Tidak ada aksi implementasi dari sisi saya. Catatan ini final sebagai bahan audit. Hasil implementasi task ini akan dinilai langsung memakai checklist di atas.
+
+Apakah ada aspek lain yang perlu ditambahkan, atau kita lanjut ke task berikutnya dalam antrean?
