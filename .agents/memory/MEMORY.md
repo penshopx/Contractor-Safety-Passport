@@ -2,3 +2,4 @@
 - [Ekspor codegen Zod](zod-codegen-esm-exports.md) — setelah codegen, pastikan barrel api-zod tetap memakai path `.ts` yang kompatibel dengan runner Node ESM.
 - [Versi profil CSMS](csms-profile-versioning.md) — kunci versi secara atomik saat pertama dipakai; revisi berikutnya harus menjadi versi baru.
 - [Pengujian database bersama](shared-database-tests.md) — jangan jalankan migrasi skema dan integration test secara paralel pada database pengembangan yang sama.
+- [Versi agregat bersama](shared-aggregate-versioning.md) — simpan revisi terpisah dari baris anak agar agregat kosong tetap memiliki kontrol konkurensi.

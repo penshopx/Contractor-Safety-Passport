@@ -460,6 +460,11 @@ export default function SafetyBoqPage() {
   const [editingItem, setEditingItem] = useState<SafetyBoqItem | null>(null);
   const [isCatalogDialogOpen, setIsCatalogDialogOpen] = useState(false);
   const [editingCatalogItem, setEditingCatalogItem] = useState<SafetyPriceCatalogItem | null>(null);
+  const [conflictingEdit, setConflictingEdit] = useState<{
+    base: SafetyBoqItem[];
+    proposed: SafetyBoqItem[];
+    successMessage: string;
+  } | null>(null);
   const projectId = selectedProjectId === 'all' ? null : Number(selectedProjectId);
   const {
     data: sharedItems,
@@ -482,7 +487,7 @@ export default function SafetyBoqPage() {
 
   const projectItems = useMemo(() => {
     if (projectId === null) return localItems.filter(item => !item.projectId);
-    return sharedItems ?? [];
+    return sharedItems?.items ?? [];
   }, [localItems, projectId, sharedItems]);
   const migratableItems = useMemo(
     () => projectId === null
@@ -561,15 +566,22 @@ export default function SafetyBoqPage() {
       {
         projectId,
         data: {
+          revision: sharedItems.revision,
           items: nextItems.map(({ updatedAt: _updatedAt, projectId: _projectId, ...item }) => item),
         },
       },
       {
-        onSuccess: (savedItems) => {
-          queryClient.setQueryData(getGetProjectSafetyBoqQueryKey(projectId), savedItems);
+        onSuccess: (savedDraft) => {
+          queryClient.setQueryData(getGetProjectSafetyBoqQueryKey(projectId), savedDraft);
           toast.success(successMessage);
         },
-        onError: (error) => {
+        onError: async (error) => {
+          if (error.status === 409) {
+            setConflictingEdit({ base: projectItems, proposed: nextItems, successMessage });
+            await refetchShared();
+            toast.warning("Draft terbaru dimuat. Edit Anda tetap disimpan untuk ditinjau atau digabungkan.");
+            return;
+          }
           toast.error(
             error.status === 403
               ? "Peran Anda tidak dapat mengubah draft BOQ proyek."
@@ -653,20 +665,55 @@ export default function SafetyBoqPage() {
       {
         projectId,
         data: {
+          revision: sharedItems!.revision,
           items: [...projectItems, ...migrated].map(
             ({ updatedAt: _updatedAt, projectId: _projectId, ...item }) => item,
           ),
         },
       },
       {
-        onSuccess: (savedItems) => {
-          queryClient.setQueryData(getGetProjectSafetyBoqQueryKey(projectId), savedItems);
+        onSuccess: (savedDraft) => {
+          queryClient.setQueryData(getGetProjectSafetyBoqQueryKey(projectId), savedDraft);
           removeLocalItems(migratableItems.map((item) => item.id));
           toast.success(`${migratableItems.length} item lokal dipindahkan ke draft proyek`);
         },
-        onError: () => toast.error("Data lokal belum dipindahkan dan tetap aman di perangkat ini."),
+        onError: async (error) => {
+          if (error.status === 409) {
+            await refetchShared();
+            toast.warning("Draft berubah. Data lokal tetap aman; silakan coba pindahkan lagi.");
+            return;
+          }
+          toast.error("Data lokal belum dipindahkan dan tetap aman di perangkat ini.");
+        },
       },
     );
+  };
+
+  const mergeConflictingEdit = () => {
+    if (!conflictingEdit || !sharedItems) return;
+    const baseById = new Map(conflictingEdit.base.map((item) => [item.id, item]));
+    const proposedById = new Map(conflictingEdit.proposed.map((item) => [item.id, item]));
+    const changedIds = new Set(
+      conflictingEdit.proposed
+        .filter((item) => JSON.stringify(item) !== JSON.stringify(baseById.get(item.id)))
+        .map((item) => item.id),
+    );
+    const deletedIds = new Set(
+      conflictingEdit.base
+        .filter((item) => !proposedById.has(item.id))
+        .map((item) => item.id),
+    );
+    const merged = sharedItems.items
+      .filter((item) => !deletedIds.has(item.id))
+      .map((item) => changedIds.has(item.id) ? proposedById.get(item.id)! : item);
+    for (const item of conflictingEdit.proposed) {
+      if (!baseById.has(item.id) && !merged.some((candidate) => candidate.id === item.id)) {
+        merged.push(item);
+      }
+    }
+    const successMessage = conflictingEdit.successMessage;
+    setConflictingEdit(null);
+    saveSharedItems(merged, `${successMessage} setelah digabungkan`);
   };
 
   const handleExportPdf = () => {
@@ -685,6 +732,24 @@ export default function SafetyBoqPage() {
 
   return (
     <div className="space-y-8 pb-12 animate-in fade-in duration-500">
+      <Dialog open={conflictingEdit !== null} onOpenChange={() => undefined}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Draft BOQ telah berubah</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Anggota tim lain menyimpan perubahan lebih dulu. Draft terbaru sudah dimuat, dan edit Anda masih disimpan sementara.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConflictingEdit(null)}>
+              Gunakan draft terbaru
+            </Button>
+            <Button onClick={mergeConflictingEdit}>
+              Gabungkan edit saya
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground flex items-center gap-3">

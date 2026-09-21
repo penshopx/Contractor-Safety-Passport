@@ -8,6 +8,8 @@
 import type { SafetyBoqItemInput } from './safetyBoqItemInput';
 
 export interface SafetyBoqDraftInput {
+  /** @minimum 0 */
+  revision: number;
   /** @maxItems 1000 */
   items: SafetyBoqItemInput[];
 }

@@ -311,23 +311,27 @@ export const GetProjectSafetyBoqParams = zod.object({
   "projectId": zod.coerce.number().int().min(1)
 })
 
-export const getProjectSafetyBoqResponseIdMax = 100;
+export const getProjectSafetyBoqResponseRevisionMin = 0;
+
+export const getProjectSafetyBoqResponseItemsItemIdMax = 100;
 
 
-export const getProjectSafetyBoqResponseVolumeExclusiveMin = 0;
+export const getProjectSafetyBoqResponseItemsItemVolumeExclusiveMin = 0;
 
-export const getProjectSafetyBoqResponseUnitPriceMin = 0;
+export const getProjectSafetyBoqResponseItemsItemUnitPriceMin = 0;
 
 
 
-export const GetProjectSafetyBoqResponseItem = zod.object({
-  "id": zod.string().min(1).max(getProjectSafetyBoqResponseIdMax),
+export const GetProjectSafetyBoqResponse = zod.object({
+  "revision": zod.number().int().min(getProjectSafetyBoqResponseRevisionMin),
+  "items": zod.array(zod.object({
+  "id": zod.string().min(1).max(getProjectSafetyBoqResponseItemsItemIdMax),
   "projectId": zod.number().int().min(1),
   "description": zod.string(),
   "category": zod.string(),
-  "volume": zod.number().gt(getProjectSafetyBoqResponseVolumeExclusiveMin),
+  "volume": zod.number().gt(getProjectSafetyBoqResponseItemsItemVolumeExclusiveMin),
   "unit": zod.string(),
-  "unitPrice": zod.number().min(getProjectSafetyBoqResponseUnitPriceMin),
+  "unitPrice": zod.number().min(getProjectSafetyBoqResponseItemsItemUnitPriceMin),
   "catalogItemId": zod.string().nullish(),
   "priceRegion": zod.string().nullish(),
   "priceSource": zod.string().nullish(),
@@ -336,8 +340,8 @@ export const GetProjectSafetyBoqResponseItem = zod.object({
   "stage": zod.string(),
   "controlNeed": zod.string(),
   "updatedAt": zod.coerce.date()
+}))
 })
-export const GetProjectSafetyBoqResponse = zod.array(GetProjectSafetyBoqResponseItem)
 
 
 /**
@@ -349,6 +353,8 @@ export const GetProjectSafetyBoqResponse = zod.array(GetProjectSafetyBoqResponse
 export const ReplaceProjectSafetyBoqParams = zod.object({
   "projectId": zod.coerce.number().int().min(1)
 })
+
+export const replaceProjectSafetyBoqBodyRevisionMin = 0;
 
 export const replaceProjectSafetyBoqBodyItemsItemIdMax = 100;
 
@@ -379,6 +385,7 @@ export const replaceProjectSafetyBoqBodyItemsMax = 1000;
 
 
 export const ReplaceProjectSafetyBoqBody = zod.object({
+  "revision": zod.number().int().min(replaceProjectSafetyBoqBodyRevisionMin),
   "items": zod.array(zod.object({
   "id": zod.string().min(1).max(replaceProjectSafetyBoqBodyItemsItemIdMax),
   "description": zod.string().min(1).max(replaceProjectSafetyBoqBodyItemsItemDescriptionMax),
@@ -396,23 +403,27 @@ export const ReplaceProjectSafetyBoqBody = zod.object({
 })).max(replaceProjectSafetyBoqBodyItemsMax)
 })
 
-export const replaceProjectSafetyBoqResponseIdMax = 100;
+export const replaceProjectSafetyBoqResponseRevisionMin = 0;
+
+export const replaceProjectSafetyBoqResponseItemsItemIdMax = 100;
 
 
-export const replaceProjectSafetyBoqResponseVolumeExclusiveMin = 0;
+export const replaceProjectSafetyBoqResponseItemsItemVolumeExclusiveMin = 0;
 
-export const replaceProjectSafetyBoqResponseUnitPriceMin = 0;
+export const replaceProjectSafetyBoqResponseItemsItemUnitPriceMin = 0;
 
 
 
-export const ReplaceProjectSafetyBoqResponseItem = zod.object({
-  "id": zod.string().min(1).max(replaceProjectSafetyBoqResponseIdMax),
+export const ReplaceProjectSafetyBoqResponse = zod.object({
+  "revision": zod.number().int().min(replaceProjectSafetyBoqResponseRevisionMin),
+  "items": zod.array(zod.object({
+  "id": zod.string().min(1).max(replaceProjectSafetyBoqResponseItemsItemIdMax),
   "projectId": zod.number().int().min(1),
   "description": zod.string(),
   "category": zod.string(),
-  "volume": zod.number().gt(replaceProjectSafetyBoqResponseVolumeExclusiveMin),
+  "volume": zod.number().gt(replaceProjectSafetyBoqResponseItemsItemVolumeExclusiveMin),
   "unit": zod.string(),
-  "unitPrice": zod.number().min(replaceProjectSafetyBoqResponseUnitPriceMin),
+  "unitPrice": zod.number().min(replaceProjectSafetyBoqResponseItemsItemUnitPriceMin),
   "catalogItemId": zod.string().nullish(),
   "priceRegion": zod.string().nullish(),
   "priceSource": zod.string().nullish(),
@@ -421,8 +432,8 @@ export const ReplaceProjectSafetyBoqResponseItem = zod.object({
   "stage": zod.string(),
   "controlNeed": zod.string(),
   "updatedAt": zod.coerce.date()
+}))
 })
-export const ReplaceProjectSafetyBoqResponse = zod.array(ReplaceProjectSafetyBoqResponseItem)
 
 
 /**

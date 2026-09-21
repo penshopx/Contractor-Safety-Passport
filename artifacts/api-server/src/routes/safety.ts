@@ -9,6 +9,7 @@ import {
   peopleTable,
   projectCsmsReadinessTable,
   projectsTable,
+  safetyBoqDraftsTable,
   safetyBoqItemsTable,
   safetyDocumentsTable,
 } from "@workspace/db";
@@ -79,8 +80,13 @@ import {
 } from "../lib/csmsProfiles.ts";
 import { tagEvidence } from "../lib/objectStorage.ts";
 
+type SafetyRouterHooks = {
+  beforeSafetyBoqItemsRead?: () => Promise<void>;
+};
+
 export const createSafetyRouter = (
   organizationMiddleware: RequestHandler = requireOrganization,
+  hooks: SafetyRouterHooks = {},
 ): IRouter => {
   const router: IRouter = Router();
   router.use(organizationMiddleware);
@@ -520,12 +526,26 @@ export const createSafetyRouter = (
       res.status(404).json({ error: "Proyek tidak ditemukan" });
       return;
     }
-    const items = await db
-      .select()
-      .from(safetyBoqItemsTable)
-      .where(and(eq(safetyBoqItemsTable.organizationId, organizationId), eq(safetyBoqItemsTable.projectId, project.id)))
-      .orderBy(asc(safetyBoqItemsTable.createdAt));
-    res.json(GetProjectSafetyBoqResponse.parse(items));
+    const result = await db.transaction(async (tx) => {
+      const [draft] = await tx
+        .select({ revision: safetyBoqDraftsTable.revision })
+        .from(safetyBoqDraftsTable)
+        .where(and(
+          eq(safetyBoqDraftsTable.organizationId, organizationId),
+          eq(safetyBoqDraftsTable.projectId, project.id),
+        ));
+      await hooks.beforeSafetyBoqItemsRead?.();
+      const items = await tx
+        .select()
+        .from(safetyBoqItemsTable)
+        .where(and(eq(safetyBoqItemsTable.organizationId, organizationId), eq(safetyBoqItemsTable.projectId, project.id)))
+        .orderBy(asc(safetyBoqItemsTable.createdAt));
+      return { revision: draft?.revision ?? 0, items };
+    }, {
+      isolationLevel: "repeatable read",
+      accessMode: "read only",
+    });
+    res.json(GetProjectSafetyBoqResponse.parse(result));
   });
 
   router.put(
@@ -547,22 +567,46 @@ export const createSafetyRouter = (
         res.status(404).json({ error: "Proyek tidak ditemukan" });
         return;
       }
-      const items = await db.transaction(async (tx) => {
+      const result = await db.transaction(async (tx) => {
+        await tx
+          .insert(safetyBoqDraftsTable)
+          .values({ organizationId, projectId: project.id, updatedBy: userId })
+          .onConflictDoNothing();
+        const [revision] = await tx
+          .update(safetyBoqDraftsTable)
+          .set({
+            revision: sql`${safetyBoqDraftsTable.revision} + 1`,
+            updatedBy: userId,
+            updatedAt: new Date(),
+          })
+          .where(and(
+            eq(safetyBoqDraftsTable.organizationId, organizationId),
+            eq(safetyBoqDraftsTable.projectId, project.id),
+            eq(safetyBoqDraftsTable.revision, body.data.revision),
+          ))
+          .returning({ revision: safetyBoqDraftsTable.revision });
+        if (!revision) return null;
         await tx
           .delete(safetyBoqItemsTable)
           .where(and(eq(safetyBoqItemsTable.organizationId, organizationId), eq(safetyBoqItemsTable.projectId, project.id)));
-        if (body.data.items.length === 0) return [];
-        return tx
-          .insert(safetyBoqItemsTable)
-          .values(body.data.items.map((item) => ({
-            ...item,
-            organizationId,
-            projectId: project.id,
-            createdBy: userId,
-          })))
-          .returning();
+        const items = body.data.items.length === 0
+          ? []
+          : await tx
+              .insert(safetyBoqItemsTable)
+              .values(body.data.items.map((item) => ({
+                ...item,
+                organizationId,
+                projectId: project.id,
+                createdBy: userId,
+              })))
+              .returning();
+        return { revision: revision.revision, items };
       });
-      res.json(ReplaceProjectSafetyBoqResponse.parse(items));
+      if (!result) {
+        res.status(409).json({ error: "Draft BOQ telah diubah anggota tim lain. Muat revisi terbaru sebelum menyimpan." });
+        return;
+      }
+      res.json(ReplaceProjectSafetyBoqResponse.parse(result));
     },
   );
 

@@ -84,6 +84,7 @@ export * from './readinessCheck';
 export * from './readinessCheckStandard';
 export * from './readinessCheckStatus';
 export * from './readinessSummary';
+export * from './safetyBoqDraft';
 export * from './safetyBoqDraftInput';
 export * from './safetyBoqItem';
 export * from './safetyBoqItemInput';

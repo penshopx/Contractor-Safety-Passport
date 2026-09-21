@@ -836,8 +836,16 @@ export interface SafetyBoqItemInput {
 }
 
 export interface SafetyBoqDraftInput {
+  /** @minimum 0 */
+  revision: number;
   /** @maxItems 1000 */
   items: SafetyBoqItemInput[];
+}
+
+export interface SafetyBoqDraft {
+  /** @minimum 0 */
+  revision: number;
+  items: SafetyBoqItem[];
 }
 
 export type EvidenceUploadRequestContentType = typeof EvidenceUploadRequestContentType[keyof typeof EvidenceUploadRequestContentType];

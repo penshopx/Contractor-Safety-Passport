@@ -14,6 +14,7 @@ import {
   pool,
   projectCsmsReadinessTable,
   projectsTable,
+  safetyBoqDraftsTable,
   safetyBoqItemsTable,
   safetyDocumentsTable,
   type OrganizationRole,
@@ -37,6 +38,7 @@ let closeServer: (() => Promise<void>) | undefined;
 let projectAId = 0;
 let projectBId = 0;
 let personBId = 0;
+let beforeSafetyBoqItemsRead: (() => Promise<void>) | undefined;
 
 const contextMiddleware: RequestHandler = (req, res, next) => {
   const organizationId = req.header("x-organization-id");
@@ -260,7 +262,9 @@ before(async () => {
     "/membership",
     createSafetyRouter(createRequireOrganization(() => limitedUserId)),
   );
-  app.use(createSafetyRouter(contextMiddleware));
+  app.use(createSafetyRouter(contextMiddleware, {
+    beforeSafetyBoqItemsRead: () => beforeSafetyBoqItemsRead?.() ?? Promise.resolve(),
+  }));
   const server = app.listen(0, "127.0.0.1");
   await new Promise<void>((resolve, reject) => {
     server.once("listening", resolve);
@@ -287,6 +291,9 @@ after(async () => {
   await db
     .delete(safetyBoqItemsTable)
     .where(inArray(safetyBoqItemsTable.organizationId, organizationIds));
+  await db
+    .delete(safetyBoqDraftsTable)
+    .where(inArray(safetyBoqDraftsTable.organizationId, organizationIds));
   await db
     .delete(certificatesTable)
     .where(inArray(certificatesTable.organizationId, organizationIds));
@@ -485,7 +492,7 @@ describe("isolasi data antar kontraktor", () => {
       const denied = await request(`/projects/${projectAId}/safety-boq`, {
         role,
         method: "PUT",
-        body: { items: [item] },
+        body: { revision: 0, items: [item] },
       });
       assert.equal(denied.status, 403);
     }
@@ -493,11 +500,12 @@ describe("isolasi data antar kontraktor", () => {
     const saved = await request(`/projects/${projectAId}/safety-boq`, {
       role: "safety_expert",
       method: "PUT",
-      body: { items: [item] },
+      body: { revision: 0, items: [item] },
     });
     assert.equal(saved.status, 200);
-    assert.equal(saved.body.length, 1);
-    assert.equal(saved.body[0].description, item.description);
+    assert.equal(saved.body.revision, 1);
+    assert.equal(saved.body.items.length, 1);
+    assert.equal(saved.body.items[0].description, item.description);
 
     const secondProject = await request("/projects", {
       role: "owner",
@@ -510,7 +518,7 @@ describe("isolasi data antar kontraktor", () => {
       {
         role: "owner",
         method: "PUT",
-        body: { items: [{ ...item, description: "Item proyek kedua" }] },
+        body: { revision: 0, items: [{ ...item, description: "Item proyek kedua" }] },
       },
     );
     const sameIdInOtherOrganization = await request(
@@ -519,18 +527,18 @@ describe("isolasi data antar kontraktor", () => {
         organizationId: organizationB,
         role: "owner",
         method: "PUT",
-        body: { items: [{ ...item, description: "Item organisasi B" }] },
+        body: { revision: 0, items: [{ ...item, description: "Item organisasi B" }] },
       },
     );
     assert.equal(sameIdInSecondProject.status, 200);
     assert.equal(sameIdInOtherOrganization.status, 200);
-    assert.equal(sameIdInSecondProject.body[0].id, item.id);
-    assert.equal(sameIdInOtherOrganization.body[0].id, item.id);
+    assert.equal(sameIdInSecondProject.body.items[0].id, item.id);
+    assert.equal(sameIdInOtherOrganization.body.items[0].id, item.id);
 
     for (const role of Object.keys(userIds) as OrganizationRole[]) {
       const visible = await request(`/projects/${projectAId}/safety-boq`, { role });
       assert.equal(visible.status, 200);
-      assert.equal(visible.body[0].id, item.id);
+      assert.equal(visible.body.items[0].id, item.id);
     }
 
     const foreignRead = await request(`/projects/${projectAId}/safety-boq`, {
@@ -541,7 +549,7 @@ describe("isolasi data antar kontraktor", () => {
       organizationId: organizationB,
       role: "owner",
       method: "PUT",
-      body: { items: [] },
+      body: { revision: 0, items: [] },
     });
     assert.equal(foreignRead.status, 404);
     assert.equal(foreignWrite.status, 404);
@@ -553,16 +561,78 @@ describe("isolasi data antar kontraktor", () => {
       `/projects/${projectBId}/safety-boq`,
       { organizationId: organizationB },
     );
-    assert.equal(secondProjectRead.body[0].description, "Item proyek kedua");
-    assert.equal(otherOrganizationRead.body[0].description, "Item organisasi B");
+    assert.equal(secondProjectRead.body.items[0].description, "Item proyek kedua");
+    assert.equal(otherOrganizationRead.body.items[0].description, "Item organisasi B");
 
     const replaced = await request(`/projects/${projectAId}/safety-boq`, {
       role: "owner",
       method: "PUT",
-      body: { items: [{ ...item, description: "Helm proyek terbaru" }] },
+      body: { revision: saved.body.revision, items: [{ ...item, description: "Helm proyek terbaru" }] },
     });
     assert.equal(replaced.status, 200);
-    assert.equal(replaced.body[0].description, "Helm proyek terbaru");
+    assert.equal(replaced.body.items[0].description, "Helm proyek terbaru");
+
+    const [firstConcurrent, secondConcurrent] = await Promise.all([
+      request(`/projects/${projectAId}/safety-boq`, {
+        role: "owner",
+        method: "PUT",
+        body: { revision: replaced.body.revision, items: [{ ...item, description: "Perubahan sesi pemilik" }] },
+      }),
+      request(`/projects/${projectAId}/safety-boq`, {
+        role: "safety_expert",
+        method: "PUT",
+        body: { revision: replaced.body.revision, items: [{ ...item, description: "Perubahan sesi ahli K3" }] },
+      }),
+    ]);
+    assert.deepEqual(
+      [firstConcurrent.status, secondConcurrent.status].sort(),
+      [200, 409],
+    );
+    const latest = await request(`/projects/${projectAId}/safety-boq`);
+    assert.equal(latest.body.revision, replaced.body.revision + 1);
+    assert.equal(
+      latest.body.items[0].description,
+      firstConcurrent.status === 200 ? "Perubahan sesi pemilik" : "Perubahan sesi ahli K3",
+    );
+
+    let signalRevisionRead!: () => void;
+    let releaseItemsRead!: () => void;
+    const revisionRead = new Promise<void>((resolve) => {
+      signalRevisionRead = resolve;
+    });
+    const continueItemsRead = new Promise<void>((resolve) => {
+      releaseItemsRead = resolve;
+    });
+    beforeSafetyBoqItemsRead = async () => {
+      signalRevisionRead();
+      await continueItemsRead;
+    };
+    const interleavedReadPromise = request(`/projects/${projectAId}/safety-boq`);
+    await revisionRead;
+    const interleavedWrite = await request(`/projects/${projectAId}/safety-boq`, {
+      role: "owner",
+      method: "PUT",
+      body: {
+        revision: latest.body.revision,
+        items: [{ ...item, description: "Perubahan saat pembacaan berlangsung" }],
+      },
+    });
+    assert.equal(interleavedWrite.status, 200);
+    releaseItemsRead();
+    const interleavedRead = await interleavedReadPromise;
+    beforeSafetyBoqItemsRead = undefined;
+    assert.equal(interleavedRead.body.revision, latest.body.revision);
+    assert.equal(interleavedRead.body.items[0].description, latest.body.items[0].description);
+
+    const staleSnapshotSave = await request(`/projects/${projectAId}/safety-boq`, {
+      role: "safety_expert",
+      method: "PUT",
+      body: {
+        revision: interleavedRead.body.revision,
+        items: [{ ...item, description: "Tidak boleh menimpa perubahan sela" }],
+      },
+    });
+    assert.equal(staleSnapshotSave.status, 409);
 
     await db
       .delete(safetyBoqItemsTable)
@@ -570,6 +640,14 @@ describe("isolasi data antar kontraktor", () => {
         and(
           eq(safetyBoqItemsTable.organizationId, organizationA),
           eq(safetyBoqItemsTable.projectId, secondProject.body.id),
+        ),
+      );
+    await db
+      .delete(safetyBoqDraftsTable)
+      .where(
+        and(
+          eq(safetyBoqDraftsTable.organizationId, organizationA),
+          eq(safetyBoqDraftsTable.projectId, secondProject.body.id),
         ),
       );
     await db

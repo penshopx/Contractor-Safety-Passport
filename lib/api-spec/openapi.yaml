@@ -302,13 +302,11 @@ paths:
           schema: { type: integer, minimum: 1 }
       responses:
         "200":
-          description: Shared BOQ items
+          description: Versioned shared BOQ draft
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/SafetyBoqItem"
+                $ref: "#/components/schemas/SafetyBoqDraft"
         "404":
           $ref: "#/components/responses/NotFound"
     put:
@@ -328,13 +326,13 @@ paths:
               $ref: "#/components/schemas/SafetyBoqDraftInput"
       responses:
         "200":
-          description: Updated shared BOQ items
+          description: Updated versioned shared BOQ draft
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/SafetyBoqItem"
+                $ref: "#/components/schemas/SafetyBoqDraft"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "403":
           $ref: "#/components/responses/Forbidden"
         "404":
@@ -1255,12 +1253,26 @@ components:
     SafetyBoqDraftInput:
       type: object
       properties:
+        revision:
+          type: integer
+          minimum: 0
         items:
           type: array
           maxItems: 1000
           items:
             $ref: "#/components/schemas/SafetyBoqItemInput"
-      required: [items]
+      required: [revision, items]
+    SafetyBoqDraft:
+      type: object
+      properties:
+        revision:
+          type: integer
+          minimum: 0
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SafetyBoqItem"
+      required: [revision, items]
     EvidenceUploadRequest:
       type: object
       properties:

@@ -216,6 +216,29 @@ export const safetyBoqItemsTable = pgTable(
   ],
 );
 
+export const safetyBoqDraftsTable = pgTable(
+  "safety_boq_drafts",
+  {
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizationsTable.id, { onDelete: "restrict" }),
+    projectId: integer("project_id").notNull(),
+    revision: integer("revision").notNull().default(0),
+    updatedBy: text("updated_by").notNull().default("system"),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    primaryKey({
+      name: "safety_boq_drafts_organization_project_pk",
+      columns: [table.organizationId, table.projectId],
+    }),
+    index("safety_boq_drafts_organization_id_idx").on(table.organizationId),
+  ],
+);
+
 export const certificatesTable = pgTable(
   "certificates",
   {
