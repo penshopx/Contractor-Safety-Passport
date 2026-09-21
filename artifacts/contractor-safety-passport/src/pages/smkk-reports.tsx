@@ -21,7 +21,7 @@ import {
   selectMonthlyProjectActivities,
   summarizeSmkkActivities,
 } from "@/lib/smkk-report";
-import { FileSpreadsheet, Loader2, FileDown, Search, Save, FolderOpen } from "lucide-react";
+import { FileSpreadsheet, Loader2, FileDown, Search, Save, FolderOpen, RotateCcw } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
@@ -48,6 +48,9 @@ export default function SmkkReportsPage() {
   
   const [isGenerating, setIsGenerating] = useState(false);
   const [openedReportId, setOpenedReportId] = useState<number | null>(null);
+  const [archiveProjectId, setArchiveProjectId] = useState("all");
+  const [archivePeriod, setArchivePeriod] = useState("");
+  const [archiveStatus, setArchiveStatus] = useState<"all" | "draft" | "final">("all");
 
   const providerName = "Penyedia Jasa";
 
@@ -80,6 +83,33 @@ export default function SmkkReportsPage() {
     () => summarizeSmkkActivities(filteredActivities),
     [filteredActivities],
   );
+
+  const archiveProjects = useMemo(() => {
+    const uniqueProjects = new Map<number, string>();
+    savedReports?.forEach((report: MonthlyReport) => uniqueProjects.set(report.projectId, report.projectName));
+    return Array.from(uniqueProjects, ([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name, "id-ID"));
+  }, [savedReports]);
+
+  const filteredReports = useMemo<MonthlyReport[]>(
+    () =>
+      savedReports?.filter(
+        (report: MonthlyReport) =>
+          (archiveProjectId === "all" || String(report.projectId) === archiveProjectId) &&
+          (!archivePeriod || report.period === archivePeriod) &&
+          (archiveStatus === "all" || report.status === archiveStatus),
+      ) ?? [],
+    [archivePeriod, archiveProjectId, archiveStatus, savedReports],
+  );
+
+  const archiveFiltersActive =
+    archiveProjectId !== "all" || archivePeriod !== "" || archiveStatus !== "all";
+
+  const resetArchiveFilters = () => {
+    setArchiveProjectId("all");
+    setArchivePeriod("");
+    setArchiveStatus("all");
+  };
 
   const openReport = (report: MonthlyReport) => {
     setOpenedReportId(report.id);
@@ -171,35 +201,121 @@ export default function SmkkReportsPage() {
           </CardTitle>
           <CardDescription>Buka kembali draf atau unduh ulang laporan final per proyek dan periode.</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-5">
+          {!isLoadingReports && Boolean(savedReports?.length) && (
+            <div className="rounded-lg border border-border/60 bg-background/30 p-4">
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="space-y-2">
+                  <Label htmlFor="archive-project-filter">Proyek</Label>
+                  <Select value={archiveProjectId} onValueChange={setArchiveProjectId}>
+                    <SelectTrigger id="archive-project-filter" data-testid="filter-archive-project">
+                      <SelectValue placeholder="Semua proyek" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Semua proyek</SelectItem>
+                      {archiveProjects.map((project) => (
+                        <SelectItem key={project.id} value={String(project.id)}>
+                          {project.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="archive-period-filter">Periode</Label>
+                  <Input
+                    id="archive-period-filter"
+                    type="month"
+                    value={archivePeriod}
+                    onChange={(event) => setArchivePeriod(event.target.value)}
+                    data-testid="filter-archive-period"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="archive-status-filter">Status</Label>
+                  <Select
+                    value={archiveStatus}
+                    onValueChange={(value: "all" | "draft" | "final") => setArchiveStatus(value)}
+                  >
+                    <SelectTrigger id="archive-status-filter" data-testid="filter-archive-status">
+                      <SelectValue placeholder="Semua status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Semua status</SelectItem>
+                      <SelectItem value="draft">Draf</SelectItem>
+                      <SelectItem value="final">Final</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {archiveFiltersActive && (
+                <div className="mt-4 flex items-center justify-between gap-3 border-t border-border/50 pt-4">
+                  <p className="text-sm text-muted-foreground">
+                    {filteredReports.length} laporan ditemukan
+                  </p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="gap-2"
+                    onClick={resetArchiveFilters}
+                    data-testid="button-reset-archive-filters"
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    Hapus filter
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+
           {isLoadingReports ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" /> Memuat arsip laporan...
             </div>
           ) : savedReports?.length ? (
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {savedReports.map((report) => (
-                <div key={report.id} className="rounded-lg border border-border/60 bg-background/40 p-4 space-y-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-semibold">{report.projectName}</p>
-                      <p className="text-sm text-muted-foreground">{formatDateMonthYear(report.period)}</p>
+            filteredReports.length ? (
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3" data-testid="archive-report-results">
+                {filteredReports.map((report) => (
+                  <div key={report.id} className="rounded-lg border border-border/60 bg-background/40 p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-semibold">{report.projectName}</p>
+                        <p className="text-sm text-muted-foreground">{formatDateMonthYear(report.period)}</p>
+                      </div>
+                      <Badge variant={report.status === "final" ? "default" : "secondary"}>
+                        {report.status === "final" ? "Final" : "Draf"}
+                      </Badge>
                     </div>
-                    <Badge variant={report.status === "final" ? "default" : "secondary"}>
-                      {report.status === "final" ? "Final" : "Draf"}
-                    </Badge>
+                    <div className="text-xs text-muted-foreground space-y-1">
+                      <p>Disusun: {report.preparedBy || "-"}</p>
+                      <p>Diperiksa: {report.reviewedBy || "-"}</p>
+                      <p>Disetujui: {report.approvedBy || "-"}</p>
+                    </div>
+                    <Button variant="outline" size="sm" className="w-full gap-2" onClick={() => openReport(report)}>
+                      <FolderOpen className="h-4 w-4" /> Buka laporan
+                    </Button>
                   </div>
-                  <div className="text-xs text-muted-foreground space-y-1">
-                    <p>Disusun: {report.preparedBy || "-"}</p>
-                    <p>Diperiksa: {report.reviewedBy || "-"}</p>
-                    <p>Disetujui: {report.approvedBy || "-"}</p>
-                  </div>
-                  <Button variant="outline" size="sm" className="w-full gap-2" onClick={() => openReport(report)}>
-                    <FolderOpen className="h-4 w-4" /> Buka laporan
-                  </Button>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div
+                className="rounded-lg border border-dashed border-border px-6 py-10 text-center"
+                data-testid="archive-filter-empty-state"
+              >
+                <Search className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+                <p className="font-medium">Tidak ada laporan yang cocok</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Ubah pilihan proyek, periode, atau status untuk melihat laporan lain.
+                </p>
+                <Button type="button" variant="outline" size="sm" className="mt-4" onClick={resetArchiveFilters}>
+                  Hapus semua filter
+                </Button>
+              </div>
+            )
           ) : (
             <p className="text-sm text-muted-foreground">Belum ada laporan yang disimpan.</p>
           )}
