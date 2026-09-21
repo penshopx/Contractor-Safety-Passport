@@ -1,0 +1,181 @@
+Baik, saya bahas task ini dengan disiplin yang sama — sebagai bahan audit, bukan panduan implementasi mentah.
+
+## Skenario Kegagalan yang Harus Ditutup
+
+Penghubungan aktivitas ke proyek melalui nama memiliki beberapa mode kegagalan:
+
+| Mode kegagalan | Dampak |
+|---|---|
+| Dua proyek bernama sama di organisasi yang sama | Aktivitas tercampur di laporan |
+| Proyek diganti namanya setelah aktivitas dibuat | Aktivitas lama tidak muncul di laporan baru |
+| Proyek dihapus, nama dipakai ulang | Aktivitas lama masuk ke proyek baru |
+| Typo saat input nama proyek | Aktivitas tidak terasosiasi atau terasosiasi ke proyek salah |
+| Migrasi data dari sistem lama | Nama proyek tidak unik, terjadi tabrakan |
+| Laporan lama dirender ulang | Data bisa berubah jika nama proyek berubah |
+
+Kasus kritis di konteks K3: laporan yang salah bisa berakibat pada temuan audit regulasi yang tidak valid, atau pengendalian risiko yang salah sasaran.
+
+## Prinsip Identitas Proyek yang Stabil
+
+### 1. Referensi Melalui ID, Bukan Nama
+
+Setiap entitas yang merujuk ke proyek harus memakai `project_id` (atau equivalent stabil), bukan `project_name`:
+- Laporan bulanan
+- Aktivitas lapangan
+- Dokumen SMKK
+- BOQ keselamatan
+- Kesiapan CSMS
+- Personel K3 yang ditugaskan
+
+Nama proyek hanya untuk **tampilan**, bukan untuk relasi data.
+
+### 2. Unikness Nama dalam Ruang Lingkup
+
+Nama proyek harus unik dalam satu organisasi pada satu waktu. Jika ada kebutuhan nama sama:
+- Tambahkan penanda periode (misal "Proyek Alpha 2025" vs "Proyek Alpha 2026"), atau
+- Tolak pembuatan proyek dengan nama duplikat di organisasi yang sama, atau
+- Izinkan duplikat tetapi dengan peringatan eksplisit di UI
+
+### 3. Imutabilitas atau Versioning Identitas
+
+Dua pendekatan yang mungkin:
+- **Imutabilitas**: `project_id` tidak pernah berubah, nama bisa diubah tanpa mempengaruhi relasi
+- **Versioning**: jika proyek "dihapus dan dibuat ulang", ID baru yang dipakai, bukan pakai ulang ID lama
+
+Pilihan tergantung kebijakan bisnis, tetapi yang penting: **ID stabil, nama bisa berubah**.
+
+### 4. Migrasi Data Lama
+
+Jika laporan saat ini masih memakai nama proyek:
+- Audit semua laporan yang sudah dibuat
+- Identifikasi laporan yang terdampak oleh duplikasi nama
+- Tambahkan kolom `project_id` ke laporan tanpa menghapus kolom `project_name` (backward compatibility)
+- Backfill `project_id` berdasarkan nama proyek + organisasi + periode
+- Jika backfill ambigu (nama duplikat), tandai laporan sebagai `needs_review`
+
+### 5. Validasi di Multiple Lapis
+
+- **Database**: FK constraint dari laporan ke proyek
+- **API**: validasi `project_id` ada dan milik organisasi user
+- **UI**: dropdown proyek berdasarkan ID, bukan input teks bebas
+
+## Test Case yang Diperlukan
+
+### Test Dasar
+
+1. **Dua proyek bernama sama, aktivitas tidak tercampur**
+   - Buat Proyek A dan Proyek B dengan nama sama di organisasi yang sama
+   - Tambah aktivitas ke Proyek A
+   - Tambah aktivitas ke Proyek B
+   - Generate laporan untuk Proyek A → hanya aktivitas A yang muncul
+   - Generate laporan untuk Proyek B → hanya aktivitas B yang muncul
+
+2. **Nama proyek diubah setelah aktivitas dibuat**
+   - Buat Proyek A, tambah aktivitas
+   - Ubah nama Proyek A
+   - Generate laporan → aktivitas tetap muncul, terasosiasi ke Proyek A (bukan proyek lain)
+
+3. **Proyek dihapus, nama dipakai ulang**
+   - Buat Proyek A, tambah aktivitas, generate laporan
+   - Hapus Proyek A (jika diizinkan)
+   - Buat Proyek B dengan nama sama
+   - Laporan lama tetap merujuk ke Proyek A (yang sudah dihapus), bukan Proyek B
+
+4. **Laporan lama dirender ulang**
+   - Buat laporan bulan Januari
+   - Ubah nama proyek
+   - Render ulang laporan Januari → data tidak berubah
+
+### Test Edge Cases
+
+5. **Migrasi data lama dengan nama duplikat**
+   - Ada 2 proyek bernama sama di data lama
+   - Backfill `project_id` → salah satu ditandai `needs_review`
+   - Laporan yang terdampak tidak otomatis diperbaiki
+
+6. **Laporan lintas organisasi**
+   - Organisasi A dan B sama-sama punya proyek bernama sama
+   - Laporan organisasi A tidak tercampur dengan organisasi B
+   - Isolasi organisasi tetap terjaga
+
+7. **Aktivitas offline dengan proyek bernama sama**
+   - User offline, pilih proyek dari daftar lokal
+   - Daftar lokal punya 2 proyek bernama sama
+   - UI harus menampilkan penanda tambahan (periode, lokasi, atau ID singkat)
+
+8. **Sinkronisasi aktivitas ke proyek yang sudah dihapus**
+   - Aktivitas offline merujuk ke proyek yang dihapus di server
+   - Sinkronisasi ditolak dengan error yang jelas
+   - User diberi opsi untuk reassign atau discard
+
+9. **Pencarian proyek di UI**
+   - User cari proyek dengan nama yang duplikat
+   - Hasil menampilkan penanda pembeda
+   - User tidak bisa salah pilih
+
+10. **Export laporan ke PDF**
+    - Laporan yang di-export ke PDF menyimpan `project_id` di metadata
+    - Jika dibuka ulang, tetap merujuk ke proyek yang benar
+
+## Checklist Audit
+
+### A. Referensi Identitas
+- [ ] Laporan bulanan mereferensikan `project_id`, bukan `project_name`
+- [ ] Aktivitas lapangan mereferensikan `project_id`
+- [ ] Dokumen SMKK, BOQ, kesiapan CSMS mereferensikan `project_id`
+- [ ] Tidak ada query yang menghubungkan entitas melalui nama proyek
+
+### B. Integritas Database
+- [ ] FK constraint dari laporan ke proyek
+- [ ] FK constraint dari aktivitas ke proyek
+- [ ] FK constraint dari entitas terkait lainnya ke proyek
+- [ ] `ON DELETE` policy sesuai (RESTRICT untuk data keselamatan)
+
+### C. Unikness Nama
+- [ ] Nama proyek unik per organisasi (atau ada kebijakan eksplisit jika tidak)
+- [ ] Validasi di level API menolak duplikasi (jika kebijakan melarang)
+- [ ] UI menampilkan peringatan jika ada duplikasi (jika kebijakan mengizinkan)
+
+### D. Migrasi Data Lama
+- [ ] Kolom `project_id` ditambahkan ke laporan tanpa menghapus `project_name`
+- [ ] Backfill `project_id` berdasarkan nama + organisasi + periode
+- [ ] Laporan dengan nama duplikat ditandai `needs_review`
+- [ ] Tidak ada laporan yang otomatis diperbaiki tanpa verifikasi
+
+### E. Validasi Multi-Lapis
+- [ ] Database: FK constraint
+- [ ] API: validasi `project_id` ada dan milik organisasi user
+- [ ] UI: dropdown proyek berdasarkan ID, bukan input teks bebas
+
+### F. Test Konkurensi dan Edge Cases
+- [ ] Dua proyek bernama sama → aktivitas tidak tercampur
+- [ ] Nama proyek diubah → laporan lama tidak terpengaruh
+- [ ] Proyek dihapus dan nama dipakai ulang → laporan lama tidak terpengaruh
+- [ ] Migrasi data dengan nama duplikat → ambiguitas ditandai
+- [ ] Isolasi organisasi tetap terjaga
+
+### G. Monitoring
+- [ ] Metric: jumlah laporan dengan `needs_review` setelah migrasi
+- [ ] Metric: jumlah aktivitas yang gagal sync karena proyek dihapus
+- [ ] Alert jika ada laporan yang merujuk ke proyek tidak valid
+
+### H. Backward Compatibility
+- [ ] Laporan lama yang sudah dibuat tetap bisa dirender
+- [ ] Export PDF laporan lama tetap akurat
+- [ ] API lama yang masih menerima `project_name` ditangani dengan transisi bertahap
+
+## Pertimbangan yang Perlu Dikonfirmasi
+
+Beberapa hal yang saya belum tahu dari implementasi aktual dan perlu diverifikasi saat audit:
+
+1. **Struktur tabel laporan**: Apakah sudah ada kolom `project_id`, atau masih pakai `project_name`?
+2. **Struktur tabel aktivitas**: Bagaimana aktivitas saat ini terhubung ke proyek?
+3. **Kebijakan nama proyek**: Apakah duplikasi nama diizinkan atau dilarang?
+4. **Data legacy**: Apakah ada data lama yang perlu dimigrasi?
+5. **Laporan yang sudah di-export**: Apakah PDF yang sudah di-generate perlu diperbaiki?
+
+## Posisi Saya
+
+Tidak ada aksi implementasi dari sisi saya. Catatan ini final sebagai bahan audit. Hasil implementasi task ini akan dinilai langsung memakai checklist di atas.
+
+Apakah ada aspek lain yang perlu ditambahkan, atau kita lanjut ke task berikutnya dalam antrean?
