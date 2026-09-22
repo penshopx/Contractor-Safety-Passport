@@ -13,7 +13,69 @@ export type InvitationCreationDecision =
   | { allowed: true }
   | { allowed: false; status: 409; error: string };
 
+export type InvitationCreationResult<T> =
+  | { created: true; invitation: T }
+  | { created: false; status: 409; error: string };
+
+type CreateInvitationAtomicallyOptions<TReservation, TInvitation> = {
+  reserve: () => Promise<TReservation | undefined>;
+  createClerkInvitation: () => Promise<{ id: string }>;
+  attachClerkInvitation: (
+    reservation: TReservation,
+    clerkInvitationId: string,
+  ) => Promise<TInvitation | undefined>;
+  releaseReservation: (reservation: TReservation) => Promise<void>;
+  revokeClerkInvitation: (clerkInvitationId: string) => Promise<void>;
+};
+
+const DUPLICATE_INVITATION_ERROR = "Email ini sudah memiliki undangan aktif";
+
 export const normalizeEmail = (email: string) => email.trim().toLowerCase();
+
+export const createInvitationAtomically = async <TReservation, TInvitation>({
+  reserve,
+  createClerkInvitation,
+  attachClerkInvitation,
+  releaseReservation,
+  revokeClerkInvitation,
+}: CreateInvitationAtomicallyOptions<
+  TReservation,
+  TInvitation
+>): Promise<InvitationCreationResult<TInvitation>> => {
+  const reservation = await reserve();
+  if (!reservation) {
+    return {
+      created: false,
+      status: 409,
+      error: DUPLICATE_INVITATION_ERROR,
+    };
+  }
+
+  let clerkInvitationId: string | undefined;
+  try {
+    const clerkInvitation = await createClerkInvitation();
+    clerkInvitationId = clerkInvitation.id;
+    const invitation = await attachClerkInvitation(
+      reservation,
+      clerkInvitationId,
+    );
+    if (!invitation) {
+      throw new Error("Reservasi undangan sudah tidak aktif");
+    }
+    return { created: true, invitation };
+  } catch (error) {
+    if (clerkInvitationId) {
+      try {
+        await revokeClerkInvitation(clerkInvitationId);
+      } finally {
+        await releaseReservation(reservation);
+      }
+    } else {
+      await releaseReservation(reservation);
+    }
+    throw error;
+  }
+};
 
 export const decideInvitationCreation = (
   hasActiveInvitation: boolean,
@@ -23,7 +85,7 @@ export const decideInvitationCreation = (
     return {
       allowed: false,
       status: 409,
-      error: "Email ini sudah memiliki undangan aktif",
+      error: DUPLICATE_INVITATION_ERROR,
     };
   }
   if (isExistingMember) {

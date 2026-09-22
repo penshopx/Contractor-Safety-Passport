@@ -1,5 +1,5 @@
 import { clerkClient, getAuth } from "@clerk/express";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNotNull, isNull } from "drizzle-orm";
 import { Router, type IRouter } from "express";
 import {
   db,
@@ -29,6 +29,7 @@ import {
 import {
   decideInvitationAcceptance,
   decideInvitationCreation,
+  createInvitationAtomically,
   getTrustedApplicationOrigin,
   normalizeEmail,
 } from "../lib/organizationInvitations";
@@ -128,6 +129,7 @@ router.get(
       .where(
         and(
           eq(organizationInvitationsTable.organizationId, organizationId),
+          isNotNull(organizationInvitationsTable.clerkInvitationId),
           isNull(organizationInvitationsTable.acceptedAt),
           isNull(organizationInvitationsTable.revokedAt),
         ),
@@ -230,24 +232,59 @@ router.post(
     }
 
     const invitationId = crypto.randomUUID();
-    const clerkInvitation = await clerkClient.invitations.createInvitation({
-      emailAddress: email,
-      redirectUrl: getInvitationRedirectUrl(invitationId),
-      ignoreExisting: true,
-      notify: true,
-      publicMetadata: { organizationId, invitationId },
+    const creation = await createInvitationAtomically({
+      reserve: async () => {
+        const [reservation] = await db
+          .insert(organizationInvitationsTable)
+          .values({
+            id: invitationId,
+            organizationId,
+            email,
+            role: parsed.data.role,
+            invitedBy: userId,
+          })
+          .onConflictDoNothing()
+          .returning();
+        return reservation;
+      },
+      createClerkInvitation: () =>
+        clerkClient.invitations.createInvitation({
+          emailAddress: email,
+          redirectUrl: getInvitationRedirectUrl(invitationId),
+          ignoreExisting: true,
+          notify: true,
+          publicMetadata: { organizationId, invitationId },
+        }),
+      attachClerkInvitation: async (reservation, clerkInvitationId) => {
+        const [invitation] = await db
+          .update(organizationInvitationsTable)
+          .set({ clerkInvitationId })
+          .where(
+            and(
+              eq(organizationInvitationsTable.id, reservation.id),
+              isNull(organizationInvitationsTable.clerkInvitationId),
+              isNull(organizationInvitationsTable.acceptedAt),
+              isNull(organizationInvitationsTable.revokedAt),
+            ),
+          )
+          .returning();
+        return invitation;
+      },
+      releaseReservation: async (reservation) => {
+        await db
+          .delete(organizationInvitationsTable)
+          .where(eq(organizationInvitationsTable.id, reservation.id));
+      },
+      revokeClerkInvitation: (clerkInvitationId) =>
+        clerkClient.invitations.revokeInvitation(clerkInvitationId).then(
+          () => undefined,
+        ),
     });
-    const [invitation] = await db
-      .insert(organizationInvitationsTable)
-      .values({
-        id: invitationId,
-        organizationId,
-        email,
-        role: parsed.data.role,
-        invitedBy: userId,
-        clerkInvitationId: clerkInvitation.id,
-      })
-      .returning();
+    if (!creation.created) {
+      res.status(creation.status).json({ error: creation.error });
+      return;
+    }
+    const invitation = creation.invitation;
 
     res.status(201).json(
       InviteOrganizationMemberResponse.parse({
@@ -279,7 +316,12 @@ router.post(
     const [invitation] = await db
       .select()
       .from(organizationInvitationsTable)
-      .where(eq(organizationInvitationsTable.id, params.data.invitationId))
+      .where(
+        and(
+          eq(organizationInvitationsTable.id, params.data.invitationId),
+          isNotNull(organizationInvitationsTable.clerkInvitationId),
+        ),
+      )
       .limit(1);
     const user = await clerkClient.users.getUser(userId);
     const decision = decideInvitationAcceptance(
@@ -364,6 +406,7 @@ router.delete(
         and(
           eq(organizationInvitationsTable.id, params.data.invitationId),
           eq(organizationInvitationsTable.organizationId, organizationId),
+          isNotNull(organizationInvitationsTable.clerkInvitationId),
           isNull(organizationInvitationsTable.acceptedAt),
           isNull(organizationInvitationsTable.revokedAt),
         ),
