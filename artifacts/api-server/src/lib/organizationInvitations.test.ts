@@ -80,6 +80,19 @@ describe("penerimaan undangan organisasi", () => {
     if (!result.allowed) assert.equal(result.status, 404);
   });
 
+  it("menolak undangan yang sedang dikompensasi", () => {
+    const result = decideInvitationAcceptance(
+      { ...pendingInvitation, compensationStatus: "REVOKE_FAILED" },
+      "user_2",
+      ["anggota@example.com"],
+    );
+    assert.deepEqual(result, {
+      allowed: false,
+      status: 409,
+      error: "Undangan sedang diproses dan belum dapat digunakan",
+    });
+  });
+
   it("membuat penerimaan ulang oleh pengguna yang sama idempoten", () => {
     assert.deepEqual(
       decideInvitationAcceptance(

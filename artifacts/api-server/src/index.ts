@@ -2,6 +2,7 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { migrateFieldActivityPhotos } from "./lib/migrateFieldActivityPhotos.ts";
 import { cleanupOrphanedEvidence } from "./lib/cleanupOrphanedEvidence.ts";
+import { startCompensationWorker } from "./lib/compensations.ts";
 
 const EVIDENCE_CLEANUP_INTERVAL_MS = 6 * 60 * 60_000;
 
@@ -38,6 +39,13 @@ async function start() {
     runEvidenceCleanup();
     const cleanupTimer = setInterval(runEvidenceCleanup, EVIDENCE_CLEANUP_INTERVAL_MS);
     cleanupTimer.unref();
+    const stopCompensationWorker = startCompensationWorker();
+    const shutdown = () => {
+      stopCompensationWorker();
+      process.exit(0);
+    };
+    process.once("SIGTERM", shutdown);
+    process.once("SIGINT", shutdown);
   });
 }
 

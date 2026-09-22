@@ -1,8 +1,9 @@
 import { clerkClient, getAuth } from "@clerk/express";
-import { and, desc, eq, isNotNull, isNull } from "drizzle-orm";
+import { and, desc, eq, isNotNull, isNull, count, sql, inArray, lte, or } from "drizzle-orm";
 import { Router, type IRouter } from "express";
 import {
   db,
+  compensationStatusValues,
   organizationInvitationsTable,
   organizationMembershipsTable,
   organizationsTable,
@@ -34,6 +35,11 @@ import {
   normalizeEmail,
 } from "../lib/organizationInvitations";
 import { decideMemberRoleChange } from "../lib/organizationMemberships";
+import { logger } from "../lib/logger";
+import {
+  transitionCompensation,
+  type CompensationStatus,
+} from "../lib/compensations";
 
 const router: IRouter = Router();
 
@@ -132,6 +138,7 @@ router.get(
           isNotNull(organizationInvitationsTable.clerkInvitationId),
           isNull(organizationInvitationsTable.acceptedAt),
           isNull(organizationInvitationsTable.revokedAt),
+          eq(organizationInvitationsTable.compensationStatus, "NONE"),
         ),
       );
 
@@ -232,6 +239,7 @@ router.post(
     }
 
     const invitationId = crypto.randomUUID();
+    const correlationId = crypto.randomUUID();
     const creation = await createInvitationAtomically({
       reserve: async () => {
         const [reservation] = await db
@@ -242,6 +250,7 @@ router.post(
             email,
             role: parsed.data.role,
             invitedBy: userId,
+            correlationId,
           })
           .onConflictDoNothing()
           .returning();
@@ -253,7 +262,7 @@ router.post(
           redirectUrl: getInvitationRedirectUrl(invitationId),
           ignoreExisting: true,
           notify: true,
-          publicMetadata: { organizationId, invitationId },
+          publicMetadata: { organizationId, invitationId, correlationId },
         }),
       attachClerkInvitation: async (reservation, clerkInvitationId) => {
         const [invitation] = await db
@@ -270,15 +279,23 @@ router.post(
           .returning();
         return invitation;
       },
-      releaseReservation: async (reservation) => {
-        await db
-          .delete(organizationInvitationsTable)
-          .where(eq(organizationInvitationsTable.id, reservation.id));
+      releaseReservation: async (reservation, clerkInvitationId) => {
+        if (clerkInvitationId) {
+          await db.update(organizationInvitationsTable).set({
+            compensationStatus: "PENDING_REVOKE",
+            compensationReason: "FINALIZATION_FAILED",
+            compensationUpdatedAt: new Date(),
+            clerkInvitationId,
+          }).where(eq(organizationInvitationsTable.id, reservation.id));
+        } else {
+          await db.delete(organizationInvitationsTable).where(eq(organizationInvitationsTable.id, reservation.id));
+        }
       },
       revokeClerkInvitation: (clerkInvitationId) =>
         clerkClient.invitations.revokeInvitation(clerkInvitationId).then(
           () => undefined,
         ),
+      preserveAfterClerkCreate: true,
     });
     if (!creation.created) {
       res.status(creation.status).json({ error: creation.error });
@@ -344,6 +361,7 @@ router.post(
               eq(organizationInvitationsTable.id, invitation.id),
               isNull(organizationInvitationsTable.acceptedAt),
               isNull(organizationInvitationsTable.revokedAt),
+              eq(organizationInvitationsTable.compensationStatus, "NONE"),
             ),
           )
           .returning();
@@ -409,6 +427,7 @@ router.delete(
           isNotNull(organizationInvitationsTable.clerkInvitationId),
           isNull(organizationInvitationsTable.acceptedAt),
           isNull(organizationInvitationsTable.revokedAt),
+          eq(organizationInvitationsTable.compensationStatus, "NONE"),
         ),
       )
       .limit(1);
@@ -417,21 +436,135 @@ router.delete(
       return;
     }
 
-    if (invitation.clerkInvitationId) {
-      await clerkClient.invitations.revokeInvitation(invitation.clerkInvitationId);
-    }
-    await db
-      .update(organizationInvitationsTable)
-      .set({ revokedAt: new Date() })
-      .where(
-        and(
-          eq(organizationInvitationsTable.id, invitation.id),
-          isNull(organizationInvitationsTable.acceptedAt),
-          isNull(organizationInvitationsTable.revokedAt),
-        ),
-      );
+    await transitionCompensation(
+      invitation.id,
+      ["NONE"],
+      "PENDING_REVOKE",
+      "MANUAL_OVERRIDE",
+      { nextRetryAt: new Date() },
+    );
 
     res.sendStatus(204);
+  },
+);
+
+router.get(
+  "/organizations/:orgId/compensations",
+  requireOrganization,
+  requireRole("owner"),
+  async (req, res): Promise<void> => {
+    const organizationId = req.organizationContext!.organizationId;
+    if (req.params.orgId !== organizationId) {
+      res.status(404).json({ error: "Kompensasi tidak ditemukan" });
+      return;
+    }
+    const requestedStatus = typeof req.query.status === "string" ? req.query.status : undefined;
+    if (requestedStatus && !compensationStatusValues.includes(requestedStatus as CompensationStatus)) {
+      res.status(400).json({ error: "Status kompensasi tidak valid" });
+      return;
+    }
+    const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 100);
+    const offset = Math.max(Number(req.query.offset) || 0, 0);
+    const rows = await db.select().from(organizationInvitationsTable).where(and(
+      eq(organizationInvitationsTable.organizationId, organizationId),
+      requestedStatus ? eq(organizationInvitationsTable.compensationStatus, requestedStatus as CompensationStatus) : sql`${organizationInvitationsTable.compensationStatus} <> 'NONE'`,
+    )).orderBy(desc(organizationInvitationsTable.compensationUpdatedAt))
+      .limit(limit + 1)
+      .offset(offset);
+    const hasMore = rows.length > limit;
+    const page = hasMore ? rows.slice(0, limit) : rows;
+    res.json({
+      compensations: page.map(({ email: _email, ...row }) => row),
+      nextOffset: hasMore ? offset + limit : null,
+    });
+  },
+);
+
+// Must precede the parameterized detail route so "metrics" is not treated as an id.
+router.get(
+  "/organizations/:orgId/compensations/metrics",
+  requireOrganization,
+  requireRole("owner"),
+  async (req, res): Promise<void> => {
+    const organizationId = req.organizationContext!.organizationId;
+    if (req.params.orgId !== organizationId) {
+      res.status(404).json({ error: "Kompensasi tidak ditemukan" });
+      return;
+    }
+    const rows = await db.select({ status: organizationInvitationsTable.compensationStatus, count: count() })
+      .from(organizationInvitationsTable)
+      .where(and(eq(organizationInvitationsTable.organizationId, organizationId), sql`${organizationInvitationsTable.compensationStatus} <> 'NONE'`))
+      .groupBy(organizationInvitationsTable.compensationStatus);
+    const [retryStats] = await db.select({
+      total: count(),
+      retryAttempts: sql<number>`coalesce(sum(${organizationInvitationsTable.retryCount}), 0)`,
+      averageRetryDelayMs: sql<number>`coalesce(avg(extract(epoch from (${organizationInvitationsTable.nextRetryAt} - ${organizationInvitationsTable.compensationUpdatedAt})) * 1000) filter (where ${organizationInvitationsTable.nextRetryAt} is not null and ${organizationInvitationsTable.compensationUpdatedAt} is not null), 0)`,
+    }).from(organizationInvitationsTable).where(and(
+      eq(organizationInvitationsTable.organizationId, organizationId),
+      sql`${organizationInvitationsTable.compensationStatus} <> 'NONE'`,
+    ));
+    const total = Number(retryStats?.total ?? 0);
+    const retryAttempts = Number(retryStats?.retryAttempts ?? 0);
+    res.json({
+      byStatus: Object.fromEntries(rows.map((row) => [row.status, Number(row.count)])),
+      deadLetterCount: Number(rows.find((row) => row.status === "DEAD_LETTER")?.count ?? 0),
+      retryAttempts,
+      retryRate: total > 0 ? retryAttempts / total : 0,
+      averageRetryDelayMs: Number(retryStats?.averageRetryDelayMs ?? 0),
+    });
+  },
+);
+
+router.get(
+  "/organizations/:orgId/compensations/:id",
+  requireOrganization,
+  requireRole("owner"),
+  async (req, res): Promise<void> => {
+    const organizationId = req.organizationContext!.organizationId;
+    const [row] = await db.select().from(organizationInvitationsTable).where(and(
+      eq(organizationInvitationsTable.organizationId, organizationId),
+      eq(organizationInvitationsTable.id, String(req.params.id)),
+    )).limit(1);
+    if (!row || req.params.orgId !== organizationId) {
+      res.status(404).json({ error: "Kompensasi tidak ditemukan" });
+      return;
+    }
+    const { email: _email, ...safe } = row;
+    res.json(safe);
+  },
+);
+
+router.post(
+  "/organizations/:orgId/compensations/:id/retry",
+  requireOrganization,
+  requireRole("owner"),
+  async (req, res): Promise<void> => {
+    const organizationId = req.organizationContext!.organizationId;
+    if (req.params.orgId !== organizationId) {
+      res.status(404).json({ error: "Kompensasi tidak ditemukan" });
+      return;
+    }
+    const [updated] = await db.update(organizationInvitationsTable).set({
+      compensationStatus: "PENDING_REVOKE",
+      compensationReason: "MANUAL_OVERRIDE",
+      compensationUpdatedAt: new Date(),
+      retryCount: 0,
+      nextRetryAt: new Date(),
+      leaseOwner: null,
+      leaseExpiresAt: null,
+      claimToken: null,
+    }).where(and(
+      eq(organizationInvitationsTable.organizationId, organizationId),
+      eq(organizationInvitationsTable.id, String(req.params.id)),
+      inArray(organizationInvitationsTable.compensationStatus, ["DEAD_LETTER", "REVOKE_PERMANENTLY_FAILED"]),
+      or(isNull(organizationInvitationsTable.leaseExpiresAt), lte(organizationInvitationsTable.leaseExpiresAt, new Date())),
+    )).returning({ id: organizationInvitationsTable.id });
+    if (!updated) {
+      res.status(409).json({ error: "Kompensasi tidak dapat dijadwalkan ulang (status atau lease tidak valid)" });
+      return;
+    }
+    logger.info({ invitation_id: updated.id, organization_id: organizationId, actor_id: req.organizationContext!.userId, reason: "MANUAL_OVERRIDE" }, "Manual compensation retry scheduled");
+    res.status(202).json({ id: updated.id, status: "PENDING_REVOKE" });
   },
 );
 

@@ -3,11 +3,12 @@ export type InvitationAcceptanceRecord = {
   acceptedAt: Date | null;
   acceptedBy: string | null;
   revokedAt: Date | null;
+  compensationStatus?: string;
 };
 
 export type InvitationAcceptanceDecision =
   | { allowed: true; alreadyAccepted: boolean }
-  | { allowed: false; status: 403 | 404; error: string };
+  | { allowed: false; status: 403 | 404 | 409; error: string };
 
 export type InvitationCreationDecision =
   | { allowed: true }
@@ -24,8 +25,12 @@ type CreateInvitationAtomicallyOptions<TReservation, TInvitation> = {
     reservation: TReservation,
     clerkInvitationId: string,
   ) => Promise<TInvitation | undefined>;
-  releaseReservation: (reservation: TReservation) => Promise<void>;
+  releaseReservation: (
+    reservation: TReservation,
+    clerkInvitationId?: string,
+  ) => Promise<void>;
   revokeClerkInvitation: (clerkInvitationId: string) => Promise<void>;
+  preserveAfterClerkCreate?: boolean;
 };
 
 const DUPLICATE_INVITATION_ERROR = "Email ini sudah memiliki undangan aktif";
@@ -38,6 +43,7 @@ export const createInvitationAtomically = async <TReservation, TInvitation>({
   attachClerkInvitation,
   releaseReservation,
   revokeClerkInvitation,
+  preserveAfterClerkCreate = false,
 }: CreateInvitationAtomicallyOptions<
   TReservation,
   TInvitation
@@ -66,9 +72,9 @@ export const createInvitationAtomically = async <TReservation, TInvitation>({
   } catch (error) {
     if (clerkInvitationId) {
       try {
-        await revokeClerkInvitation(clerkInvitationId);
+        if (!preserveAfterClerkCreate) await revokeClerkInvitation(clerkInvitationId);
       } finally {
-        await releaseReservation(reservation);
+        await releaseReservation(reservation, clerkInvitationId);
       }
     } else {
       await releaseReservation(reservation);
@@ -136,6 +142,9 @@ export const decideInvitationAcceptance = (
       status: 404,
       error: "Undangan tidak ditemukan atau sudah tidak berlaku",
     };
+  }
+  if (invitation.compensationStatus && invitation.compensationStatus !== "NONE") {
+    return { allowed: false, status: 409, error: "Undangan sedang diproses dan belum dapat digunakan" };
   }
   if (invitation.acceptedAt && invitation.acceptedBy !== userId) {
     return { allowed: false, status: 404, error: "Undangan sudah digunakan" };

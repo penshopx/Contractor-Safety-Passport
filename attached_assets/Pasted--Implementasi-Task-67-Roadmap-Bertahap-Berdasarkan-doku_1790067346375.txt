@@ -1,0 +1,302 @@
+# Implementasi Task #67 — Roadmap Bertahap
+
+Berdasarkan dokumen kanonik final, saya mengusulkan implementasi dibagi menjadi **6 fase** yang masing-masing dapat diverifikasi secara independen. Pendekatan ini meminimalkan risiko dan memungkinkan testing di setiap tahap.
+
+---
+
+## Fase 1: Schema & Migrasi (Fondasi)
+
+**Tujuan**: Menambahkan kolom yang diperlukan tanpa mengganggu operasi existing.
+
+### Deliverables:
+1. **Kolom baru di `organization_invitations`**:
+   - `correlation_id UUID` (stabil, dibuat saat reservasi)
+   - `compensation_status VARCHAR(30)` default `'NONE'`
+   - `compensation_reason VARCHAR(30)` nullable
+   - `compensation_updated_at TIMESTAMP` nullable
+   - `retry_count INTEGER` default `0`
+   - `next_retry_at TIMESTAMP` nullable
+   - `lease_owner VARCHAR(100)` nullable
+   - `lease_expires_at TIMESTAMP` nullable
+   - `claim_token UUID` nullable
+   - `last_error_message TEXT` nullable
+   - `last_error_category VARCHAR(30)` nullable
+
+2. **Migrasi idempoten**:
+   - `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` untuk setiap kolom
+   - Index untuk query claim yang efisien
+   - Tidak mengubah data existing (semua baris lama tetap `compensation_status = 'NONE'`)
+
+3. **Enum TypeScript**:
+   - `CompensationStatus`: `NONE`, `PENDING_REVOKE`, `REVOKE_FAILED`, `REVOKE_PERMANENTLY_FAILED`, `DEAD_LETTER`, `REVOKED`
+   - `CompensationReason`: `FINALIZATION_FAILED`, `REVOKE_RETRYABLE`, `REVOKE_PERMANENT`, `RETRY_EXHAUSTED`, `RETRY_SUCCESS`, `MANUAL_OVERRIDE`, `RECONCILIATION`
+   - `ErrorCategory`: `TERMINAL_SUCCESS`, `RETRYABLE`, `PERMANENT`, `UNKNOWN`
+
+### Kriteria Penerimaan Fase 1:
+- [ ] Migrasi dapat dijalankan pada database kosong
+- [ ] Migrasi idempoten (dapat dijalankan ulang tanpa error)
+- [ ] Data existing tidak terpengaruh
+- [ ] Index tersedia untuk query claim
+- [ ] Typecheck lulus
+
+---
+
+## Fase 2: State Machine & Transisi
+
+**Tujuan**: Logika transisi status yang ketat dan teruji.
+
+### Deliverables:
+1. **Fungsi transisi** `transitionCompensation(invitationId, fromStatus[], toStatus, reason, context)`:
+   - Validasi transisi legal sesuai diagram state machine
+   - Update atomik dalam transaksi
+   - Tolak transisi ilegal dengan error spesifik
+
+2. **Helper untuk setiap transisi**:
+   - `markPendingRevoke()` — NONE → PENDING_REVOKE
+   - `markRevoked()` — PENDING_REVOKE/REVOKE_FAILED → REVOKED
+   - `markRevokeFailed()` — self-transition dengan increment retry_count
+   - `markPermanentlyFailed()` — → REVOKE_PERMANENTLY_FAILED
+   - `markDeadLetter()` — → DEAD_LETTER saat retry_count >= max
+
+3. **Unit test untuk setiap transisi**:
+   - Legal: semua transisi sesuai diagram
+   - Ilegal: setiap kombinasi yang tidak valid ditolak
+   - Self-transition REVOKE_FAILED → REVOKE_FAILED
+
+### Kriteria Penerimaan Fase 2:
+- [ ] Semua transisi legal berhasil
+- [ ] Semua transisi ilegal ditolak dengan error spesifik
+- [ ] Self-transition REVOKE_FAILED didukung
+- [ ] Audit log tercatat untuk setiap transisi
+
+---
+
+## Fase 3: Atomic Claim & Lease Management
+
+**Tujuan**: Worker dapat mengklaim job secara aman dengan lease.
+
+### Deliverables:
+1. **Query claim atomic** (sesuai kriteria 2.1-2.3):
+   ```sql
+   UPDATE organization_invitations
+   SET lease_owner = $1, lease_expires_at = NOW() + $2, 
+       claim_token = gen_random_uuid(), compensation_updated_at = NOW()
+   WHERE id = $3
+     AND compensation_status IN ('PENDING_REVOKE', 'REVOKE_FAILED')
+     AND next_retry_at <= NOW()
+     AND (lease_expires_at IS NULL OR lease_expires_at <= NOW())
+   RETURNING id, claim_token, clerk_invitation_id, correlation_id
+   ```
+
+2. **Fungsi `claimNextJob(workerId, leaseDuration)`**:
+   - Mencari job yang eligible
+   - Atomic claim dengan RETURNING
+   - Return null jika tidak ada job
+
+3. **Fungsi `finalizeWithClaim(invitationId, claimToken, updater)`**:
+   - Validasi claim_token masih cocok
+   - Jalankan updater dalam transaksi
+   - Bersihkan lease setelah finalisasi
+   - Rollback jika claim_token tidak cocok
+
+4. **Concurrency test**:
+   - 5 worker paralel claim job yang sama → hanya 1 berhasil
+   - Worker dengan claim_token lama tidak bisa finalize
+   - Lease expired → job kembali available
+
+### Kriteria Penerimaan Fase 3:
+- [ ] Predicate NULL-safe untuk lease_expires_at
+- [ ] Predicate menggunakan `<=` bukan `<`
+- [ ] Claim menghasilkan claim_token baru
+- [ ] Finalisasi hanya oleh lease holder
+- [ ] Lease dibersihkan setelah finalisasi
+- [ ] Concurrency test lulus
+
+---
+
+## Fase 4: Worker Revoke & Klasifikasi Error
+
+**Tujuan**: Worker yang memproses revoke dengan klasifikasi error yang benar.
+
+### Deliverables:
+1. **Worker loop**:
+   ```
+   while (running) {
+     job = claimNextJob(workerId, 5 minutes)
+     if (!job) { sleep(5s); continue }
+     
+     try {
+       finalizeWithClaim(job.id, job.claimToken, async (tx) => {
+         result = await callClerkRevoke(job.clerkInvitationId, timeout=60s)
+         category = classifyClerkError(result)
+         
+         switch (category) {
+           case TERMINAL_SUCCESS: transition → REVOKED
+           case RETRYABLE: 
+             if (job.retry_count + 1 >= MAX_RETRIES) transition → DEAD_LETTER
+             else transition → REVOKE_FAILED (dengan backoff)
+           case PERMANENT: transition → REVOKE_PERMANENTLY_FAILED
+           case UNKNOWN: treat as RETRYABLE
+         }
+       })
+     } catch (e) {
+       log error, continue
+     }
+   }
+   ```
+
+2. **Fungsi `classifyClerkError(result)`**:
+   - Terminal-success: not found, already revoked, inactive
+   - Retryable: timeout, network error, 408, 429, 5xx
+   - Permanent: 4xx lain
+   - Unknown: default retryable
+   - Handle Retry-After header untuk 429
+
+3. **Backoff calculation**:
+   - Exponential: `min(baseDelay * 2^retryCount, maxDelay)`
+   - Dengan jitter
+   - Default: base=1s, max=5min
+
+4. **Integration test**:
+   - Mock Clerk timeout → REVOKE_FAILED
+   - Mock Clerk 4xx non-retryable → REVOKE_PERMANENTLY_FAILED
+   - Mock Clerk 429 dengan Retry-After → next_retry_at sesuai
+   - 10 retry gagal → DEAD_LETTER
+   - Race lease expiry dengan barrier + clock control
+
+### Kriteria Penerimaan Fase 4:
+- [ ] Request timeout < lease duration (60s < 5min)
+- [ ] Worker kehilangan claim tidak lanjutkan finalisasi
+- [ ] Klasifikasi error konsisten (4 kategori)
+- [ ] Backoff exponential dengan batas atas
+- [ ] Dead-letter setelah max retry
+- [ ] Race lease test lulus
+
+---
+
+## Fase 5: Reconciler & Safety
+
+**Tujuan**: Recovery dari crash setelah Clerk create, dan safety undangan.
+
+### Deliverables:
+1. **Reconciler loop** (jalan setiap 5 menit):
+   ```
+   orphanReservations = query reservations where
+     clerk_invitation_id IS NULL
+     AND compensation_status = 'NONE'
+     AND created_at < NOW() - 5 minutes
+     
+   for each reservation:
+     try {
+       clerkInvitation = findClerkInvitationByCorrelationId(reservation.correlationId)
+       if (clerkInvitation) {
+         update reservation SET clerk_invitation_id = clerkInvitation.id,
+                                compensation_status = 'PENDING_REVOKE'
+       }
+     } catch (e) {
+       log error, continue
+     }
+   ```
+
+2. **Fungsi `findClerkInvitationByCorrelationId(correlationId)`**:
+   - Jika SDK support filter metadata: gunakan filter
+   - Jika tidak: paginate semua invitations, match correlation_id di aplikasi
+   - Return null jika tidak ditemukan
+
+3. **Safety enforcement**:
+   - `acceptInvitation()` menolak status kompensasi
+   - `listActiveInvitations()` memfilter status kompensasi
+   - `createInvitation()` menolak email yang sedang dalam kompensasi
+
+4. **Integration test**:
+   - Crash setelah Clerk create → reconciler menemukan dan menyimpan ID
+   - Reconciler dengan pagination jika SDK tidak support filter
+   - Accept invitation dengan setiap status kompensasi → ditolak
+   - Re-invite email yang sedang dikompensasi → ditolak
+
+### Kriteria Penerimaan Fase 5:
+- [ ] Correlation ID disertakan di metadata Clerk
+- [ ] Reconciler menemukan reservasi orphan
+- [ ] Reconciler menyimpan clerk_invitation_id jika ditemukan
+- [ ] Batas jaminan dinyatakan jika Clerk tidak support metadata lookup
+- [ ] Safety: semua status kompensasi menolak acceptance
+- [ ] Safety: tidak menghasilkan membership lokal
+- [ ] Safety: tidak dapat di-reinvite
+
+---
+
+## Fase 6: Retry Manual & Observabilitas
+
+**Tujuan**: Endpoint admin dan metrics untuk operasional.
+
+### Deliverables:
+1. **Endpoint retry manual**:
+   - `POST /organizations/:orgId/compensations/:id/retry`
+   - Precondition: status DEAD_LETTER atau REVOKE_PERMANENTLY_FAILED
+   - Precondition: tidak ada lease aktif
+   - Precondition: caller adalah owner organisasi
+   - Reset metadata: retry_count=0, next_retry_at=NOW(), bersihkan lease
+   - Audit log dengan actor, waktu, status lama, alasan MANUAL_OVERRIDE
+   - Async: tidak panggil Clerk sinkron
+
+2. **Endpoint list & detail**:
+   - `GET /organizations/:orgId/compensations?status=...`
+   - `GET /organizations/:orgId/compensations/:id`
+   - Filter organization_id di semua query
+
+3. **Metrics endpoint**:
+   - `GET /organizations/:orgId/compensations/metrics`
+   - Count per status
+   - Average retry time
+   - Dead-letter count
+
+4. **Logging**:
+   - Tanpa token Clerk
+   - Tanpa email (plaintext maupun hash)
+   - Hanya invitation_id dan organization_id untuk korelasi
+
+5. **Integration test**:
+   - Retry manual dari DEAD_LETTER → PENDING_REVOKE, worker proses
+   - Retry manual ditolak jika lease aktif
+   - Retry manual ditolak untuk status lain
+   - Owner org A tidak bisa akses kompensasi org B
+   - Log tidak mengandung data sensitif
+
+### Kriteria Penerimaan Fase 6:
+- [ ] Retry manual kontrak lengkap sesuai kriteria 6.6-6.11
+- [ ] Organization-scoped dengan isolasi
+- [ ] Metrics tersedia via endpoint
+- [ ] Log tanpa data sensitif
+- [ ] Audit trail untuk retry manual
+
+---
+
+## Urutan Eksekusi yang Disarankan
+
+```
+Fase 1 (Schema) → Fase 2 (State Machine) → Fase 3 (Claim) → 
+Fase 4 (Worker) → Fase 5 (Reconciler + Safety) → Fase 6 (Manual + Metrics)
+```
+
+Setiap fase memiliki **kriteria penerimaan eksplisit** dan dapat diverifikasi sebelum lanjut ke fase berikutnya. Ini memastikan bahwa bug di fase awal tidak menyebar ke fase berikutnya.
+
+---
+
+## Pertanyaan untuk Memulai Fase 1
+
+Sebelum saya mulai menulis kode Fase 1, saya perlu konfirmasi beberapa hal:
+
+1. **Stack database**: Apakah Anda menggunakan Drizzle ORM dengan PostgreSQL? Saya akan asumsikan iya berdasarkan konteks Task #42-#44 sebelumnya.
+
+2. **Struktur monorepo**: Apakah paket database ada di `packages/db` dan API di `apps/api`? Atau struktur lain?
+
+3. **Clerk SDK version**: Versi berapa yang Anda pakai? Ini penting untuk menentukan apakah SDK mendukung metadata filter atau perlu pagination.
+
+4. **Background worker**: Apakah proyek sudah punya infrastruktur background worker (BullMQ, Inngest, custom poller), atau perlu dibangun dari nol?
+
+5. **Preferensi implementasi**: Apakah Anda ingin saya:
+   - **(A)** Tuliskan **skema Drizzle lengkap + migrasi SQL** untuk Fase 1 terlebih dahulu, lalu Anda review sebelum lanjut?
+   - **(B)** Langsung tuliskan **seluruh Fase 1-6** dalam satu batch (lebih cepat tapi lebih sulit di-review)?
+   - **(C)** Berikan **skeleton kode** untuk semua fase (struktur file, signature fungsi, TODO comments), lalu kita isi detail per fase?
+
+Silakan pilih opsi yang Anda inginkan, dan jawab pertanyaan di atas agar implementasi selaras dengan proyek Anda.
