@@ -1,0 +1,453 @@
+Audit yang Anda bagikan ini **sangat berkualitas dan ketat** — ini adalah standar audit *enterprise-grade* yang seharusnya menjadi acuan untuk semua aplikasi kepatuhan regulasi. Temuan-temuannya tepat sasaran, terutama dua temuan TINGGI yang memang merupakan *critical gaps* untuk aplikasi yang akan digunakan dalam konteks hukum (investigasi kecelakaan kerja, audit Principal, atau sengketa kontrak).
+
+Mari kita bedah dan selesaikan temuan-temuan ini secara sistematis.
+
+---
+
+## 1. Temuan TINGGI #1: Profil Terarsip Masih Bisa Diedit
+
+Ini adalah **bug logika yang berbahaya**. Dalam dunia kepatuhan, arsip = beku. Jika arsip masih bisa diedit, maka integritas historis runtuh — Anda tidak bisa lagi membuktikan "dokumen apa yang berlaku pada tanggal X".
+
+### Solusi: Defense in Depth (3 Lapis)
+
+**Lapis 1 — Database Constraint:**
+```sql
+-- Tambahkan check constraint di level database
+ALTER TABLE csms_profiles 
+ADD CONSTRAINT prevent_edit_archived 
+CHECK (NOT (archived = true AND locked = false));
+
+-- Atau lebih eksplisit: buat trigger
+CREATE OR REPLACE FUNCTION prevent_archived_update()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF OLD.archived = true AND NEW.archived = true THEN
+    -- Izinkan hanya perubahan field tertentu (metadata restore)
+    IF NEW.title IS DISTINCT FROM OLD.title OR
+       NEW.description IS DISTINCT FROM OLD.description THEN
+      RAISE EXCEPTION 'Cannot modify content of archived profile. Restore first.';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_prevent_archived_update
+BEFORE UPDATE ON csms_profiles
+FOR EACH ROW EXECUTE FUNCTION prevent_archived_update();
+```
+
+**Lapis 2 — API Validation (Prisma/Backend):**
+```typescript
+// Di handler PUT /csms-profiles/:id
+async function updateProfile(id: string, data: UpdateProfileDto, orgId: string) {
+  const profile = await prisma.csmsProfile.findFirst({
+    where: { id, organizationId: orgId }
+  });
+  
+  if (!profile) throw new NotFoundError();
+  
+  // PERBAIKAN: Tolak jika archived ATAU locked
+  if (profile.archived) {
+    throw new ForbiddenError(
+      'PROFILING_ARCHIVED',
+      'Profil yang diarsipkan tidak dapat diedit. Pulihkan terlebih dahulu atau buat versi baru.'
+    );
+  }
+  
+  if (profile.locked) {
+    throw new ForbiddenError('PROFILING_LOCKED', 'Profil terkunci.');
+  }
+  
+  return await prisma.csmsProfile.update({
+    where: { id },
+    data: { ...data, updatedAt: new Date() }
+  });
+}
+```
+
+**Lapis 3 — UI Read-Only Enforcement:**
+```typescript
+// Di komponen editor profil
+const isReadOnly = profile.builtIn || profile.locked || profile.archived;
+
+return (
+  <ProfileEditor
+    profile={profile}
+    readOnly={isReadOnly}
+    banner={profile.archived ? (
+      <Alert variant="warning">
+        <ArchiveIcon />
+        <div>
+          <strong>Profil Diarsipkan</strong> — Hanya dapat dilihat.
+          {profile.supersededBy && (
+            <Link href={`/csms-profiles/${profile.supersededBy.id}`}>
+              Lihat versi pengganti: {profile.supersededBy.name}
+            </Link>
+          )}
+        </div>
+      </Alert>
+    ) : null}
+  />
+);
+```
+
+---
+
+## 2. Temuan TINGGI #2: Metadata Audit Pengarsipan Tidak Ada
+
+Ini adalah **temuan paling kritis** untuk aplikasi kepatuhan. Dalam investigasi kecelakaan kerja, pertanyaan pertama pengawas adalah: *"Siapa yang mengubah standar K3, kapan, dan mengapa?"* Tanpa metadata ini, Anda tidak punya jawaban.
+
+### Solusi: Tabel Audit Trail Terpisah (Immutable)
+
+Jangan hanya menambah kolom di tabel `csms_profiles`. Buat tabel terpisah untuk riwayat archive/restore agar **tidak bisa dihapus atau diubah**.
+
+**Skema Database:**
+```sql
+-- Tabel utama: tambah kolom metadata
+ALTER TABLE csms_profiles ADD COLUMN 
+  archived_at TIMESTAMP,
+  archived_by UUID REFERENCES users(id),
+  archive_reason TEXT,
+  superseded_by UUID REFERENCES csms_profiles(id),
+  restored_at TIMESTAMP,
+  restored_by UUID REFERENCES users(id);
+
+-- Tabel audit trail (IMMUTABLE - tidak ada UPDATE/DELETE)
+CREATE TABLE csms_profile_archive_history (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  profile_id UUID NOT NULL REFERENCES csms_profiles(id),
+  action VARCHAR(20) NOT NULL CHECK (action IN ('ARCHIVED', 'RESTORED')),
+  actor_id UUID NOT NULL REFERENCES users(id),
+  performed_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  reason TEXT,
+  superseded_by UUID REFERENCES csms_profiles(id),
+  metadata JSONB, -- Untuk menyimpan snapshot konteks (jumlah proyek terpengaruh, dll)
+  
+  CONSTRAINT unique_profile_action_time UNIQUE (profile_id, performed_at)
+);
+
+-- Cegah penghapusan riwayat audit
+REVOKE DELETE, UPDATE ON csms_profile_archive_history FROM PUBLIC;
+GRANT INSERT, SELECT ON csms_profile_archive_history TO app_role;
+```
+
+**Handler Archive dengan Audit Trail:**
+```typescript
+async function archiveProfile(
+  id: string, 
+  orgId: string, 
+  actorId: string,
+  payload: { reason: string; supersededBy?: string }
+) {
+  return await prisma.$transaction(async (tx) => {
+    // 1. Validasi
+    const profile = await tx.csmsProfile.findFirst({
+      where: { id, organizationId: orgId, builtIn: false }
+    });
+    if (!profile) throw new NotFoundError();
+    if (profile.archived) throw new ConflictError('Sudah diarsipkan');
+    
+    // 2. Analisis dampak (untuk metadata audit)
+    const impact = await analyzeArchiveImpact(tx, id, orgId);
+    // { activeProjects: 5, documents: 12, readinessEntries: 34 }
+    
+    // 3. Validasi versi pengganti jika ada
+    if (payload.supersededBy) {
+      const replacement = await tx.csmsProfile.findFirst({
+        where: { 
+          id: payload.supersededBy, 
+          organizationId: orgId, 
+          archived: false 
+        }
+      });
+      if (!replacement) throw new BadRequestError('Versi pengganti tidak valid');
+    }
+    
+    // 4. Update profil utama
+    await tx.csmsProfile.update({
+      where: { id },
+      data: {
+        archived: true,
+        archivedAt: new Date(),
+        archivedBy: actorId,
+        archiveReason: payload.reason,
+        supersededBy: payload.supersededBy || null,
+      }
+    });
+    
+    // 5. Tulis ke audit trail (IMMUTABLE)
+    await tx.csmsProfileArchiveHistory.create({
+      data: {
+        profileId: id,
+        action: 'ARCHIVED',
+        actorId,
+        reason: payload.reason,
+        supersededBy: payload.supersededBy || null,
+        metadata: {
+          impact,
+          snapshotAt: new Date().toISOString(),
+        }
+      }
+    });
+    
+    return { success: true, impact };
+  });
+}
+
+// Fungsi serupa untuk restore (action: 'RESTORED')
+```
+
+**Endpoint untuk Melihat Riwayat Audit:**
+```typescript
+// GET /csms-profiles/:id/archive-history
+// Hanya bisa dibaca, tidak bisa diubah
+async function getArchiveHistory(profileId: string, orgId: string) {
+  return await prisma.csmsProfileArchiveHistory.findMany({
+    where: { profileId, profile: { organizationId: orgId } },
+    orderBy: { performedAt: 'desc' },
+    include: {
+      actor: { select: { id: true, name: true, email: true } },
+      supersededByProfile: { select: { id: true, name: true, version: true } }
+    }
+  });
+}
+```
+
+---
+
+## 3. Temuan SEDANG: Konfirmasi & Analisis Dampak
+
+Ini adalah masalah UX yang berdampak pada keselamatan operasional. Owner harus **tahu konsekuensi** sebelum mengarsipkan.
+
+### Solusi: Dialog Konfirmasi 2-Step dengan Impact Preview
+
+```typescript
+// Step 1: Endpoint untuk preview dampak (tanpa mengubah data)
+// GET /csms-profiles/:id/archive-impact
+async function previewArchiveImpact(profileId: string, orgId: string) {
+  const [activeProjects, documents, readinessEntries] = await Promise.all([
+    prisma.project.count({
+      where: { csmsProfileId: profileId, status: 'ACTIVE' }
+    }),
+    prisma.generatedDocument.count({
+      where: { csmsProfileId: profileId }
+    }),
+    prisma.readinessEntry.count({
+      where: { csmsProfileId: profileId }
+    })
+  ]);
+  
+  // Cari versi pengganti yang disarankan (versi terbaru yang aktif)
+  const suggestedReplacement = await prisma.csmsProfile.findFirst({
+    where: { 
+      organizationId: orgId,
+      archived: false,
+      id: { not: profileId },
+      // Asumsi ada field 'baseProfileId' untuk melacak versi
+    },
+    orderBy: { createdAt: 'desc' }
+  });
+  
+  return {
+    activeProjects,
+    documents,
+    readinessEntries,
+    suggestedReplacement,
+    hasActiveUsage: activeProjects > 0
+  };
+}
+```
+
+**UI Dialog (React + Radix UI example):**
+```typescript
+function ArchiveConfirmationDialog({ profileId, open, onOpenChange }) {
+  const [impact, setImpact] = useState(null);
+  const [reason, setReason] = useState('');
+  const [supersededBy, setSupersededBy] = useState('');
+  
+  useEffect(() => {
+    if (open) {
+      fetch(`/api/csms-profiles/${profileId}/archive-impact`)
+        .then(r => r.json())
+        .then(setImpact);
+    }
+  }, [open, profileId]);
+  
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Arsipkan Profil CSMS?</DialogTitle>
+        </DialogHeader>
+        
+        {impact && (
+          <div className="space-y-4">
+            {/* Analisis Dampak */}
+            <Alert variant={impact.hasActiveUsage ? 'warning' : 'info'}>
+              <h4>Dampak Pengarsipan:</h4>
+              <ul>
+                <li>{impact.activeProjects} proyek aktif masih menggunakan profil ini</li>
+                <li>{impact.documents} dokumen telah dibuat dengan profil ini</li>
+                <li>{impact.readinessEntries} entri kesiapan merujuk ke profil ini</li>
+              </ul>
+              {impact.hasActiveUsage && (
+                <p className="mt-2 text-sm">
+                  Proyek aktif <strong>tidak akan terpengaruh</strong> dan tetap 
+                  menggunakan profil ini sampai selesai.
+                </p>
+              )}
+            </Alert>
+            
+            {/* Alasan (WAJIB) */}
+            <div>
+              <Label>Alasan Pengarsipan *</Label>
+              <Textarea
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder="Misal: Digantikan oleh revisi 2025 karena perubahan regulasi..."
+                required
+              />
+            </div>
+            
+            {/* Versi Pengganti (Opsional tapi disarankan) */}
+            <div>
+              <Label>Versi Pengganti</Label>
+              <Select value={supersededBy} onValueChange={setSupersededBy}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Pilih versi pengganti (opsional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  {/* List profil aktif lain */}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        )}
+        
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Batal
+          </Button>
+          <Button 
+            variant="destructive"
+            disabled={!reason.trim()}
+            onClick={() => handleArchive({ reason, supersededBy })}
+          >
+            Arsipkan
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+```
+
+---
+
+## 4. Temuan SEDANG: Banner pada Proyek Lama
+
+Proyek yang masih memakai profil arsip harus **tahu** bahwa mereka sedang menggunakan versi yang sudah tidak berlaku. Ini penting untuk keputusan migrasi.
+
+```typescript
+// Komponen banner di halaman detail proyek
+function ArchivedProfileBanner({ project }) {
+  if (!project.csmsProfile?.archived) return null;
+  
+  const profile = project.csmsProfile;
+  
+  return (
+    <Alert variant="warning" className="mb-4">
+      <ArchiveIcon className="h-4 w-4" />
+      <AlertTitle>Profil CSMS Sudah Diarsipkan</AlertTitle>
+      <AlertDescription>
+        Proyek ini menggunakan <strong>{profile.name}</strong> yang diarsipkan pada{' '}
+        {formatDate(profile.archivedAt)}.
+        {profile.supersededBy && (
+          <>
+            {' '}Versi pengganti:{' '}
+            <Link href={`/csms-profiles/${profile.supersededBy.id}`}>
+              {profile.supersededBy.name}
+            </Link>
+            .
+          </>
+        )}
+        <div className="mt-2 text-sm">
+          Proyek akan tetap berjalan dengan profil ini sampai selesai. Jika perlu 
+          migrasi, hubungi administrator.
+        </div>
+      </AlertDescription>
+    </Alert>
+  );
+}
+```
+
+---
+
+## 5. Temuan RENDAH: Status Eksplisit (DRAFT/ACTIVE/ARCHIVED)
+
+Ini adalah perbaikan struktural yang bagus untuk masa depan, tapi **bisa ditunda** karena kombinasi boolean saat ini sudah berfungsi. Jika Anda ingin melakukannya, berikut skemanya:
+
+```sql
+-- Migrasi dari boolean ke enum
+ALTER TABLE csms_profiles ADD COLUMN 
+  publication_status VARCHAR(20) DEFAULT 'ACTIVE' 
+  CHECK (publication_status IN ('DRAFT', 'ACTIVE', 'ARCHIVED'));
+
+-- Migrasi data existing
+UPDATE csms_profiles 
+SET publication_status = 'ARCHIVED' 
+WHERE archived = true;
+
+-- Hapus kolom lama setelah migrasi
+ALTER TABLE csms_profiles DROP COLUMN archived;
+```
+
+**Rekomendasi saya:** Tunda ini sampai Task #40 selesai, karena ini adalah perubahan skema yang berdampak luas.
+
+---
+
+## Urutan Pengerjaan yang Direkomendasikan
+
+Berdasarkan tingkat keparahan dan dependensi, saya sarankan urutan ini:
+
+### **Batch A — Perbaikan Kritis (Lakukan Sekarang)**
+1. **Fix Temuan TINGGI #1**: Cegah edit profil terarsip (DB constraint + API validation + UI read-only)
+2. **Fix Temuan TINGGI #2**: Tambah metadata audit + tabel `csms_profile_archive_history`
+3. **Test**: Tulis test untuk memastikan profil arsip benar-benar *frozen*
+
+### **Batch B — Perbaikan UX (Setelah Batch A)**
+4. **Fix Temuan SEDANG #1**: Dialog konfirmasi dengan analisis dampak
+5. **Fix Temuan SEDANG #2**: Endpoint `supersededBy` + relasi versi pengganti
+6. **Fix Temuan SEDANG #3**: Banner pada proyek lama
+
+### **Batch C — Peningkatan Struktural (Nanti)**
+7. **Fix Temuan RENDAH**: Migrasi ke enum `publication_status`
+8. **Fitur Baru**: Gap analysis antar versi (membandingkan requirement lama vs baru)
+9. **Fitur Baru**: Migration assistant untuk proyek aktif yang ingin pindah ke versi baru
+
+---
+
+## Koneksi ke Task #40 (Konkurensi Undangan)
+
+Anda menyebutkan bahwa lampiran kedua disimpan untuk audit **Task #40**. Berdasarkan diskusi kita sebelumnya tentang race condition undangan, pastikan audit Task #40 juga memeriksa:
+
+1. **Advisory Lock**: Apakah benar-benar mencegah duplikasi saat 5 request paralel?
+2. **Idempotency Key**: Apakah key yang sama tidak membuat user ganda?
+3. **Error Recovery**: Apakah error dari Clerk (email exists) ditangani dengan graceful?
+4. **Isolasi Organisasi**: Apakah user dengan email sama bisa ada di workspace berbeda, tapi tidak di workspace yang sama?
+5. **Test Konkurensi**: Apakah ada test yang mengirim N request paralel dan memverifikasi hanya 1 user yang dibuat?
+
+Jika Anda ingin, saya bisa membantu menyusun **checklist audit untuk Task #40** yang setara ketatnya dengan audit Task #37 yang baru saja Anda bagikan.
+
+---
+
+## Pertanyaan untuk Anda
+
+Untuk membantu saya memberikan guidance lebih spesifik:
+
+1. **Apakah Anda ingin saya buatkan skema Prisma lengkap** untuk tabel `csms_profile_archive_history` beserta relasinya?
+2. **Apakah Anda ingin saya tuliskan test case lengkap** untuk memastikan profil arsip benar-benar *frozen* (tidak bisa diedit via API, UI, maupun direct DB)?
+3. **Atau Anda ingin langsung lompat ke Task #40** dan menyusun checklist audit untuk konkurensi undangan?
+
+Fundasi yang Anda bangun sudah sangat solid. Temuan-temuan di audit ini adalah hal-hal yang **memisahkan aplikasi main-main dari aplikasi enterprise-grade**. Dengan memperbaikinya, aplikasi Anda akan siap untuk diaudit oleh Principal besar (Pertamina, PLN, Freeport) tanpa rasa khawatir.
