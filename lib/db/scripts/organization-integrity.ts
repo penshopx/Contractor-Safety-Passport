@@ -3,11 +3,14 @@ import type { PoolClient } from "pg";
 const safetyTables = [
   "projects",
   "project_csms_readiness",
+  "project_csms_readiness_history",
   "csms_profile_versions",
   "people",
   "safety_documents",
   "monthly_reports",
   "safety_boq_items",
+  "safety_boq_drafts",
+  "safety_price_catalog_items",
   "certificates",
   "field_activities",
 ] as const;
@@ -57,9 +60,18 @@ export async function migrateOrganizationIntegrity(client: PoolClient) {
         BEGIN
           IF NOT EXISTS (
             SELECT 1
-            FROM pg_constraint
-            WHERE conname = '${table}_organization_id_organizations_id_fk'
-              AND conrelid = '${table}'::regclass
+            FROM pg_constraint constraint_record
+            JOIN pg_attribute source_column
+              ON source_column.attrelid = constraint_record.conrelid
+             AND source_column.attnum = ANY (constraint_record.conkey)
+            JOIN pg_attribute target_column
+              ON target_column.attrelid = constraint_record.confrelid
+             AND target_column.attnum = ANY (constraint_record.confkey)
+            WHERE constraint_record.contype = 'f'
+              AND constraint_record.conrelid = '${table}'::regclass
+              AND constraint_record.confrelid = 'organizations'::regclass
+              AND source_column.attname = 'organization_id'
+              AND target_column.attname = 'id'
           ) THEN
             ALTER TABLE ${table}
               ADD CONSTRAINT ${table}_organization_id_organizations_id_fk
