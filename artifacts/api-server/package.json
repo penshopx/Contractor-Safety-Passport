@@ -7,6 +7,7 @@
     "dev": "export NODE_ENV=development && pnpm run build && pnpm run start",
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
+    "start:production": "pnpm --filter @workspace/db run push || { echo 'Production database migration failed; API will not start.' >&2; exit 1; }; pnpm run start",
     "test": "node --test --experimental-strip-types src/**/*.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
