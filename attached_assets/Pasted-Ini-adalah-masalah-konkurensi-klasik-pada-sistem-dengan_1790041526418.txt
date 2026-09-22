@@ -1,0 +1,460 @@
+Ini adalah **masalah konkurensi klasik pada sistem dengan object storage** yang sangat berbahaya jika tidak ditangani dengan benar. Skenario kegagalannya persis seperti ini:
+
+```
+T0: User upload foto → dapat URL `photo_abc.jpg` (belum ditautkan ke aktivitas)
+T1: Cleanup job berjalan, scan semua foto di S3
+T2: Cleanup lihat `photo_abc.jpg` tidak ada di tabel `activity_photos`
+T3: Cleanup hapus `photo_abc.jpg` dari S3 ❌
+T4: User klik "Simpan Aktivitas" dengan URL `photo_abc.jpg` → foto hilang!
+```
+
+Solusi yang Anda sebutkan (pemeriksaan referensi + prasyarat generasi object) sudah tepat arahnya. Mari kita pertajam menjadi arsitektur yang **benar-benar tahan uji**.
+
+---
+
+## 1. Arsitektur Inti: Two-Phase Cleanup dengan Grace Period
+
+Jangan pernah menghapus foto secara langsung. Gunakan pola **"Mark-then-Delete"** dengan jeda waktu yang cukup untuk mengakomodasi waktu upload + input form user.
+
+### Fase 1: Mark Orphan (berjalan setiap jam)
+### Fase 2: Delete Marked (berjalan setiap hari, hanya yang sudah di-mark > 24 jam)
+
+---
+
+## 2. Skema Database yang Diperlukan
+
+```sql
+-- Tabel foto dengan metadata lifecycle
+CREATE TABLE activity_photos (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id UUID NOT NULL REFERENCES organizations(id),
+  storage_key VARCHAR(512) NOT NULL UNIQUE,  -- path di S3/MinIO
+  file_size_bytes BIGINT NOT NULL,
+  content_type VARCHAR(50) NOT NULL,
+  uploaded_by UUID NOT NULL REFERENCES users(id),
+  uploaded_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  
+  -- Lifecycle management
+  orphan_marked_at TIMESTAMP,              -- Kapan ditandai sebagai orphan
+  orphan_mark_reason VARCHAR(50),          -- 'NO_REFERENCE' | 'ACTIVITY_DELETED'
+  deletion_scheduled_at TIMESTAMP,         -- Kapan dijadwalkan untuk dihapus
+  
+  -- Referensi (bisa NULL jika belum ditautkan)
+  activity_id UUID REFERENCES activities(id) ON DELETE SET NULL,
+  inspection_id UUID REFERENCES inspections(id) ON DELETE SET NULL,
+  tbm_id UUID REFERENCES tbm_sessions(id) ON DELETE SET NULL,
+  
+  -- Idempotency & audit
+  upload_session_token VARCHAR(64),        -- Token sesi upload
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- Index untuk query cleanup yang efisien
+CREATE INDEX idx_photos_orphan_candidate 
+  ON activity_photos(organization_id, orphan_marked_at) 
+  WHERE orphan_marked_at IS NOT NULL;
+
+CREATE INDEX idx_photos_unmarked 
+  ON activity_photos(organization_id, uploaded_at) 
+  WHERE orphan_marked_at IS NULL;
+
+-- Index untuk semua kemungkinan referensi
+CREATE INDEX idx_photos_by_activity ON activity_photos(activity_id) WHERE activity_id IS NOT NULL;
+CREATE INDEX idx_photos_by_inspection ON activity_photos(inspection_id) WHERE inspection_id IS NOT NULL;
+CREATE INDEX idx_photos_by_tbm ON activity_photos(tbm_id) WHERE tbm_id IS NOT NULL;
+```
+
+---
+
+## 3. Logika Cleanup yang Aman (Fase 1: Mark Orphan)
+
+```typescript
+// jobs/mark-orphan-photos.ts
+const GRACE_PERIOD_MINUTES = 60; // Foto baru punya 60 menit untuk ditautkan
+const BATCH_SIZE = 500;
+
+async function markOrphanPhotos() {
+  const graceThreshold = new Date(Date.now() - GRACE_PERIOD_MINUTES * 60 * 1000);
+  
+  // Query atomik: cari foto yang TIDAK direferensi DAN sudah lewat grace period
+  // Gunakan LEFT JOIN untuk efisiensi, bukan NOT EXISTS subquery per baris
+  const orphanCandidates = await db
+    .select({ id: activityPhotos.id })
+    .from(activityPhotos)
+    .leftJoin(activities, eq(activityPhotos.activityId, activities.id))
+    .leftJoin(inspections, eq(activityPhotos.inspectionId, inspections.id))
+    .leftJoin(tbmSessions, eq(activityPhotos.tbmId, tbmSessions.id))
+    .where(
+      and(
+        isNull(activityPhotos.orphanMarkedAt),
+        lt(activityPhotos.uploadedAt, graceThreshold),
+        // WAJIB: tidak ada referensi ke entitas manapun
+        isNull(activities.id),
+        isNull(inspections.id),
+        isNull(tbmSessions.id),
+        // Tambahan: bukan foto yang sedang dalam sesi upload aktif
+        isNull(activityPhotos.uploadSessionToken)
+      )
+    )
+    .limit(BATCH_SIZE);
+
+  if (orphanCandidates.length === 0) return { marked: 0 };
+
+  // Mark dalam satu transaksi untuk atomicity
+  const markedAt = new Date();
+  const deletionScheduledAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 jam dari sekarang
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(activityPhotos)
+      .set({
+        orphanMarkedAt: markedAt,
+        orphanMarkReason: 'NO_REFERENCE',
+        deletionScheduledAt: deletionScheduledAt,
+        updatedAt: markedAt,
+      })
+      .where(
+        inArray(
+          activityPhotos.id,
+          orphanCandidates.map((c) => c.id)
+        )
+      );
+
+    // Catat ke audit log (immutable)
+    await tx.insert(photoCleanupAudit).values(
+      orphanCandidates.map((c) => ({
+        photoId: c.id,
+        action: 'MARKED_ORPHAN',
+        performedAt: markedAt,
+        reason: 'NO_REFERENCE',
+        scheduledDeletionAt: deletionScheduledAt,
+      }))
+    );
+  });
+
+  return { marked: orphanCandidates.length };
+}
+```
+
+---
+
+## 4. Logika Cleanup Fase 2: Delete yang Benar-Benar Aman
+
+```typescript
+// jobs/delete-orphan-photos.ts
+async function deleteMarkedPhotos() {
+  const now = new Date();
+  
+  // Ambil foto yang sudah waktunya dihapus
+  const toDelete = await db
+    .select()
+    .from(activityPhotos)
+    .where(
+      and(
+        isNotNull(activityPhotos.orphanMarkedAt),
+        lte(activityPhotos.deletionScheduledAt, now)
+      )
+    )
+    .limit(BATCH_SIZE);
+
+  for (const photo of toDelete) {
+    // PENTING: Verifikasi ulang sebelum hapus (double-check pattern)
+    // Foto mungkin sudah ditautkan setelah di-mark sebagai orphan
+    const stillOrphan = await verifyStillOrphan(photo.id);
+    
+    if (!stillOrphan) {
+      // Foto sudah ditautkan! Batalkan penghapusan
+      await db
+        .update(activityPhotos)
+        .set({
+          orphanMarkedAt: null,
+          orphanMarkReason: null,
+          deletionScheduledAt: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(activityPhotos.id, photo.id));
+      
+      await logAudit(photo.id, 'DELETION_CANCELLED', 'Photo was linked after being marked');
+      continue;
+    }
+
+    try {
+      // 1. Hapus dari object storage DULU
+      await objectStorage.delete(photo.storageKey);
+      
+      // 2. Baru hapus dari database
+      await db.delete(activityPhotos).where(eq(activityPhotos.id, photo.id));
+      
+      await logAudit(photo.id, 'DELETED', 'Orphan photo removed');
+    } catch (error) {
+      // Jika S3 gagal, JANGAN hapus dari DB. Retry nanti.
+      await logAudit(photo.id, 'DELETE_FAILED', error.message);
+      throw error; // Biarkan job retry
+    }
+  }
+}
+
+async function verifyStillOrphan(photoId: string): Promise<boolean> {
+  const photo = await db.query.activityPhotos.findFirst({
+    where: eq(activityPhotos.id, photoId),
+    with: {
+      activity: true,
+      inspection: true,
+      tbmSession: true,
+    },
+  });
+  
+  if (!photo) return false;
+  return !photo.activity && !photo.inspection && !photo.tbmSession;
+}
+```
+
+---
+
+## 5. Logika Tautan Foto yang Aman (Sisi User)
+
+Saat user menyimpan aktivitas, lakukan **klaim foto** dalam satu transaksi dengan aktivitas:
+
+```typescript
+// handlers/save-activity-with-photos.ts
+async function saveActivityWithPhotos(
+  organizationId: string,
+  userId: string,
+  activityData: ActivityInput,
+  photoIds: string[]
+) {
+  return await db.transaction(async (tx) => {
+    // 1. Verifikasi semua foto milik organisasi ini dan belum ditautkan
+    if (photoIds.length > 0) {
+      const photos = await tx.query.activityPhotos.findMany({
+        where: and(
+          inArray(activityPhotos.id, photoIds),
+          eq(activityPhotos.organizationId, organizationId)
+        ),
+      });
+
+      if (photos.length !== photoIds.length) {
+        throw new TeamOperationError('PHOTO_NOT_FOUND_OR_ACCESS_DENIED');
+      }
+
+      // 2. WAJIB: Cek apakah ada foto yang sudah dijadwalkan dihapus
+      const scheduledForDeletion = photos.filter((p) => p.deletionScheduledAt !== null);
+      if (scheduledForDeletion.length > 0) {
+        // Batalkan penjadwalan hapus karena foto akan dipakai
+        await tx
+          .update(activityPhotos)
+          .set({
+            orphanMarkedAt: null,
+            orphanMarkReason: null,
+            deletionScheduledAt: null,
+            updatedAt: new Date(),
+          })
+          .where(
+            inArray(
+              activityPhotos.id,
+              scheduledForDeletion.map((p) => p.id)
+            )
+          );
+      }
+    }
+
+    // 3. Buat aktivitas
+    const [activity] = await tx
+      .insert(activities)
+      .values({
+        ...activityData,
+        organizationId,
+        createdBy: userId,
+      })
+      .returning();
+
+    // 4. Tautkan semua foto dalam satu statement
+    if (photoIds.length > 0) {
+      await tx
+        .update(activityPhotos)
+        .set({
+          activityId: activity.id,
+          updatedAt: new Date(),
+        })
+        .where(inArray(activityPhotos.id, photoIds));
+    }
+
+    return activity;
+  });
+}
+```
+
+---
+
+## 6. Upload Session Token (Perlindungan Tambahan)
+
+Saat user memulai upload, beri token sesi. Foto dengan token aktif **tidak pernah** di-mark sebagai orphan.
+
+```typescript
+// Saat user mulai upload
+const sessionToken = crypto.randomUUID();
+await redis.setex(`upload_session:${sessionToken}`, 30 * 60, userId); // 30 menit TTL
+
+// Saat upload foto
+await db.insert(activityPhotos).values({
+  storageKey,
+  organizationId,
+  uploadedBy: userId,
+  uploadSessionToken: sessionToken, // PENTING
+  // ...
+});
+
+// Saat user selesai upload semua foto (sebelum save aktivitas)
+await redis.del(`upload_session:${sessionToken}`);
+await db
+  .update(activityPhotos)
+  .set({ uploadSessionToken: null })
+  .where(eq(activityPhotos.uploadSessionToken, sessionToken));
+```
+
+Di query cleanup, tambahkan kondisi:
+```typescript
+isNull(activityPhotos.uploadSessionToken) // Jangan sentuh foto yang sedang di-upload
+```
+
+---
+
+## 7. Strategi Testing Integrasi (WAJIB)
+
+Ini adalah bagian terpenting. Testing unit tidak cukup untuk konkurensi seperti ini.
+
+### Test 1: Race Condition Upload vs Cleanup
+```typescript
+test('foto yang baru diupload tidak dihapus oleh cleanup', async () => {
+  // 1. Upload foto (tanpa tautan aktivitas)
+  const photo = await uploadPhoto(orgId, userId);
+  
+  // 2. Langsung jalankan cleanup (seharusnya TIDAP menghapus karena masih dalam grace period)
+  await markOrphanPhotos();
+  
+  // 3. Verifikasi foto masih ada
+  const stillExists = await db.query.activityPhotos.findFirst({
+    where: eq(activityPhotos.id, photo.id),
+  });
+  expect(stillExists).toBeDefined();
+  expect(stillExists.orphanMarkedAt).toBeNull();
+});
+```
+
+### Test 2: Foto yang Sudah Lewat Grace Period tapi Baru Ditautkan
+```typescript
+test('foto yang di-mark orphan tapi kemudian ditautkan tidak jadi dihapus', async () => {
+  // 1. Upload foto dan biarkan lewat grace period (manipulasi timestamp)
+  const photo = await uploadPhoto(orgId, userId, {
+    uploadedAt: new Date(Date.now() - 2 * 60 * 60 * 1000), // 2 jam lalu
+  });
+  
+  // 2. Jalankan cleanup (akan mark sebagai orphan)
+  await markOrphanPhotos();
+  
+  const marked = await db.query.activityPhotos.findFirst({
+    where: eq(activityPhotos.id, photo.id),
+  });
+  expect(marked.orphanMarkedAt).not.toBeNull();
+  
+  // 3. User menautkan foto ke aktivitas
+  const activity = await saveActivityWithPhotos(orgId, userId, activityData, [photo.id]);
+  
+  // 4. Jalankan delete job
+  await deleteMarkedPhotos();
+  
+  // 5. Verifikasi foto TIDAK dihapus dan tautan tetap ada
+  const finalPhoto = await db.query.activityPhotos.findFirst({
+    where: eq(activityPhotos.id, photo.id),
+  });
+  expect(finalPhoto).toBeDefined();
+  expect(finalPhoto.activityId).toBe(activity.id);
+  expect(finalPhoto.orphanMarkedAt).toBeNull(); // Dibatalkan
+  
+  // 6. Verifikasi file masih ada di object storage
+  const existsInStorage = await objectStorage.exists(photo.storageKey);
+  expect(existsInStorage).toBe(true);
+});
+```
+
+### Test 3: Konkurensi Nyata dengan Database
+```typescript
+test('5 request tautan foto paralel tidak menyebabkan double-link atau orphan palsu', async () => {
+  const photo = await uploadPhoto(orgId, userId);
+  
+  // 5 request save aktivitas paralel dengan foto yang sama
+  const results = await Promise.allSettled(
+    Array(5).fill(null).map(() =>
+      saveActivityWithPhotos(orgId, userId, activityData, [photo.id])
+    )
+  );
+  
+  // Hanya 1 yang berhasil (karena foreign key constraint)
+  const successes = results.filter((r) => r.status === 'fulfilled');
+  expect(successes.length).toBe(1);
+  
+  // Foto tetap tertaut ke 1 aktivitas
+  const finalPhoto = await db.query.activityPhotos.findFirst({
+    where: eq(activityPhotos.id, photo.id),
+  });
+  expect(finalPhoto.activityId).not.toBeNull();
+});
+```
+
+### Test 4: Object Storage + Database Konsistensi
+```typescript
+test('jika S3 gagal dihapus, database tidak ikut dihapus', async () => {
+  const photo = await createOrphanPhotoPastGracePeriod();
+  
+  // Mock S3 untuk gagal
+  objectStorage.delete = vi.fn().mockRejectedValue(new Error('S3 unavailable'));
+  
+  await expect(deleteMarkedPhotos()).rejects.toThrow();
+  
+  // Foto masih ada di database
+  const stillInDb = await db.query.activityPhotos.findFirst({
+    where: eq(activityPhotos.id, photo.id),
+  });
+  expect(stillInDb).toBeDefined();
+  
+  // Audit log mencatat kegagalan
+  const audit = await getLatestAudit(photo.id);
+  expect(audit.action).toBe('DELETE_FAILED');
+});
+```
+
+---
+
+## 8. Edge Cases yang Harus Diwaspadai
+
+| Edge Case | Solusi |
+|-----------|--------|
+| **User upload foto lalu tutup browser tanpa save** | Grace period 60 menit akan menandai sebagai orphan, lalu dihapus setelah 24 jam |
+| **Foto dipakai di banyak aktivitas (shared photo)** | Model saat ini 1 foto = 1 aktivitas. Jika butuh many-to-many, buat tabel `activity_photo_links` |
+| **User edit aktivitas dan hapus foto dari aktivitas** | Trigger `ON DELETE SET NULL` akan membuat foto kembali orphan, ditandai di cleanup berikutnya |
+| **Object storage corrupt tapi DB masih ada** | Health check harus memverifikasi keberadaan file di S3 secara periodik |
+| **Timezone server cleanup berbeda dengan server upload** | Selalu gunakan UTC untuk semua timestamp |
+| **Foto di-upload tapi token sesi tidak pernah di-clear** | TTL Redis 30 menit akan meng-clear token, foto jadi eligible untuk cleanup setelah grace period |
+
+---
+
+## 9. Koneksi ke Task Sebelumnya
+
+Pola ini konsisten dengan:
+- **Task #40 (Atomic Reservation)**: Sama-sama menggunakan database sebagai arbiter konkurensi
+- **Task #37 (Soft Archive)**: Sama-sama menggunakan pola "mark-then-act" untuk mencegah data loss
+- **Task #11 (Offline Sync)**: Foto dari offline mode harus punya mekanisme klaim yang sama saat sync
+
+---
+
+## Rekomendasi Urutan Eksekusi
+
+1. **Hari 1**: Tambahkan kolom lifecycle (`orphan_marked_at`, `deletion_scheduled_at`, `upload_session_token`) ke tabel `activity_photos`
+2. **Hari 2**: Implementasikan job `markOrphanPhotos` dengan grace period
+3. **Hari 3**: Implementasikan job `deleteMarkedPhotos` dengan double-check pattern
+4. **Hari 4**: Refactor handler `saveActivityWithPhotos` untuk melakukan klaim atomik
+5. **Hari 5**: Tulis 4 test integrasi di atas + test untuk edge cases
+6. **Hari 6**: Tambahkan monitoring (metrics: jumlah foto orphan, jumlah deletion cancelled, latency cleanup)
+
+Apakah Anda ingin saya buatkan **skrip migrasi Drizzle lengkap** untuk menambahkan kolom lifecycle ini, atau langsung fokus pada **implementasi test integrasi konkurensi** yang paling kritis?

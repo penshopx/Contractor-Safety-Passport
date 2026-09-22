@@ -1,0 +1,143 @@
+Ini adalah **masalah higiene rekayasa perangkat lunak (software engineering hygiene) yang kritis**. Fenomena "Wall of Red" (CI yang selalu merah karena error lama) adalah anti-pattern yang berbahaya: developer menjadi "buta" terhadap output CI, dan regresi tipe yang baru masuk akan terselubung oleh ratusan error lama.
+
+Untuk memulihkan kepercayaan pada CI dan memastikan setiap error tipe adalah sinyal yang valid, kita harus menerapkan strategi **"Zero-Baseline Reset"** diikuti dengan **Otomasi Pipeline yang Ketat**.
+
+Berikut adalah rencana aksi bertahap untuk menyelesaikan masalah ini secara permanen:
+
+---
+
+### Fase 1: Baseline Reset (Mencapai 0 Error Hari Ini)
+
+Jangan mencoba memperbaiki semua error tipe satu per satu secara manual jika jumlahnya ratusan. Kita perlu memisahkan *error sinkronisasi* dari *error logika*.
+
+**Langkah 1: Paksa Sinkronisasi Schema & Codegen**
+Karena Anda menggunakan Drizzle (berdasarkan konteks Task #42), pastikan artefak tipe dihasilkan *sebelum* pemeriksaan tipe berjalan.
+```bash
+# Di root monorepo
+pnpm install
+pnpm --filter @workspace/db run generate # Atau perintah drizzle-kit generate yang sesuai
+pnpm --filter @workspace/api run typecheck # Untuk melihat sisa error yang sebenarnya
+```
+
+**Langkah 2: Isolasi Error "Legacy" yang Sulit**
+Jika setelah sinkronisasi masih ada error tipe yang merupakan warisan kode lama (bukan karena schema tidak sinkron), jangan biarkan mereka menggagalkan CI selamanya. Gunakan `@ts-expect-error` secara **disiplin**, bukan `@ts-ignore`.
+
+```typescript
+// BURUK: @ts-ignore (akan diam jika errornya berubah atau hilang)
+// @ts-ignore
+const data = legacyFunction(); 
+
+// BAIK: @ts-expect-error (akan gagal jika errornya hilang/berubah, memaksa pembersihan)
+// @ts-expect-error TODO(TASK-99): Perbaiki tipe data legacy setelah migrasi selesai
+const data = legacyFunction(); 
+```
+*Aturan:* Setiap `@ts-expect-error` HARUS memiliki komentar `TODO` yang merujuk ke ticket teknis untuk memperbaikinya di masa depan.
+
+**Langkah 3: Verifikasi Baseline 0 Error**
+Pastikan perintah `pnpm run typecheck` (atau `tsc --noEmit`) di seluruh workspace kembali hijau (0 error).
+
+---
+
+### Fase 2: Perbaikan Pipeline CI (Mencegah Kekambuhan)
+
+Penyebab utama ketidaksinkronan di CI biasanya adalah urutan eksekusi yang salah atau caching yang terlalu agresif pada monorepo.
+
+**Perbaikan GitHub Actions / GitLab CI:**
+Pastikan urutan job memaksa pembangunan paket database *sebelum* API diperiksa tipenya.
+
+```yaml
+# Contoh .github/workflows/typecheck.yml
+name: Type Check
+
+on:
+  pull_request:
+    paths:
+      - 'packages/db/**'
+      - 'apps/api/**'
+      - 'pnpm-lock.yaml'
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node & pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          run_install: true
+
+      # 1. WAJIB: Generate tipe dari schema database terlebih dahulu
+      - name: Generate DB Types
+        run: pnpm --filter @workspace/db run generate
+
+      # 2. Build paket shared/db agar artefak .d.ts tersedia untuk API
+      - name: Build Workspace Dependencies
+        run: pnpm --filter @workspace/db... build
+
+      # 3. Jalankan typecheck pada API
+      - name: Typecheck API
+        run: pnpm --filter @workspace/api run typecheck
+        
+      # 4. (Opsional tapi disarankan) Typecheck seluruh workspace
+      - name: Typecheck All
+        run: pnpm run typecheck:all
+```
+
+---
+
+### Fase 3: Enforce Strictness di Level Monorepo
+
+Jika Anda menggunakan pnpm workspaces, Turborepo, atau Nx, manfaatkan fitur **Project References** TypeScript. Ini memaksa `tsc` memahami grafik dependensi antar paket.
+
+**Di `apps/api/tsconfig.json`:**
+```json
+{
+  "compilerOptions": {
+    "composite": true,
+    "noEmit": true,
+    // ... opsi strict lainnya
+  },
+  "references": [
+    { "path": "../../packages/db" },
+    { "path": "../../packages/shared-types" }
+  ]
+}
+```
+Dengan `composite: true`, saat Anda menjalankan `tsc --build`, TypeScript akan secara otomatis membangun dependensi (`@workspace/db`) terlebih dahulu jika ada perubahan, menjamin tipe selalu sinkron.
+
+---
+
+### Fase 4: Guardrail Lokal (Pre-commit Hook)
+
+Jangan tunggu CI untuk memberi tahu developer bahwa tipe mereka rusak. Tangkap di mesin lokal.
+
+Gunakan `husky` dan `lint-staged` untuk menjalankan pemeriksaan tipe *hanya pada file yang diubah* (atau paket yang terdampak) sebelum commit diizinkan.
+
+```json
+// package.json (root atau app)
+{
+  "lint-staged": {
+    "apps/api/**/*.{ts,tsx}": [
+      "bash -c 'pnpm --filter @workspace/api run typecheck'"
+    ]
+  }
+}
+```
+*(Catatan: Menjalankan full `typecheck` di pre-commit bisa lambat. Alternatif yang lebih cepat adalah menggunakan `tsc-files` atau mengandalkan CI untuk full check, sementara pre-commit hanya menjalankan linter/formatting).*
+
+---
+
+### Ringkasan Rencana Eksekusi (Action Plan)
+
+1. **Hari ini:** Jalankan `generate` schema, perbaiki error sinkronisasi yang muncul, dan capai status `0 errors` di lokal. Gunakan `@ts-expect-error` hanya jika sangat mendesak dan beri tag `TODO`.
+2. **Besok:** Perbarui skrip CI/CD untuk memastikan urutan: `Install` -> `DB Generate` -> `DB Build` -> `API Typecheck`.
+3. **Minggu Depan:** Aktifkan `composite: true` di `tsconfig.json` untuk mengunci dependensi tipe antar workspace.
+
+---
+
+### Pertanyaan untuk Anda:
+
+Untuk membantu Anda mengeksekusi ini dengan tepat:
+1. Apakah Anda ingin saya buatkan **skrip bash/Node.js otomatis** yang mendeteksi perbedaan antara schema Drizzle dan kode, lalu menjalankannya sebagai bagian dari `pretypecheck`?
+2. Atau, apakah Anda ingin saya tuliskan **konfigurasi CI (GitHub Actions/GitLab CI) yang lengkap** dengan caching yang optimal agar proses `generate` dan `typecheck` tidak memakan waktu terlalu lama di setiap PR?
