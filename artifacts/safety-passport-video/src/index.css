@@ -1,0 +1,47 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@600;700;800&display=swap');
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --color-bg-dark: 222 47% 11%;     /* Deep navy/slate */
+    --color-bg-light: 210 40% 96%;    /* Off-white */
+    
+    --color-primary: 34 100% 50%;     /* Safety Orange */
+    --color-accent: 217 91% 60%;      /* Tech Blue */
+    
+    --color-text-main: 0 0% 100%;
+    --color-text-muted: 215 20.2% 65.1%;
+
+    --font-display: 'Outfit', sans-serif;
+    --font-body: 'Inter', sans-serif;
+  }
+}
+
+body {
+  font-family: var(--font-body);
+  background-color: hsl(var(--color-bg-dark));
+  color: hsl(var(--color-text-main));
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+.clip-diagonal {
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 0 85%);
+}
+
+.text-gradient {
+  background: linear-gradient(to right, hsl(var(--color-text-main)), hsl(var(--color-text-muted)));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.text-gradient-orange {
+  background: linear-gradient(to right, hsl(var(--color-primary)), #ff8c00);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}

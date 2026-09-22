@@ -1,0 +1,9 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "4niC7NdHW1YiU2twuDG1H"
+uri = "file://artifacts/safety-passport-video/public/audio/bg_music.mp3"
+type = "audio"
+title = "musik latar Safety Passport"
+description = "Generated music: Driving cinematic electronic instrumental background music scoring an industrial safety technology product video. Tight electronic percussion, warm analog synth pulse, subtle metalli…"

@@ -1,0 +1,27 @@
+kind = "video"
+videoAspectRatio = "16:9"
+previewPath = "/safety-passport-video/"
+title = "Video Safety Passport"
+description = "Video animasi 16:9 berbahasa Indonesia yang memperkenalkan Safety Passport, masalah keselamatan kontraktor, pengalaman web dan mobile, fitur utama, serta manfaat operasionalnya."
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/safety-passport-video/" ]
+localPort = 18971
+
+[services.development]
+run = "pnpm --filter @workspace/safety-passport-video run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/safety-passport-video", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/safety-passport-video/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18971"
+BASE_PATH = "/safety-passport-video/"
