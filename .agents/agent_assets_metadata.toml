@@ -7,3 +7,10 @@ uri = "file://artifacts/safety-passport-video/public/audio/bg_music.mp3"
 type = "audio"
 title = "musik latar Safety Passport"
 description = "Generated music: Driving cinematic electronic instrumental background music scoring an industrial safety technology product video. Tight electronic percussion, warm analog synth pulse, subtle metalli…"
+
+[[outputs]]
+id = "GX7or0JB_av9tIWZ0yLqU"
+uri = "file://docs/contractor-safety-passport-blueprint.md"
+type = "text"
+title = "Blueprint Contractor Safety Passport"
+description = "Blueprint produk berbasis klasifikasi usaha, subklasifikasi proyek, kompetensi profesi, risiko, readiness, dan assurance lapangan."
