@@ -1,0 +1,156 @@
+Laporan audit pra-publikasi ini **sangat luar biasa, komprehensif, dan menyelamatkan proyek dari potensi bencana produksi**. Keputusan **NO-GO** adalah keputusan yang tepat dan menunjukkan kedewasaan engineering yang tinggi. Menemukan *blocker* seperti `db push` saat startup dan CORS terbuka di tahap ini jauh lebih baik daripada menemukannya setelah aplikasi diserang atau mengalami downtime.
+
+Berdasarkan laporan Anda, saya telah menyusun **Rencana Aksi Perbaikan (Sprint to Release)** yang terfokus hanya pada *blocker* prioritas tinggi dan menengah agar kita bisa mencapai status **GO** secepat mungkin tanpa mengorbankan keamanan.
+
+---
+
+### 🚀 Rencana Aksi Perbaikan (Sprint to Release)
+
+Saya menyarankan kita menyelesaikan ini dalam 3 Pull Request (PR) kecil yang terfokus agar mudah di-review dan diuji.
+
+#### PR 1: Keamanan Dasar & Stabilitas Startup (Prioritas Tertinggi)
+**Tujuan:** Menghilangkan risiko migrasi liar dan pembajakan session.
+
+1. **Hapus `db push` dari Startup Produksi**
+   - **Tindakan:** Ubah skrip `start:production` di `package.json` API menjadi hanya: `"node dist/index.js"`.
+   - **Konteks Replit:** Perubahan schema harus dilakukan secara manual melalui panel "Database" atau "Publish" di Replit, yang akan menampilkan diff dan meminta konfirmasi sebelum eksekusi.
+   - **Verifikasi:** Restart API, pastikan tidak ada log migrasi, dan aplikasi tetap berjalan.
+
+2. **Perketat CORS (Allowlist)**
+   - **Tindakan:** Ganti `origin: true` dengan allowlist eksplisit.
+   - **Snippet Kode:**
+     ```typescript
+     const allowedOrigins = process.env.NODE_ENV === 'production' 
+       ? ['https://contractor-safety-passport.replit.app'] // Tambahkan custom domain nanti
+       : ['http://localhost:5173', /https:\/\/.*\.replit\.dev$/]; // Izinkan preview Replit di dev
+
+     app.use(cors({
+       origin: function (origin, callback) {
+         if (!origin) return callback(null, true); // Izinkan request tanpa origin (misal: mobile app, curl)
+         const isAllowed = allowedOrigins.some(allowed => 
+           typeof allowed === 'string' ? allowed === origin : allowed.test(origin)
+         );
+         if (isAllowed) {
+           callback(null, true);
+        } else {
+           callback(new Error('Not allowed by CORS'));
+         }
+       },
+       credentials: true,
+     }));
+     ```
+
+3. **Implementasi Rate Limiting Dasar**
+   - **Tindakan:** Gunakan `express-rate-limit` pada endpoint sensitif.
+   - **Snippet Kode:**
+     ```typescript
+     import rateLimit from 'express-rate-limit';
+
+     // Untuk endpoint publik/auth (misal: 100 req per 15 menit per IP)
+     const apiLimiter = rateLimit({
+       windowMs: 15 * 60 * 1000, 
+       max: 100, 
+       standardHeaders: true, 
+       legacyHeaders: false,
+       // Penting untuk Replit/Proxy: gunakan header X-Forwarded-For
+       trustProxy: 1, 
+       message: { error: 'Terlalu banyak permintaan, silakan coba lagi nanti.' }
+     });
+
+     // Terapkan pada router yang relevan
+     app.use('/api/auth', apiLimiter);
+     app.use('/api/invitations', apiLimiter);
+     ```
+
+#### PR 2: Keandalan Sistem (Reliability)
+**Tujuan:** Memastikan sistem bisa pulih sendiri dan melaporkan status yang jujur.
+
+1. **Health Check yang Bermakna**
+   - **Tindakan:** Ubah `/api/healthz` untuk memverifikasi koneksi database.
+   - **Snippet Kode:**
+     ```typescript
+     app.get('/api/healthz', async (req, res) => {
+       try {
+         // Query ringan dengan timeout pendek
+         await Promise.race([
+           db.execute('SELECT 1'),
+           new Promise((_, reject) => setTimeout(() => reject(new Error('DB Timeout')), 2000))
+         ]);
+         res.status(200).json({ status: 'ok', database: 'connected' });
+       } catch (error) {
+         res.status(503).json({ status: 'error', database: 'disconnected' });
+       }
+     });
+     ```
+
+2. **Graceful Shutdown yang Benar**
+   - **Tindakan:** Tangani `SIGTERM` untuk menutup server HTTP dengan anggun sebelum `process.exit()`.
+   - **Snippet Kode:**
+     ```typescript
+     const server = app.listen(8080, () => console.log('API running'));
+
+     const gracefulShutdown = async (signal: string) => {
+       console.log(`\n${signal} diterima. Menutup server dengan aman...`);
+       
+       // 1. Berhenti menerima job baru (untuk worker Task #67)
+       stopCompensationWorker(); 
+       
+       // 2. Tutup koneksi HTTP yang masuk
+       server.close(async () => {
+         console.log('HTTP server ditutup.');
+         // 3. Tutup koneksi database
+         await db.$client.end(); 
+         console.log('Database disconnected.');
+         process.exit(0);
+       });
+
+       // 4. Paksa keluar jika shutdown memakan waktu terlalu lama (> 10 detik)
+       setTimeout(() => {
+         console.error('Shutdown timeout, memaksa keluar...');
+         process.exit(1);
+       }, 10000).unref();
+     };
+
+     process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+     process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+     ```
+
+#### PR 3: Isolasi Fitur & Finalisasi Task
+**Tujuan:** Menyelesaikan utang teknis yang menghalangi rilis.
+
+1. **Keputusan Task #78 (Isolasi Tenant Klasifikasi)**
+   - **Opsi A (Direkomendasikan):** Tulis 4 tes isolasi spesifik yang disebutkan di laporan audit (Org A tidak bisa baca Org B, viewer tidak bisa mutasi, dll). Ini hanya butuh waktu 1-2 jam karena query dasarnya sudah ada.
+   - **Opsi B (Fallback):** Jika waktu sangat mepet, *feature-flag* atau sembunyikan menu "Klasifikasi" di frontend untuk rilis V1, dan tandai sebagai "Coming Soon".
+
+2. **Finalisasi Task #45 (Object Storage)**
+   - **Tindakan:** Karena kode `ifGenerationMatch` sudah ada, satu-satunya yang kurang adalah **tes integrasi konkurensi** (seperti yang kita bahas sebelumnya). Jalankan tes tersebut, jika lulus, ubah status task menjadi `DONE`.
+
+3. **Penanganan Task #77 (Referensi Klasifikasi)**
+   - **Tindakan:** Tambahkan banner atau tooltip eksplisit di UI: *"Data ini adalah referensi awal dan belum diverifikasi untuk kepatuhan hukum/tender."* Ini memitigasi risiko hukum tanpa harus menunda rilis.
+
+---
+
+### ✅ Checklist "GO" untuk Publikasi
+
+Setelah 3 PR di atas di-merge, jalankan checklist final ini:
+
+- [ ] `start:production` tidak lagi mengandung `db push` atau `migrate`.
+- [ ] CORS menolak origin asing (uji dengan `curl -H "Origin: https://evil.com"`).
+- [ ] Rate limiting memblokir setelah batas tercapai (uji dengan skrip sederhana).
+- [ ] Health check mengembalikan `503` saat database dimatikan (uji lokal).
+- [ ] Graceful shutdown menutup server dalam < 10 detik saat di-restart.
+- [ ] Task #45 dan #78 berstatus `DONE` (atau fitur klasifikasi disembunyikan).
+- [ ] Backup database Replit diverifikasi aktif di dashboard.
+- [ ] Smoke test manual: Login → Buat Proyek → Upload Foto → Undang Member → Logout (semua berhasil).
+
+---
+
+### Langkah Selanjutnya
+
+Saya siap membantu Anda mengeksekusi rencana ini. Mana yang ingin kita kerjakan pertama kali?
+
+1. **Saya buatkan kode lengkap** untuk PR 1 (CORS + Rate Limiting + Hapus db push)?
+2. **Kita susun 4 kasus uji (test cases) spesifik** untuk Task #78 agar isolasi tenant terverifikasi?
+3. **Atau Anda ingin meninjau ulang** bagian tertentu dari laporan audit ini sebelum kita mulai coding?
+
+Silakan berikan arahan Anda. Kita akan pastikan rilis berikutnya adalah **GO** yang aman dan solid.
