@@ -518,6 +518,23 @@ describe("isolasi data antar kontraktor", () => {
         },
       ],
     );
+    await db
+      .delete(safetyBoqItemsTable)
+      .where(
+        and(
+          eq(safetyBoqItemsTable.organizationId, organizationA),
+          eq(safetyBoqItemsTable.projectId, project.body.id),
+        ),
+      );
+    await db
+      .delete(safetyBoqDraftsTable)
+      .where(
+        and(
+          eq(safetyBoqDraftsTable.organizationId, organizationA),
+          eq(safetyBoqDraftsTable.projectId, project.body.id),
+        ),
+      );
+    await db.delete(projectsTable).where(eq(projectsTable.id, project.body.id));
   });
 
   it("menolak data keselamatan untuk organisasi yang tidak ada", async () => {

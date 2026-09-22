@@ -150,6 +150,23 @@ export const createSafetyRouter = (
   const dateOnly = (value: Date | string) =>
     typeof value === "string" ? value : value.toISOString().slice(0, 10);
 
+  const safetyBoqJson = <
+    T extends {
+      revision: number;
+      items: Array<{ priceUpdatedAt?: Date | null } & Record<string, unknown>>;
+    },
+  >(
+    parsed: T,
+  ) => ({
+    ...parsed,
+    items: parsed.items.map((item) => ({
+      ...item,
+      priceUpdatedAt: item.priceUpdatedAt
+        ? item.priceUpdatedAt.toISOString().slice(0, 10)
+        : null,
+    })),
+  });
+
   const listAvailableCsmsProfiles = async (organizationId: string) => {
     const customProfiles = await db
       .select()
@@ -995,7 +1012,7 @@ export const createSafetyRouter = (
       isolationLevel: "repeatable read",
       accessMode: "read only",
     });
-    res.json(GetProjectSafetyBoqResponse.parse(result));
+    res.json(safetyBoqJson(GetProjectSafetyBoqResponse.parse(result)));
   });
 
   router.put(
@@ -1124,7 +1141,7 @@ export const createSafetyRouter = (
         res.status(409).json({ error: "Draft BOQ telah diubah anggota tim lain. Muat revisi terbaru sebelum menyimpan." });
         return;
       }
-      res.json(ReplaceProjectSafetyBoqResponse.parse(result));
+      res.json(safetyBoqJson(ReplaceProjectSafetyBoqResponse.parse(result)));
     },
   );
 
