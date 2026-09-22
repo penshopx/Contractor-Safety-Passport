@@ -13,6 +13,154 @@ export interface Error {
   error: string;
 }
 
+export type ConstructionClassificationFamily = typeof ConstructionClassificationFamily[keyof typeof ConstructionClassificationFamily];
+
+
+export const ConstructionClassificationFamily = {
+  BG: 'BG',
+  BS: 'BS',
+  IN: 'IN',
+  KK: 'KK',
+  KP: 'KP',
+  PA: 'PA',
+  PB: 'PB',
+  PL: 'PL',
+} as const;
+
+export type ConstructionClassificationNature = typeof ConstructionClassificationNature[keyof typeof ConstructionClassificationNature];
+
+
+export const ConstructionClassificationNature = {
+  UMUM: 'UMUM',
+  SPESIALIS: 'SPESIALIS',
+} as const;
+
+export type ConstructionClassificationAllowedQualificationsItem = typeof ConstructionClassificationAllowedQualificationsItem[keyof typeof ConstructionClassificationAllowedQualificationsItem];
+
+
+export const ConstructionClassificationAllowedQualificationsItem = {
+  KECIL: 'KECIL',
+  MENENGAH: 'MENENGAH',
+  BESAR: 'BESAR',
+} as const;
+
+export interface ConstructionClassification {
+  id: string;
+  versionId: string;
+  /** @pattern ^[A-Z]{2}[0-9]{3}$ */
+  code: string;
+  family: ConstructionClassificationFamily;
+  name: string;
+  nature: ConstructionClassificationNature;
+  allowedQualifications: ConstructionClassificationAllowedQualificationsItem[];
+  sourceVerificationStatus: string;
+}
+
+export type OrganizationClassificationInputQualification = typeof OrganizationClassificationInputQualification[keyof typeof OrganizationClassificationInputQualification];
+
+
+export const OrganizationClassificationInputQualification = {
+  KECIL: 'KECIL',
+  MENENGAH: 'MENENGAH',
+  BESAR: 'BESAR',
+} as const;
+
+export type OrganizationClassificationInputEvidenceStatus = typeof OrganizationClassificationInputEvidenceStatus[keyof typeof OrganizationClassificationInputEvidenceStatus];
+
+
+export const OrganizationClassificationInputEvidenceStatus = {
+  MENUNGGU_VERIFIKASI: 'MENUNGGU_VERIFIKASI',
+  TERVERIFIKASI: 'TERVERIFIKASI',
+  DITOLAK: 'DITOLAK',
+} as const;
+
+export interface OrganizationClassificationInput {
+  /** @minLength 1 */
+  classificationId: string;
+  qualification?: OrganizationClassificationInputQualification;
+  evidenceStatus?: OrganizationClassificationInputEvidenceStatus;
+  /** @nullable */
+  evidenceReference?: string | null;
+  /** @nullable */
+  notes?: string | null;
+}
+
+export type OrganizationClassification = OrganizationClassificationInput & {
+  organizationId: string;
+  code: string;
+  name: string;
+  family: string;
+  nature: string;
+  versionId: string;
+  sourceVerificationStatus: string;
+};
+
+export type ProjectClassificationInputRole = typeof ProjectClassificationInputRole[keyof typeof ProjectClassificationInputRole];
+
+
+export const ProjectClassificationInputRole = {
+  PRIMARY: 'PRIMARY',
+  SUPPORTING: 'SUPPORTING',
+} as const;
+
+export type ProjectClassificationInputRequiredQualification = typeof ProjectClassificationInputRequiredQualification[keyof typeof ProjectClassificationInputRequiredQualification];
+
+
+export const ProjectClassificationInputRequiredQualification = {
+  KECIL: 'KECIL',
+  MENENGAH: 'MENENGAH',
+  BESAR: 'BESAR',
+} as const;
+
+export interface ProjectClassificationInput {
+  /** @minLength 1 */
+  classificationId: string;
+  role: ProjectClassificationInputRole;
+  requiredQualification?: ProjectClassificationInputRequiredQualification;
+}
+
+export type ProjectClassification = ProjectClassificationInput & {
+  organizationId: string;
+  projectId: number;
+  code: string;
+  name: string;
+  family: string;
+  versionId: string;
+};
+
+export type OrganizationProjectFitStatus = typeof OrganizationProjectFitStatus[keyof typeof OrganizationProjectFitStatus];
+
+
+export const OrganizationProjectFitStatus = {
+  SESUAI: 'SESUAI',
+  SESUAI_BERSYARAT: 'SESUAI_BERSYARAT',
+  MEMERLUKAN_MITRA: 'MEMERLUKAN_MITRA',
+  TIDAK_SESUAI: 'TIDAK_SESUAI',
+  MENUNGGU_VERIFIKASI: 'MENUNGGU_VERIFIKASI',
+} as const;
+
+export type OrganizationProjectFitExplanation = {
+  sourceVerified: boolean;
+  organizationEvidenceVerified: boolean;
+  matched: string[];
+  missing: string[];
+  warnings: string[];
+};
+
+export interface OrganizationProjectFit {
+  organizationId: string;
+  projectId: number;
+  status: OrganizationProjectFitStatus;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  score: number;
+  explanation: OrganizationProjectFitExplanation;
+  referenceVersionIds: string[];
+  evaluatedAt: string;
+}
+
 export type OrganizationRole = typeof OrganizationRole[keyof typeof OrganizationRole];
 
 
@@ -1048,4 +1196,9 @@ export type ForbiddenResponse = Error;
  * Resource conflict
  */
 export type ConflictResponse = Error;
+
+/**
+ * Validation error
+ */
+export type ErrorResponseResponse = Error;
 

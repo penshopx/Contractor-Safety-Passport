@@ -442,6 +442,179 @@ export const ReplaceProjectSafetyBoqResponse = zod.object({
 
 
 /**
+ * @summary List verified and pending construction classification references
+ */
+export const listConstructionClassificationsResponseCodeRegExp = new RegExp('^[A-Z]{2}[0-9]{3}$');
+
+
+export const ListConstructionClassificationsResponseItem = zod.object({
+  "id": zod.string(),
+  "versionId": zod.string(),
+  "code": zod.string().regex(listConstructionClassificationsResponseCodeRegExp),
+  "family": zod.enum(['BG', 'BS', 'IN', 'KK', 'KP', 'PA', 'PB', 'PL']),
+  "name": zod.string(),
+  "nature": zod.enum(['UMUM', 'SPESIALIS']),
+  "allowedQualifications": zod.array(zod.enum(['KECIL', 'MENENGAH', 'BESAR'])),
+  "sourceVerificationStatus": zod.string()
+})
+export const ListConstructionClassificationsResponse = zod.array(ListConstructionClassificationsResponseItem)
+
+
+/**
+ * @summary List the active organization's capability classifications
+ */
+
+
+
+export const ListOrganizationClassificationsResponseItem = zod.object({
+  "classificationId": zod.string().min(1),
+  "qualification": zod.enum(['KECIL', 'MENENGAH', 'BESAR']).optional(),
+  "evidenceStatus": zod.enum(['MENUNGGU_VERIFIKASI', 'TERVERIFIKASI', 'DITOLAK']).optional(),
+  "evidenceReference": zod.string().nullish(),
+  "notes": zod.string().nullish()
+}).and(zod.object({
+  "organizationId": zod.string(),
+  "code": zod.string(),
+  "name": zod.string(),
+  "family": zod.string(),
+  "nature": zod.string(),
+  "versionId": zod.string(),
+  "sourceVerificationStatus": zod.string()
+}))
+export const ListOrganizationClassificationsResponse = zod.array(ListOrganizationClassificationsResponseItem)
+
+
+/**
+ * @summary Add a classification capability to the active organization
+ */
+
+
+
+export const AddOrganizationClassificationBody = zod.object({
+  "classificationId": zod.string().min(1),
+  "qualification": zod.enum(['KECIL', 'MENENGAH', 'BESAR']).optional(),
+  "evidenceStatus": zod.enum(['MENUNGGU_VERIFIKASI', 'TERVERIFIKASI', 'DITOLAK']).optional(),
+  "evidenceReference": zod.string().nullish(),
+  "notes": zod.string().nullish()
+})
+
+
+
+
+export const AddOrganizationClassificationResponse = zod.object({
+  "classificationId": zod.string().min(1),
+  "qualification": zod.enum(['KECIL', 'MENENGAH', 'BESAR']).optional(),
+  "evidenceStatus": zod.enum(['MENUNGGU_VERIFIKASI', 'TERVERIFIKASI', 'DITOLAK']).optional(),
+  "evidenceReference": zod.string().nullish(),
+  "notes": zod.string().nullish()
+}).and(zod.object({
+  "organizationId": zod.string(),
+  "code": zod.string(),
+  "name": zod.string(),
+  "family": zod.string(),
+  "nature": zod.string(),
+  "versionId": zod.string(),
+  "sourceVerificationStatus": zod.string()
+}))
+
+
+/**
+ * @summary List a project's primary and supporting classifications
+ */
+
+
+
+export const ListProjectClassificationsParams = zod.object({
+  "projectId": zod.coerce.number().int().min(1)
+})
+
+
+
+
+export const ListProjectClassificationsResponseItem = zod.object({
+  "classificationId": zod.string().min(1),
+  "role": zod.enum(['PRIMARY', 'SUPPORTING']),
+  "requiredQualification": zod.enum(['KECIL', 'MENENGAH', 'BESAR']).optional()
+}).and(zod.object({
+  "organizationId": zod.string(),
+  "projectId": zod.number().int(),
+  "code": zod.string(),
+  "name": zod.string(),
+  "family": zod.string(),
+  "versionId": zod.string()
+}))
+export const ListProjectClassificationsResponse = zod.array(ListProjectClassificationsResponseItem)
+
+
+/**
+ * @summary Add a primary or supporting project classification
+ */
+
+
+
+export const AddProjectClassificationParams = zod.object({
+  "projectId": zod.coerce.number().int().min(1)
+})
+
+
+
+
+export const AddProjectClassificationBody = zod.object({
+  "classificationId": zod.string().min(1),
+  "role": zod.enum(['PRIMARY', 'SUPPORTING']),
+  "requiredQualification": zod.enum(['KECIL', 'MENENGAH', 'BESAR']).optional()
+})
+
+
+
+
+export const AddProjectClassificationResponse = zod.object({
+  "classificationId": zod.string().min(1),
+  "role": zod.enum(['PRIMARY', 'SUPPORTING']),
+  "requiredQualification": zod.enum(['KECIL', 'MENENGAH', 'BESAR']).optional()
+}).and(zod.object({
+  "organizationId": zod.string(),
+  "projectId": zod.number().int(),
+  "code": zod.string(),
+  "name": zod.string(),
+  "family": zod.string(),
+  "versionId": zod.string()
+}))
+
+
+/**
+ * @summary Evaluate organization-project classification fit with explanation
+ */
+
+
+
+export const GetOrganizationProjectFitParams = zod.object({
+  "projectId": zod.coerce.number().int().min(1)
+})
+
+export const getOrganizationProjectFitResponseScoreMin = 0;
+export const getOrganizationProjectFitResponseScoreMax = 100;
+
+
+
+export const GetOrganizationProjectFitResponse = zod.object({
+  "organizationId": zod.string(),
+  "projectId": zod.number().int(),
+  "status": zod.enum(['SESUAI', 'SESUAI_BERSYARAT', 'MEMERLUKAN_MITRA', 'TIDAK_SESUAI', 'MENUNGGU_VERIFIKASI']),
+  "score": zod.number().int().min(getOrganizationProjectFitResponseScoreMin).max(getOrganizationProjectFitResponseScoreMax),
+  "explanation": zod.object({
+  "sourceVerified": zod.boolean(),
+  "organizationEvidenceVerified": zod.boolean(),
+  "matched": zod.array(zod.string()),
+  "missing": zod.array(zod.string()),
+  "warnings": zod.array(zod.string())
+}),
+  "referenceVersionIds": zod.array(zod.string()),
+  "evaluatedAt": zod.coerce.date()
+})
+
+
+/**
  * @summary List the active workspace safety price catalog
  */
 export const listSafetyPriceCatalogItemsResponsePriceUpdatedAtRegExp = new RegExp('^[0-9]{4}-(0[1-9]|1[0-2])-([0-2][0-9]|3[0-1])$');

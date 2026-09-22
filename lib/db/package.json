@@ -13,7 +13,8 @@
     "push": "drizzle-kit push --config ./drizzle.config.ts",
     "prepush-force": "pnpm run migrate:organization-integrity",
     "push-force": "drizzle-kit push --force --config ./drizzle.config.ts",
-    "test": "node --test --experimental-strip-types ./scripts/*.test.ts"
+    "test": "node --test --experimental-strip-types ./scripts/*.test.ts",
+    "seed:construction-classifications": "node --experimental-strip-types ./scripts/seed-construction-classifications.ts"
   },
   "dependencies": {
     "drizzle-orm": "catalog:",

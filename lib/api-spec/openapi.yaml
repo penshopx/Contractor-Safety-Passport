@@ -34,6 +34,8 @@ tags:
     description: Protected evidence file storage
   - name: organizations
     description: Contractor workspace onboarding and access context
+  - name: classifications
+    description: Versioned construction classifications and capability fit
 paths:
   /storage/uploads/request-url:
     post:
@@ -337,6 +339,108 @@ paths:
           $ref: "#/components/responses/Conflict"
         "403":
           $ref: "#/components/responses/Forbidden"
+  /construction-classifications:
+    get:
+      operationId: listConstructionClassifications
+      tags: [classifications]
+      summary: List verified and pending construction classification references
+      responses:
+        "200":
+          description: Classification reference rows
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ConstructionClassification"
+  /organization-classifications:
+    get:
+      operationId: listOrganizationClassifications
+      tags: [classifications]
+      summary: List the active organization's capability classifications
+      responses:
+        "200":
+          description: Organization capability profile
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OrganizationClassification"
+    post:
+      operationId: addOrganizationClassification
+      tags: [classifications]
+      summary: Add a classification capability to the active organization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrganizationClassificationInput"
+      responses:
+        "201":
+          description: Capability classification
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganizationClassification"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /projects/{projectId}/classifications:
+    get:
+      operationId: listProjectClassifications
+      tags: [classifications]
+      summary: List a project's primary and supporting classifications
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      responses:
+        "200":
+          description: Project classifications
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProjectClassification"
+    post:
+      operationId: addProjectClassification
+      tags: [classifications]
+      summary: Add a primary or supporting project classification
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectClassificationInput"
+      responses:
+        "201":
+          description: Project classification
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectClassification"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /projects/{projectId}/organization-fit:
+    get:
+      operationId: getOrganizationProjectFit
+      tags: [classifications]
+      summary: Evaluate organization-project classification fit with explanation
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      responses:
+        "200":
+          description: Explainable preliminary fit result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganizationProjectFit"
         "404":
           $ref: "#/components/responses/NotFound"
   /safety-price-catalog:
@@ -853,6 +957,13 @@ components:
       schema:
         type: integer
         minimum: 1
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
   responses:
     NotFound:
       description: Resource not found
@@ -878,6 +989,12 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+    ErrorResponse:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
   schemas:
     HealthStatus:
       type: object
@@ -892,6 +1009,80 @@ components:
         error:
           type: string
       required: [error]
+    ConstructionClassification:
+      type: object
+      properties:
+        id: { type: string }
+        versionId: { type: string }
+        code: { type: string, pattern: "^[A-Z]{2}[0-9]{3}$" }
+        family: { type: string, enum: [BG, BS, IN, KK, KP, PA, PB, PL] }
+        name: { type: string }
+        nature: { type: string, enum: [UMUM, SPESIALIS] }
+        allowedQualifications:
+          type: array
+          items: { type: string, enum: [KECIL, MENENGAH, BESAR] }
+        sourceVerificationStatus: { type: string }
+      required: [id, versionId, code, family, name, nature, allowedQualifications, sourceVerificationStatus]
+    OrganizationClassificationInput:
+      type: object
+      properties:
+        classificationId: { type: string, minLength: 1 }
+        qualification: { type: string, enum: [KECIL, MENENGAH, BESAR] }
+        evidenceStatus: { type: string, enum: [MENUNGGU_VERIFIKASI, TERVERIFIKASI, DITOLAK] }
+        evidenceReference: { type: ["string", "null"] }
+        notes: { type: ["string", "null"] }
+      required: [classificationId]
+    OrganizationClassification:
+      allOf:
+        - $ref: "#/components/schemas/OrganizationClassificationInput"
+        - type: object
+          properties:
+            organizationId: { type: string }
+            code: { type: string }
+            name: { type: string }
+            family: { type: string }
+            nature: { type: string }
+            versionId: { type: string }
+            sourceVerificationStatus: { type: string }
+          required: [organizationId, code, name, family, nature, versionId, sourceVerificationStatus]
+    ProjectClassificationInput:
+      type: object
+      properties:
+        classificationId: { type: string, minLength: 1 }
+        role: { type: string, enum: [PRIMARY, SUPPORTING] }
+        requiredQualification: { type: string, enum: [KECIL, MENENGAH, BESAR] }
+      required: [classificationId, role]
+    ProjectClassification:
+      allOf:
+        - $ref: "#/components/schemas/ProjectClassificationInput"
+        - type: object
+          properties:
+            organizationId: { type: string }
+            projectId: { type: integer }
+            code: { type: string }
+            name: { type: string }
+            family: { type: string }
+            versionId: { type: string }
+          required: [organizationId, projectId, code, name, family, versionId]
+    OrganizationProjectFit:
+      type: object
+      properties:
+        organizationId: { type: string }
+        projectId: { type: integer }
+        status: { type: string, enum: [SESUAI, SESUAI_BERSYARAT, MEMERLUKAN_MITRA, TIDAK_SESUAI, MENUNGGU_VERIFIKASI] }
+        score: { type: integer, minimum: 0, maximum: 100 }
+        explanation:
+          type: object
+          properties:
+            sourceVerified: { type: boolean }
+            organizationEvidenceVerified: { type: boolean }
+            matched: { type: array, items: { type: string } }
+            missing: { type: array, items: { type: string } }
+            warnings: { type: array, items: { type: string } }
+          required: [sourceVerified, organizationEvidenceVerified, matched, missing, warnings]
+        referenceVersionIds: { type: array, items: { type: string } }
+        evaluatedAt: { type: string, format: date-time }
+      required: [organizationId, projectId, status, score, explanation, referenceVersionIds, evaluatedAt]
     OrganizationRole:
       type: string
       enum: [owner, safety_expert, field_officer, viewer]

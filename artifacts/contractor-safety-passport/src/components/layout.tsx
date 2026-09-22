@@ -18,7 +18,8 @@ import {
   Eye,
   FileSpreadsheet,
   UserCog,
-  BookOpenCheck
+  BookOpenCheck,
+  Briefcase
 } from "lucide-react";
 import {
   Sidebar,
@@ -61,6 +62,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     { icon: FileCog, label: "Pembuat Dokumen", href: "/document-generator" },
     { icon: Calculator, label: "BOQ Keselamatan", href: "/safety-boq" },
     { icon: FileSpreadsheet, label: "Laporan SMKK", href: "/smkk-reports" },
+    { icon: Briefcase, label: "Klasifikasi", href: "/classifications" },
     { icon: Users, label: "Personel", href: "/people" },
     { icon: Award, label: "Sertifikat", href: "/certificates" },
     { icon: ActivitySquare, label: "Aktivitas Lapangan", href: "/field-activities" },

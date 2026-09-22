@@ -5,3 +5,4 @@
 - [Versi agregat bersama](shared-aggregate-versioning.md) — simpan revisi terpisah dari baris anak agar agregat kosong tetap memiliki kontrol konkurensi.
 - [Identitas migrasi BOQ](boq-migration-identity.md) — pisahkan identitas migrasi dari ID item; retry stale hanya sukses bila payload persis sudah tersimpan.
 - [Reservasi sebelum efek eksternal](external-side-effect-reservations.md) — pertahankan reservasi selama kompensasi belum terminal agar resource eksternal lama tidak dapat dikonsumsi atau dibuat ulang.
+- [Referensi klasifikasi konstruksi](construction-classification-references.md) — snapshot tetap belum terverifikasi; kecocokan kualifikasi bersifat hierarkis dan klasifikasi spesialis boleh tanpa level.

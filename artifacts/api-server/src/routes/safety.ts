@@ -15,6 +15,12 @@ import {
   safetyBoqItemsTable,
   safetyPriceCatalogItemsTable,
   safetyDocumentsTable,
+  businessClassificationsTable,
+  classificationSourcesTable,
+  classificationVersionsTable,
+  organizationClassificationsTable,
+  organizationProjectFitResultsTable,
+  projectClassificationsTable,
 } from "@workspace/db";
 import {
   CreateCertificateBody,
@@ -80,6 +86,17 @@ import {
   UpdateSafetyPriceCatalogItemBody,
   UpdateSafetyPriceCatalogItemParams,
   UpdateSafetyPriceCatalogItemResponse,
+  AddOrganizationClassificationBody,
+  AddOrganizationClassificationResponse,
+  AddProjectClassificationBody,
+  AddProjectClassificationParams,
+  AddProjectClassificationResponse,
+  GetOrganizationProjectFitParams,
+  GetOrganizationProjectFitResponse,
+  ListConstructionClassificationsResponse,
+  ListOrganizationClassificationsResponse,
+  ListProjectClassificationsParams,
+  ListProjectClassificationsResponse,
 } from "@workspace/api-zod";
 import {
   requireOrganization,
@@ -91,6 +108,7 @@ import {
   findCsmsProfile,
   resolveCsmsProfileForTemplate,
 } from "../lib/csmsProfiles.ts";
+import { qualificationSatisfies } from "../lib/classificationFit.ts";
 import { tagEvidence } from "../lib/objectStorage.ts";
 
 type SafetyRouterHooks = {
@@ -384,6 +402,193 @@ export const createSafetyRouter = (
       .where(eq(projectsTable.organizationId, organizationId))
       .orderBy(desc(projectsTable.createdAt));
     res.json(ListProjectsResponse.parse(projects));
+  });
+
+  router.get("/construction-classifications", async (_req, res): Promise<void> => {
+    const rows = await db
+      .select({
+        id: businessClassificationsTable.id,
+        versionId: businessClassificationsTable.versionId,
+        code: businessClassificationsTable.code,
+        family: businessClassificationsTable.family,
+        name: businessClassificationsTable.name,
+        nature: businessClassificationsTable.nature,
+        allowedQualifications: businessClassificationsTable.allowedQualifications,
+        sourceVerificationStatus: classificationSourcesTable.verificationStatus,
+      })
+      .from(businessClassificationsTable)
+      .innerJoin(classificationVersionsTable, eq(classificationVersionsTable.id, businessClassificationsTable.versionId))
+      .innerJoin(classificationSourcesTable, eq(classificationSourcesTable.id, classificationVersionsTable.sourceId))
+      .where(eq(classificationVersionsTable.status, "ACTIVE"))
+      .orderBy(asc(businessClassificationsTable.code));
+    res.json(ListConstructionClassificationsResponse.parse(rows));
+  });
+
+  router.get("/organization-classifications", async (req, res): Promise<void> => {
+    const rows = await db
+      .select({
+        organizationId: organizationClassificationsTable.organizationId,
+        classificationId: organizationClassificationsTable.classificationId,
+        qualification: organizationClassificationsTable.qualification,
+        evidenceStatus: organizationClassificationsTable.evidenceStatus,
+        evidenceReference: organizationClassificationsTable.evidenceReference,
+        notes: organizationClassificationsTable.notes,
+        code: businessClassificationsTable.code,
+        name: businessClassificationsTable.name,
+        family: businessClassificationsTable.family,
+        nature: businessClassificationsTable.nature,
+        versionId: businessClassificationsTable.versionId,
+        sourceVerificationStatus: classificationSourcesTable.verificationStatus,
+      })
+      .from(organizationClassificationsTable)
+      .innerJoin(businessClassificationsTable, eq(businessClassificationsTable.id, organizationClassificationsTable.classificationId))
+      .innerJoin(classificationVersionsTable, eq(classificationVersionsTable.id, businessClassificationsTable.versionId))
+      .innerJoin(classificationSourcesTable, eq(classificationSourcesTable.id, classificationVersionsTable.sourceId))
+      .where(eq(organizationClassificationsTable.organizationId, req.organizationContext!.organizationId))
+      .orderBy(asc(businessClassificationsTable.code));
+    res.json(ListOrganizationClassificationsResponse.parse(rows));
+  });
+
+  router.post(
+    "/organization-classifications",
+    requireRole("owner", "safety_expert"),
+    async (req, res): Promise<void> => {
+      const body = AddOrganizationClassificationBody.safeParse(req.body);
+      if (!body.success) {
+        res.status(400).json({ error: "Klasifikasi badan usaha tidak valid" });
+        return;
+      }
+      const { organizationId, userId } = req.organizationContext!;
+      const [classification] = await db
+        .select({ id: businessClassificationsTable.id, allowedQualifications: businessClassificationsTable.allowedQualifications })
+        .from(businessClassificationsTable)
+        .innerJoin(classificationVersionsTable, eq(classificationVersionsTable.id, businessClassificationsTable.versionId))
+        .where(and(eq(businessClassificationsTable.id, body.data.classificationId), eq(classificationVersionsTable.status, "ACTIVE")));
+      if (!classification) {
+        res.status(404).json({ error: "Referensi klasifikasi tidak ditemukan" });
+        return;
+      }
+      if (body.data.qualification && !classification.allowedQualifications.includes(body.data.qualification)) {
+        res.status(400).json({ error: "Kualifikasi tidak tersedia untuk klasifikasi ini" });
+        return;
+      }
+      const [saved] = await db
+        .insert(organizationClassificationsTable)
+        .values({ ...body.data, organizationId, createdBy: userId })
+        .onConflictDoUpdate({
+          target: [organizationClassificationsTable.organizationId, organizationClassificationsTable.classificationId],
+          set: {
+            qualification: body.data.qualification,
+            evidenceStatus: body.data.evidenceStatus ?? "MENUNGGU_VERIFIKASI",
+            evidenceReference: body.data.evidenceReference ?? null,
+            notes: body.data.notes ?? null,
+          },
+        })
+        .returning();
+      const [result] = await db
+        .select({
+          organizationId: organizationClassificationsTable.organizationId,
+          classificationId: organizationClassificationsTable.classificationId,
+          qualification: organizationClassificationsTable.qualification,
+          evidenceStatus: organizationClassificationsTable.evidenceStatus,
+          evidenceReference: organizationClassificationsTable.evidenceReference,
+          notes: organizationClassificationsTable.notes,
+          code: businessClassificationsTable.code,
+          name: businessClassificationsTable.name,
+          family: businessClassificationsTable.family,
+          nature: businessClassificationsTable.nature,
+          versionId: businessClassificationsTable.versionId,
+          sourceVerificationStatus: classificationSourcesTable.verificationStatus,
+        })
+        .from(organizationClassificationsTable)
+        .innerJoin(businessClassificationsTable, eq(businessClassificationsTable.id, organizationClassificationsTable.classificationId))
+        .innerJoin(classificationVersionsTable, eq(classificationVersionsTable.id, businessClassificationsTable.versionId))
+        .innerJoin(classificationSourcesTable, eq(classificationSourcesTable.id, classificationVersionsTable.sourceId))
+        .where(and(eq(organizationClassificationsTable.organizationId, organizationId), eq(organizationClassificationsTable.classificationId, saved.classificationId)));
+      res.status(201).json(AddOrganizationClassificationResponse.parse(result));
+    },
+  );
+
+  const findProject = async (organizationId: string, projectId: number) =>
+    (await db.select({ id: projectsTable.id }).from(projectsTable).where(and(eq(projectsTable.id, projectId), eq(projectsTable.organizationId, organizationId))))[0];
+
+  router.get("/projects/:projectId/classifications", async (req, res): Promise<void> => {
+    const params = ListProjectClassificationsParams.safeParse(req.params);
+    if (!params.success) { res.status(400).json({ error: "ID proyek tidak valid" }); return; }
+    const { organizationId } = req.organizationContext!;
+    if (!(await findProject(organizationId, params.data.projectId))) { res.status(404).json({ error: "Proyek tidak ditemukan" }); return; }
+    const rows = await db
+      .select({
+        organizationId: projectClassificationsTable.organizationId,
+        projectId: projectClassificationsTable.projectId,
+        classificationId: projectClassificationsTable.classificationId,
+        role: projectClassificationsTable.role,
+        requiredQualification: projectClassificationsTable.requiredQualification,
+        code: businessClassificationsTable.code,
+        name: businessClassificationsTable.name,
+        family: businessClassificationsTable.family,
+        versionId: businessClassificationsTable.versionId,
+      })
+      .from(projectClassificationsTable)
+      .innerJoin(businessClassificationsTable, eq(businessClassificationsTable.id, projectClassificationsTable.classificationId))
+      .where(and(eq(projectClassificationsTable.organizationId, organizationId), eq(projectClassificationsTable.projectId, params.data.projectId)))
+      .orderBy(asc(projectClassificationsTable.role), asc(businessClassificationsTable.code));
+    res.json(ListProjectClassificationsResponse.parse(rows));
+  });
+
+  router.post("/projects/:projectId/classifications", requireRole("owner", "safety_expert"), async (req, res): Promise<void> => {
+    const params = AddProjectClassificationParams.safeParse(req.params);
+    const body = AddProjectClassificationBody.safeParse(req.body);
+    if (!params.success || !body.success) { res.status(400).json({ error: "Klasifikasi proyek tidak valid" }); return; }
+    const { organizationId, userId } = req.organizationContext!;
+    if (!(await findProject(organizationId, params.data.projectId))) { res.status(404).json({ error: "Proyek tidak ditemukan" }); return; }
+    const [classification] = await db.select({
+      id: businessClassificationsTable.id,
+      allowedQualifications: businessClassificationsTable.allowedQualifications,
+    }).from(businessClassificationsTable).innerJoin(classificationVersionsTable, eq(classificationVersionsTable.id, businessClassificationsTable.versionId)).where(and(eq(businessClassificationsTable.id, body.data.classificationId), eq(classificationVersionsTable.status, "ACTIVE")));
+    if (!classification) { res.status(404).json({ error: "Referensi klasifikasi tidak ditemukan" }); return; }
+    if (body.data.requiredQualification && !classification.allowedQualifications.includes(body.data.requiredQualification)) {
+      res.status(400).json({ error: "Kualifikasi tidak tersedia untuk klasifikasi ini" });
+      return;
+    }
+    if (body.data.role === "PRIMARY") {
+      const [existingPrimary] = await db.select({ classificationId: projectClassificationsTable.classificationId }).from(projectClassificationsTable).where(and(eq(projectClassificationsTable.organizationId, organizationId), eq(projectClassificationsTable.projectId, params.data.projectId), eq(projectClassificationsTable.role, "PRIMARY")));
+      if (existingPrimary && existingPrimary.classificationId !== body.data.classificationId) {
+        res.status(409).json({ error: "Proyek sudah memiliki klasifikasi utama" });
+        return;
+      }
+    }
+    const [saved] = await db.insert(projectClassificationsTable).values({ ...body.data, organizationId, projectId: params.data.projectId, createdBy: userId }).onConflictDoUpdate({ target: [projectClassificationsTable.organizationId, projectClassificationsTable.projectId, projectClassificationsTable.classificationId], set: { role: body.data.role, requiredQualification: body.data.requiredQualification ?? null } }).returning();
+    const [result] = await db.select({ organizationId: projectClassificationsTable.organizationId, projectId: projectClassificationsTable.projectId, classificationId: projectClassificationsTable.classificationId, role: projectClassificationsTable.role, requiredQualification: projectClassificationsTable.requiredQualification, code: businessClassificationsTable.code, name: businessClassificationsTable.name, family: businessClassificationsTable.family, versionId: businessClassificationsTable.versionId }).from(projectClassificationsTable).innerJoin(businessClassificationsTable, eq(businessClassificationsTable.id, projectClassificationsTable.classificationId)).where(and(eq(projectClassificationsTable.organizationId, organizationId), eq(projectClassificationsTable.projectId, saved.projectId), eq(projectClassificationsTable.classificationId, saved.classificationId)));
+    res.status(201).json(AddProjectClassificationResponse.parse(result));
+  });
+
+  router.get("/projects/:projectId/organization-fit", async (req, res): Promise<void> => {
+    const params = GetOrganizationProjectFitParams.safeParse(req.params);
+    if (!params.success) { res.status(400).json({ error: "ID proyek tidak valid" }); return; }
+    const { organizationId, userId } = req.organizationContext!;
+    if (!(await findProject(organizationId, params.data.projectId))) { res.status(404).json({ error: "Proyek tidak ditemukan" }); return; }
+    const required = await db.select({ classificationId: projectClassificationsTable.classificationId, requiredQualification: projectClassificationsTable.requiredQualification, code: businessClassificationsTable.code, name: businessClassificationsTable.name, versionId: businessClassificationsTable.versionId, sourceStatus: classificationSourcesTable.verificationStatus }).from(projectClassificationsTable).innerJoin(businessClassificationsTable, eq(businessClassificationsTable.id, projectClassificationsTable.classificationId)).innerJoin(classificationVersionsTable, eq(classificationVersionsTable.id, businessClassificationsTable.versionId)).innerJoin(classificationSourcesTable, eq(classificationSourcesTable.id, classificationVersionsTable.sourceId)).where(and(eq(projectClassificationsTable.organizationId, organizationId), eq(projectClassificationsTable.projectId, params.data.projectId)));
+    const capabilities = await db.select({ classificationId: organizationClassificationsTable.classificationId, qualification: organizationClassificationsTable.qualification, evidenceStatus: organizationClassificationsTable.evidenceStatus }).from(organizationClassificationsTable).where(eq(organizationClassificationsTable.organizationId, organizationId));
+    const matched: string[] = [];
+    const missing: string[] = [];
+    const warnings: string[] = [];
+    const sourceVerified = required.length > 0 && required.every((item) => item.sourceStatus === "TERVERIFIKASI");
+    const organizationEvidenceVerified = required.every((item) => {
+      const capability = capabilities.find((candidate) => candidate.classificationId === item.classificationId);
+      if (!capability) { missing.push(`${item.code} — ${item.name}`); return false; }
+      if (!qualificationSatisfies(capability.qualification, item.requiredQualification)) { missing.push(`${item.code} — minimal kualifikasi ${item.requiredQualification}`); return false; }
+      if (capability.evidenceStatus !== "TERVERIFIKASI") warnings.push(`${item.code} memiliki bukti organisasi yang belum terverifikasi`);
+      matched.push(`${item.code} — ${item.name}`);
+      return true;
+    });
+    if (!required.length) warnings.push("Belum ada klasifikasi proyek yang ditetapkan");
+    if (!sourceVerified) warnings.push("Referensi klasifikasi belum diverifikasi; hasil ini bukan penetapan kepatuhan hukum");
+    const status = !required.length || !sourceVerified ? "MENUNGGU_VERIFIKASI" : missing.length === required.length ? "TIDAK_SESUAI" : missing.length ? "MEMERLUKAN_MITRA" : organizationEvidenceVerified && !warnings.length ? "SESUAI" : "SESUAI_BERSYARAT";
+    const score = required.length ? Math.round((matched.length / required.length) * 100) : 0;
+    const result = { organizationId, projectId: params.data.projectId, status, score, explanation: { sourceVerified, organizationEvidenceVerified, matched, missing, warnings }, referenceVersionIds: [...new Set(required.map((item) => item.versionId))], evaluatedAt: new Date() };
+    await db.insert(organizationProjectFitResultsTable).values({ ...result, evaluatedBy: userId }).onConflictDoUpdate({ target: [organizationProjectFitResultsTable.organizationId, organizationProjectFitResultsTable.projectId], set: { status: result.status, score, explanation: result.explanation, referenceVersionIds: result.referenceVersionIds, evaluatedAt: result.evaluatedAt, evaluatedBy: userId } });
+    res.json(GetOrganizationProjectFitResponse.parse(result));
   });
 
   router.post(

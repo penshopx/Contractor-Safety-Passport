@@ -19,3 +19,4 @@
 
 export * from "./safety.ts";
 export * from "./identity.ts";
+export * from "./classification.ts";

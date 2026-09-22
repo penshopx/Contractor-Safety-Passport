@@ -24,12 +24,14 @@ import type {
   Certificate,
   CertificateInput,
   ConflictResponse,
+  ConstructionClassification,
   CsmsProfile,
   CsmsProfileArchiveUpdate,
   CsmsProfileInput,
   DashboardSummary,
   DocumentInput,
   DocumentTemplate,
+  ErrorResponseResponse,
   EvidenceUploadRequest,
   EvidenceUploadTarget,
   FieldActivity,
@@ -42,6 +44,8 @@ import type {
   MonthlyReportInput,
   MonthlyReportUpdate,
   NotFoundResponse,
+  OrganizationClassification,
+  OrganizationClassificationInput,
   OrganizationContext,
   OrganizationInput,
   OrganizationInvitation,
@@ -49,10 +53,13 @@ import type {
   OrganizationMember,
   OrganizationMemberRoleUpdate,
   OrganizationMembers,
+  OrganizationProjectFit,
   Person,
   PersonInput,
   PersonUpdate,
   Project,
+  ProjectClassification,
+  ProjectClassificationInput,
   ProjectCsmsReadiness,
   ProjectCsmsReadinessUpdate,
   ProjectInput,
@@ -1416,7 +1423,7 @@ return customFetch<SafetyBoqDraft>(getReplaceProjectSafetyBoqUrl(projectId),
 
 export const getReplaceProjectSafetyBoqMutationKey = () => ['replaceProjectSafetyBoq'] as const;
 
-export const getReplaceProjectSafetyBoqMutationOptions = <TError = ErrorType<ForbiddenResponse | NotFoundResponse | ConflictResponse>,
+export const getReplaceProjectSafetyBoqMutationOptions = <TError = ErrorType<ForbiddenResponse | ConflictResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof replaceProjectSafetyBoq>>, TError,ReplaceProjectSafetyBoqMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof replaceProjectSafetyBoq>>, TError,ReplaceProjectSafetyBoqMutationVariables, TContext> => {
 
@@ -1445,13 +1452,13 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type ReplaceProjectSafetyBoqMutationResult = NonNullable<Awaited<ReturnType<typeof replaceProjectSafetyBoq>>>
     export type ReplaceProjectSafetyBoqMutationBody = BodyType<SafetyBoqDraftInput>
-    export type ReplaceProjectSafetyBoqMutationError = ErrorType<ForbiddenResponse | NotFoundResponse | ConflictResponse>
+    export type ReplaceProjectSafetyBoqMutationError = ErrorType<ForbiddenResponse | ConflictResponse>
     export type ReplaceProjectSafetyBoqMutationVariables = {projectId: number;data: BodyType<SafetyBoqDraftInput>}
 
     /**
  * @summary Replace the shared safety BOQ draft for a project
  */
-export const useReplaceProjectSafetyBoq = <TError = ErrorType<ForbiddenResponse | NotFoundResponse | ConflictResponse>,
+export const useReplaceProjectSafetyBoq = <TError = ErrorType<ForbiddenResponse | ConflictResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof replaceProjectSafetyBoq>>, TError,ReplaceProjectSafetyBoqMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof replaceProjectSafetyBoq>>,
@@ -1461,6 +1468,491 @@ export const useReplaceProjectSafetyBoq = <TError = ErrorType<ForbiddenResponse 
       > => {
       return useMutation(getReplaceProjectSafetyBoqMutationOptions(options));
     }
+
+export const getListConstructionClassificationsUrl = () => {
+
+
+
+
+  return `/api/construction-classifications`
+}
+
+/**
+ * @summary List verified and pending construction classification references
+ */
+export const listConstructionClassifications = async ( options?: Parameters<typeof customFetch>[1]): Promise<ConstructionClassification[]> => {
+
+  return customFetch<ConstructionClassification[]>(getListConstructionClassificationsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListConstructionClassificationsQueryKey = () => {
+    return [
+    `/api/construction-classifications`
+    ] as const;
+    }
+
+
+export const getListConstructionClassificationsQueryOptions = <TData = Awaited<ReturnType<typeof listConstructionClassifications>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listConstructionClassifications>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListConstructionClassificationsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listConstructionClassifications>>> = ({ signal }) => listConstructionClassifications({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listConstructionClassifications>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListConstructionClassificationsQueryResult = NonNullable<Awaited<ReturnType<typeof listConstructionClassifications>>>
+export type ListConstructionClassificationsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List verified and pending construction classification references
+ */
+
+export function useListConstructionClassifications<TData = Awaited<ReturnType<typeof listConstructionClassifications>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listConstructionClassifications>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListConstructionClassificationsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListOrganizationClassificationsUrl = () => {
+
+
+
+
+  return `/api/organization-classifications`
+}
+
+/**
+ * @summary List the active organization's capability classifications
+ */
+export const listOrganizationClassifications = async ( options?: Parameters<typeof customFetch>[1]): Promise<OrganizationClassification[]> => {
+
+  return customFetch<OrganizationClassification[]>(getListOrganizationClassificationsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListOrganizationClassificationsQueryKey = () => {
+    return [
+    `/api/organization-classifications`
+    ] as const;
+    }
+
+
+export const getListOrganizationClassificationsQueryOptions = <TData = Awaited<ReturnType<typeof listOrganizationClassifications>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listOrganizationClassifications>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListOrganizationClassificationsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listOrganizationClassifications>>> = ({ signal }) => listOrganizationClassifications({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listOrganizationClassifications>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListOrganizationClassificationsQueryResult = NonNullable<Awaited<ReturnType<typeof listOrganizationClassifications>>>
+export type ListOrganizationClassificationsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List the active organization's capability classifications
+ */
+
+export function useListOrganizationClassifications<TData = Awaited<ReturnType<typeof listOrganizationClassifications>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listOrganizationClassifications>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListOrganizationClassificationsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getAddOrganizationClassificationUrl = () => {
+
+
+
+
+  return `/api/organization-classifications`
+}
+
+/**
+ * @summary Add a classification capability to the active organization
+ */
+export const addOrganizationClassification = async (organizationClassificationInput: OrganizationClassificationInput, options?: Parameters<typeof customFetch>[1]): Promise<OrganizationClassification> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<OrganizationClassification>(getAddOrganizationClassificationUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(organizationClassificationInput)
+  }
+);}
+
+
+
+
+
+export const getAddOrganizationClassificationMutationKey = () => ['addOrganizationClassification'] as const;
+
+export const getAddOrganizationClassificationMutationOptions = <TError = ErrorType<ErrorResponseResponse | ForbiddenResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addOrganizationClassification>>, TError,AddOrganizationClassificationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof addOrganizationClassification>>, TError,AddOrganizationClassificationMutationVariables, TContext> => {
+
+const mutationKey = getAddOrganizationClassificationMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof addOrganizationClassification>>, AddOrganizationClassificationMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  addOrganizationClassification(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AddOrganizationClassificationMutationResult = NonNullable<Awaited<ReturnType<typeof addOrganizationClassification>>>
+    export type AddOrganizationClassificationMutationBody = BodyType<OrganizationClassificationInput>
+    export type AddOrganizationClassificationMutationError = ErrorType<ErrorResponseResponse | ForbiddenResponse>
+    export type AddOrganizationClassificationMutationVariables = {data: BodyType<OrganizationClassificationInput>}
+
+    /**
+ * @summary Add a classification capability to the active organization
+ */
+export const useAddOrganizationClassification = <TError = ErrorType<ErrorResponseResponse | ForbiddenResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addOrganizationClassification>>, TError,AddOrganizationClassificationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof addOrganizationClassification>>,
+        TError,
+        AddOrganizationClassificationMutationVariables,
+        TContext
+      > => {
+      return useMutation(getAddOrganizationClassificationMutationOptions(options));
+    }
+
+export const getListProjectClassificationsUrl = (projectId: number,) => {
+
+
+
+
+  return `/api/projects/${projectId}/classifications`
+}
+
+/**
+ * @summary List a project's primary and supporting classifications
+ */
+export const listProjectClassifications = async (projectId: number, options?: Parameters<typeof customFetch>[1]): Promise<ProjectClassification[]> => {
+
+  return customFetch<ProjectClassification[]>(getListProjectClassificationsUrl(projectId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListProjectClassificationsQueryKey = (projectId: number,) => {
+    return [
+    `/api/projects/${projectId}/classifications`
+    ] as const;
+    }
+
+
+export const getListProjectClassificationsQueryOptions = <TData = Awaited<ReturnType<typeof listProjectClassifications>>, TError = ErrorType<unknown>>(projectId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listProjectClassifications>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListProjectClassificationsQueryKey(projectId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listProjectClassifications>>> = ({ signal }) => listProjectClassifications(projectId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: projectId !== null && projectId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listProjectClassifications>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListProjectClassificationsQueryResult = NonNullable<Awaited<ReturnType<typeof listProjectClassifications>>>
+export type ListProjectClassificationsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List a project's primary and supporting classifications
+ */
+
+export function useListProjectClassifications<TData = Awaited<ReturnType<typeof listProjectClassifications>>, TError = ErrorType<unknown>>(
+ projectId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listProjectClassifications>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListProjectClassificationsQueryOptions(projectId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getAddProjectClassificationUrl = (projectId: number,) => {
+
+
+
+
+  return `/api/projects/${projectId}/classifications`
+}
+
+/**
+ * @summary Add a primary or supporting project classification
+ */
+export const addProjectClassification = async (projectId: number,
+    projectClassificationInput: ProjectClassificationInput, options?: Parameters<typeof customFetch>[1]): Promise<ProjectClassification> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<ProjectClassification>(getAddProjectClassificationUrl(projectId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(projectClassificationInput)
+  }
+);}
+
+
+
+
+
+export const getAddProjectClassificationMutationKey = () => ['addProjectClassification'] as const;
+
+export const getAddProjectClassificationMutationOptions = <TError = ErrorType<ErrorResponseResponse | ForbiddenResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addProjectClassification>>, TError,AddProjectClassificationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof addProjectClassification>>, TError,AddProjectClassificationMutationVariables, TContext> => {
+
+const mutationKey = getAddProjectClassificationMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof addProjectClassification>>, AddProjectClassificationMutationVariables> = (props) => {
+          const {projectId,data} = props ?? {};
+
+          return  addProjectClassification(projectId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AddProjectClassificationMutationResult = NonNullable<Awaited<ReturnType<typeof addProjectClassification>>>
+    export type AddProjectClassificationMutationBody = BodyType<ProjectClassificationInput>
+    export type AddProjectClassificationMutationError = ErrorType<ErrorResponseResponse | ForbiddenResponse>
+    export type AddProjectClassificationMutationVariables = {projectId: number;data: BodyType<ProjectClassificationInput>}
+
+    /**
+ * @summary Add a primary or supporting project classification
+ */
+export const useAddProjectClassification = <TError = ErrorType<ErrorResponseResponse | ForbiddenResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addProjectClassification>>, TError,AddProjectClassificationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof addProjectClassification>>,
+        TError,
+        AddProjectClassificationMutationVariables,
+        TContext
+      > => {
+      return useMutation(getAddProjectClassificationMutationOptions(options));
+    }
+
+export const getGetOrganizationProjectFitUrl = (projectId: number,) => {
+
+
+
+
+  return `/api/projects/${projectId}/organization-fit`
+}
+
+/**
+ * @summary Evaluate organization-project classification fit with explanation
+ */
+export const getOrganizationProjectFit = async (projectId: number, options?: Parameters<typeof customFetch>[1]): Promise<OrganizationProjectFit> => {
+
+  return customFetch<OrganizationProjectFit>(getGetOrganizationProjectFitUrl(projectId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetOrganizationProjectFitQueryKey = (projectId: number,) => {
+    return [
+    `/api/projects/${projectId}/organization-fit`
+    ] as const;
+    }
+
+
+export const getGetOrganizationProjectFitQueryOptions = <TData = Awaited<ReturnType<typeof getOrganizationProjectFit>>, TError = ErrorType<NotFoundResponse>>(projectId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getOrganizationProjectFit>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetOrganizationProjectFitQueryKey(projectId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getOrganizationProjectFit>>> = ({ signal }) => getOrganizationProjectFit(projectId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: projectId !== null && projectId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getOrganizationProjectFit>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetOrganizationProjectFitQueryResult = NonNullable<Awaited<ReturnType<typeof getOrganizationProjectFit>>>
+export type GetOrganizationProjectFitQueryError = ErrorType<NotFoundResponse>
+
+
+/**
+ * @summary Evaluate organization-project classification fit with explanation
+ */
+
+export function useGetOrganizationProjectFit<TData = Awaited<ReturnType<typeof getOrganizationProjectFit>>, TError = ErrorType<NotFoundResponse>>(
+ projectId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getOrganizationProjectFit>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetOrganizationProjectFitQueryOptions(projectId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getListSafetyPriceCatalogItemsUrl = () => {
 
