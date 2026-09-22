@@ -1,0 +1,452 @@
+# Kriteria Audit Final — Task #67 (Revisi Kedua)
+
+## Tujuan Inti
+
+Kegagalan sementara dipulihkan secara otomatis. Kegagalan permanen atau retry yang habis masuk ke kondisi terminal yang aman, tetap memblokir penggunaan undangan, dan memerlukan pemulihan manual terotorisasi. Sistem menjamin **safe failure**, bukan keberhasilan otomatis tanpa batas.
+
+---
+
+## 1. State Machine Persisten
+
+### Transisi Lengkap
+
+```text
+NONE
+  → PENDING_REVOKE
+      (saat finalisasi database gagal setelah Clerk berhasil membuat undangan)
+
+PENDING_REVOKE | REVOKE_FAILED
+  → REVOKED
+      (revoke Clerk berhasil, atau respons semantik menunjukkan sudah tidak aktif)
+  → REVOKE_FAILED
+      (revoke Clerk gagal sementara — self-transition untuk retry berturut-turut)
+  → REVOKE_PERMANENTLY_FAILED
+      (revoke Clerk gagal permanen — 4xx non-retryable)
+  → DEAD_LETTER
+      (retry_count mencapai batas maksimum)
+
+REVOKE_PERMANENTLY_FAILED | DEAD_LETTER
+  → PENDING_REVOKE
+      (hanya melalui retry manual terotorisasi oleh owner organisasi)
+```
+
+### Kriteria Tinggi
+
+| # | Kriteria | Cara Verifikasi |
+|---|----------|-----------------|
+| 1.1 | State machine mengikuti transisi lengkap di atas tanpa pengecualian | Tes state machine: setiap transisi legal valid, setiap transisi ilegal ditolak |
+| 1.2 | Self-transition `REVOKE_FAILED → REVOKE_FAILED` didukung untuk retry berturut-turut yang tetap gagal sementara | Tes: 3 retry gagal berturut-turut → status tetap `REVOKE_FAILED`, `retry_count` bertambah |
+| 1.3 | Lease worker disimpan terpisah dari status bisnis: kolom `lease_owner`, `lease_expires_at`, `claim_token` | Schema database menunjukkan kolom terpisah |
+| 1.4 | Transisi status atomik dalam transaksi database | Tes konkurensi: 2 worker coba transisi bersamaan, hanya 1 berhasil |
+| 1.5 | Worker yang crash di tengah transisi tidak meninggalkan status ambigu | Tes: kill proses saat update status, restart → status konsisten |
+
+### Kriteria Sedang
+
+| # | Kriteria | Cara Verifikasi |
+|---|----------|-----------------|
+| 1.6 | Timestamp setiap transisi dicatat (`compensation_updated_at`) | Query menunjukkan waktu perubahan |
+| 1.7 | Alasan transisi dicatat (`compensation_reason`): `FINALIZATION_FAILED`, `REVOKE_RETRYABLE`, `REVOKE_PERMANENT`, `RETRY_EXHAUSTED`, `RETRY_SUCCESS`, `MANUAL_OVERRIDE` | Nilai enum sesuai |
+
+---
+
+## 2. Atomic Claim & Idempotensi (Tanpa Asumsi Idempotency Key Clerk)
+
+### Predicate Claim
+
+Worker mengklaim job dengan query atomic berikut:
+
+```sql
+UPDATE invitations
+SET 
+  compensation_status = compensation_status, -- tetap sama (PENDING_REVOKE atau REVOKE_FAILED)
+  lease_owner = $worker_id,
+  lease_expires_at = NOW() + $lease_duration,
+  claim_token = gen_random_uuid(),
+  compensation_updated_at = NOW()
+WHERE id = $invitation_id
+  AND compensation_status IN ('PENDING_REVOKE', 'REVOKE_FAILED')
+  AND next_retry_at <= NOW()
+  AND (lease_expires_at IS NULL OR lease_expires_at <= NOW())
+RETURNING id, claim_token, clerk_invitation_id;
+```
+
+Jika `RETURNING` kosong, worker tidak mendapat lease dan langsung berhenti.
+
+### Kriteria Tinggi
+
+| # | Kriteria | Cara Verifikasi |
+|---|----------|-----------------|
+| 2.1 | Predicate claim mencakup `lease_expires_at IS NULL` agar job baru (tanpa lease sebelumnya) dapat diklaim | Tes: job baru dengan `lease_expires_at = NULL` berhasil diklaim |
+| 2.2 | Predicate menggunakan `<=` (bukan `<`) untuk `lease_expires_at` dan `next_retry_at` | Audit query SQL |
+| 2.3 | Atomic update menghasilkan `claim_token` baru, mengisi `lease_owner` dan `lease_expires_at`, mengembalikan baris yang diklaim | Tes: RETURNING mengembalikan baris dengan claim_token baru |
+| 2.4 | Finalisasi hanya dilakukan oleh worker yang masih memegang `claim_token` yang sama | Tes: finalisasi dengan claim_token berbeda → ditolak |
+| 2.5 | Lease dibersihkan setelah finalisasi berhasil atau gagal (set `lease_owner = NULL`, `lease_expires_at = NULL`, `claim_token = NULL`) | Tes: setelah finalisasi, kolom lease NULL |
+| 2.6 | Respons Clerk yang secara semantik menunjukkan undangan "sudah tidak aktif", "tidak ditemukan", atau "sudah dicabut" diperlakukan sebagai keberhasilan idempoten → status = `REVOKED` | Tes: mock error sesuai SDK Clerk → status = `REVOKED` |
+| 2.7 | Retry hanya untuk status `PENDING_REVOKE` atau `REVOKE_FAILED` | Tes: coba claim job `NONE` → tidak ada baris dikembalikan |
+
+### Kriteria Sedang
+
+| # | Kriteria | Cara Verifikasi |
+|---|----------|-----------------|
+| 2.8 | Tes meniru bentuk error sebenarnya dari versi Clerk SDK yang dipakai, bukan asumsi status HTTP | Audit test menunjukkan mock error sesuai SDK |
+
+### Batasan Eksplisit
+
+- Tidak perlu idempotency key untuk revoke (kecuali SDK Clerk terbukti mendukung)
+- Tidak perlu distributed lock (optimistic locking via lease sudah cukup)
+
+---
+
+## 3. Konkurensi Antar-Worker (Lease-Based)
+
+### Kriteria Tinggi
+
+| # | Kriteria | Cara Verifikasi |
+|---|----------|-----------------|
+| 3.1 | Hanya 1 worker yang berhasil claim job pada satu waktu | Tes: 5 worker paralel, hanya 1 yang proses undangan sama |
+| 3.2 | Worker yang gagal claim tidak retry | Tes: worker kedua langsung return |
+| 3.3 | Worker yang crash tidak memblokir worker lain selamanya | Tes: kill worker, worker lain bisa claim setelah lease expired |
+
+### Kriteria Sedang
+
+| # | Kriteria | Cara Verifikasi |
+|---|----------|-----------------|
+| 3.4 | Timeout lease dapat dikonfigurasi (default 5 menit) | Environment variable |
+| 3.5 | Job yang lease-nya expired otomatis kembali available untuk di-claim | Tes: set lease 1 detik, tunggu → job berhasil diklaim worker lain |
+
+### Batasan Eksplisit
+
+- Tidak perlu leader election
+- Tidak perlu message queue eksternal (polling database sudah cukup)
+
+---
+
+## 4. Klasifikasi Kegagalan (Konsisten, Tanpa Kontradiksi)
+
+### Kategori Klasifikasi
+
+| Kategori | Kondisi | Hasil Status |
+|----------|---------|-------------|
+| **Terminal-success** | Respons semantik Clerk menunjukkan: not found, already revoked, atau inactive | `REVOKED` |
+| **Retryable** | Timeout, network error, HTTP `408`, HTTP `429`, HTTP `5xx` | `REVOKE_FAILED` (self-transition, retry berlanjut) |
+| **Permanent** | HTTP `4xx` lain yang menunjukkan request atau otorisasi tidak dapat berhasil tanpa perubahan | `REVOKE_PERMANENTLY_FAILED` |
+| **Unknown** | Error yang tidak terklasifikasi di atas | Default ke retryable dengan batas retry, kecuali kontrak SDK membuktikan permanen |
+
+### Kriteria Tinggi
+
+| # | Kriteria | Cara Verifikasi |
+|---|----------|-----------------|
+| 4.1 | Klasifikasi mengikuti tabel di atas tanpa kontradiksi internal | Audit: setiap jenis error dipetakan ke tepat satu kategori |
+| 4.2 | `429` diklasifikasikan sebagai retryable, bukan permanent | Tes: mock 429 → status = `REVOKE_FAILED` |
+| 4.3 | Untuk `429`, waktu retry menghormati header `Retry-After` jika tersedia; jika tidak, gunakan backoff panjang yang dibatasi | Tes: mock 429 dengan `Retry-After: 60` → next_retry_at = NOW() + 60s |
+| 4.4 | Job `REVOKE_PERMANENTLY_FAILED` tidak di-retry otomatis | Tes: worker tidak claim job dengan status ini |
+| 4.5 | Error `Unknown` default ke retryable, bukan permanent | Tes: mock error tak dikenal → status = `REVOKE_FAILED` |
+
+### Kriteria Sedang
+
+| # | Kriteria | Cara Verifikasi |
+|---|----------|-----------------|
+| 4.6 | Error message Clerk disimpan untuk debugging (tanpa token) | Audit log menunjukkan error message |
+
+### Batasan Eksplisit
+
+- Tidak perlu circuit breaker
+- Tidak perlu klasifikasi granular di luar empat kategori di atas
+
+---
+
+## 5. Backoff, Retry Limit, & Dead-Letter
+
+### Kriteria Tinggi
+
+| # | Kriteria | Cara Verifikasi |
+|---|----------|-----------------|
+| 5.1 | Retry memakai exponential backoff (1s, 2s, 4s, 8s, ...) | Tes: cek delay antar retry |
+| 5.2 | Backoff memiliki batas atas (max 5 menit) | Tes: retry ke-10 masih delay 5 menit |
+| 5.3 | Batas retry maksimum (default 10 kali) | Tes: setelah retry ke-10 gagal → status = `DEAD_LETTER` |
+| 5.4 | Job `DEAD_LETTER` tidak di-retry otomatis | Tes: worker tidak claim job `DEAD_LETTER` |
+| 5.5 | Transisi ke `DEAD_LETTER` terjadi saat `retry_count >= max_retries` dan retry terakhir gagal | Tes: retry_count = 10, gagal → status = `DEAD_LETTER` |
+
+### Retry Manual — Kontrak Eksplisit
+
+Endpoint: `POST /organizations/:orgId/compensations/:id/retry`
+
+| Precondition | Aksi |
+|-------------|------|
+| Status harus `DEAD_LETTER` atau `REVOKE_PERMANENTLY_FAILED` | Tolak jika status lain |
+| Tidak ada lease aktif (`lease_expires_at IS NULL OR lease_expires_at <= NOW()`) | Tolak jika lease masih aktif |
+| Request terautentikasi sebagai owner organisasi yang sesuai | Tolak jika bukan owner atau org berbeda |
+| Filter query mencakup `organization_id` | Wajib |
+
+| Perubahan | Nilai |
+|-----------|-------|
+| `compensation_status` | `PENDING_REVOKE` |
+| `retry_count` | `0` |
+| `next_retry_at` | `NOW()` |
+| `lease_owner` | `NULL` |
+| `lease_expires_at` | `NULL` |
+| `claim_token` | `NULL` |
+| `compensation_reason` | `MANUAL_OVERRIDE` |
+| `compensation_updated_at` | `NOW()` |
+| Error terakhir | Dipertahankan untuk audit (tidak dihapus) |
+
+| Audit Log | Field |
+|-----------|-------|
+| Actor | User ID owner yang melakukan retry |
+| Waktu | Timestamp |
+| Status lama | `DEAD_LETTER` atau `REVOKE_PERMANENTLY_FAILED` |
+| Status baru | `PENDING_REVOKE` |
+| Alasan | `MANUAL_OVERRIDE` |
+
+### Kriteria Tinggi (Retry Manual)
+
+| # | Kriteria | Cara Verifikasi |
+|---|----------|-----------------|
+| 5.6 | Endpoint retry manual hanya menerima status `DEAD_LETTER` atau `REVOKE_PERMANENTLY_FAILED` | Tes: coba retry job `REVOKE_FAILED` → ditolak |
+| 5.7 | Endpoint TIDAK memanggil Clerk secara sinkron, hanya ubah status dan reset metadata | Tes: endpoint return cepat (< 1 detik), worker yang proses revoke |
+| 5.8 | Reset mencakup: `retry_count = 0`, `next_retry_at = NOW()`, bersihkan lease | Tes: setelah retry manual, query menunjukkan nilai reset |
+| 5.9 | Endpoint menolak jika job sedang memiliki lease aktif | Tes: set lease aktif → retry manual ditolak |
+| 5.10 | Retry manual tercatat di audit log dengan actor, waktu, status lama, alasan `MANUAL_OVERRIDE` | Audit log entry |
+| 5.11 | Endpoint organization-scoped dengan filter `organization_id` | Tes: owner org A coba retry kompensasi org B → ditolak |
+
+### Kriteria Sedang
+
+| # | Kriteria | Cara Verifikasi |
+|---|----------|-----------------|
+| 5.12 | Jitter ditambahkan ke backoff | Tes: 10 retry paralel delay sedikit berbeda |
+| 5.13 | Endpoint admin untuk lihat daftar kompensasi per status | GET `/organizations/:orgId/compensations?status=DEAD_LETTER` |
+| 5.14 | Error terakhir dipertahankan (tidak dihapus) saat retry manual | Tes: query setelah retry manual menunjukkan error terakhir masih ada |
+
+### Batasan Eksplisit
+
+- Tidak perlu integrasi alerting eksternal
+- Tidak perlu dead-letter queue terpisah
+- Endpoint retry manual tidak memanggil Clerk sinkron
+
+---
+
+## 6. Safety: Undangan Terkunci Selama Kompensasi
+
+### Jaminan Realistis
+
+Database lokal menjamin hal-hal berikut. Sistem **tidak** mengklaim status eksternal Clerk sudah sinkron sebelum Clerk mengonfirmasi revoke.
+
+### Kriteria Tinggi
+
+| # | Kriteria | Cara Verifikasi |
+|---|----------|-----------------|
+| 6.1 | Endpoint acceptance menolak undangan dengan status `PENDING_REVOKE`, `REVOKE_FAILED`, `REVOKE_PERMANENTLY_FAILED`, dan `DEAD_LETTER` | Tes: coba accept untuk setiap status → ditolak |
+| 6.2 | Undangan status kompensasi tidak dapat menghasilkan membership lokal | Tes: accept ditolak → tidak ada baris membership |
+| 6.3 | Undangan status kompensasi tidak muncul di daftar undangan aktif | Tes: GET `/invitations` tidak mengembalikan |
+| 6.4 | Email undangan status kompensasi tidak dapat diundang ulang sampai kompensasi selesai (`REVOKED`) atau dipulihkan resmi | Tes: coba invite email sama → error "compensation in progress" |
+| 6.5 | Worker tetap mencoba revoke di Clerk sesuai kebijakan retry untuk status `PENDING_REVOKE` dan `REVOKE_FAILED` | Tes: job `REVOKE_FAILED` di-claim dan diproses worker |
+
+### Kriteria Sedang
+
+| # | Kriteria | Cara Verifikasi |
+|---|----------|-----------------|
+| 6.6 | UI menampilkan pesan jelas jika user coba accept undangan yang sedang dikompensasi | Tes UI: pesan "Undangan sedang diproses" |
+
+### Batasan Eksplisit
+
+- Database lokal tidak dapat menjamin Clerk sudah menonaktifkan undangan jika revoke gagal
+- Sistem tidak mengklaim sinkronisasi eksternal sebelum konfirmasi Clerk
+- Tidak perlu email notifikasi ke user tentang status kompensasi
+
+---
+
+## 7. Persistensi Baris Reservasi
+
+### Kriteria Tinggi
+
+| # | Kriteria | Cara Verifikasi |
+|---|----------|-----------------|
+| 7.1 | Setelah Clerk berhasil membuat undangan, kegagalan finalisasi secara atomik meninggalkan atau membuat catatan dengan status `PENDING_REVOKE` | Tes: mock finalisasi gagal → baris tetap ada dengan status `PENDING_REVOKE` |
+| 7.2 | Catatan menyimpan minimal: `clerk_invitation_id`, `organization_id`, `compensation_status`, `retry_count`, `next_retry_at`, `lease_owner`, `lease_expires_at`, `claim_token` | Schema database menunjukkan kolom lengkap |
+| 7.3 | Baris menjadi sumber state machine sekaligus penghalang acceptance dan re-invite | Tes: baris ada → accept ditolak, re-invite ditolak |
+| 7.4 | Baris hanya dihapus atau diarsipkan setelah status = `REVOKED`, sesuai kebijakan retensi | Tes: status bukan `REVOKED` → baris tidak dihapus |
+| 7.5 | Kegagalan revoke tidak mencegah persistensi status kompensasi atau menyebabkan bukti pekerjaan hilang | Tes: mock revoke gagal → status tetap tersimpan, audit log tercatat |
+
+### Kriteria Sedang
+
+| # | Kriteria | Cara Verifikasi |
+|---|----------|-----------------|
+| 7.6 | Kebijakan retensi untuk baris `REVOKED` dapat dikonfigurasi | Environment variable atau config |
+
+### Batasan Eksplisit
+
+- Baris tidak boleh dihapus sebelum revoke Clerk dikonfirmasi
+- Bukti pekerjaan tidak boleh hilang akibat kegagalan revoke
+
+---
+
+## 8. Model Otorisasi Organization-Scoped
+
+### Kriteria Tinggi
+
+| # | Kriteria | Cara Verifikasi |
+|---|----------|-----------------|
+| 8.1 | Semua endpoint kompensasi organization-scoped | Route: `/organizations/:orgId/compensations/...` |
+| 8.2 | Hanya owner organisasi terkait yang bisa lihat atau schedule ulang kompensasi | Tes: non-owner ditolak |
+| 8.3 | Semua query wajib filter `organization_id` selain ID kompensasi | Audit query menunjukkan filter |
+| 8.4 | Owner organisasi A tidak bisa lihat atau ubah kompensasi organisasi B | Tes: cross-org access ditolak |
+
+### Kriteria Sedang
+
+| # | Kriteria | Cara Verifikasi |
+|---|----------|-----------------|
+| 8.5 | Audit trail mencatat siapa yang akses endpoint kompensasi | Audit log |
+
+### Batasan Eksplisit
+
+- Admin global = task terpisah (memerlukan model otorisasi baru)
+- Tidak perlu RBAC granular untuk kompensasi (owner sudah cukup)
+
+---
+
+## 9. Observabilitas Tanpa Data Sensitif
+
+### Kriteria Tinggi
+
+| # | Kriteria | Cara Verifikasi |
+|---|----------|-----------------|
+| 9.1 | Log kompensasi tidak mengandung token API Clerk | Grep log → tidak ditemukan |
+| 9.2 | Log tidak mengandung email user dalam bentuk apapun (plaintext maupun hash) | Grep log → tidak ditemukan. Korelasi menggunakan `invitation_id` dan `organization_id` saja |
+| 9.3 | Log mencakup: `invitation_id`, `organization_id`, status lama, status baru, timestamp, error message (tanpa token) | Audit log entry |
+| 9.4 | Metrics tersedia melalui endpoint atau structured metrics: jumlah job per status, rata-rata waktu retry, jumlah dead-letter | Endpoint `/organizations/:orgId/compensations/metrics` atau structured log |
+
+### Kriteria Sedang
+
+| # | Kriteria | Cara Verifikasi |
+|---|----------|-----------------|
+| 9.5 | Endpoint admin untuk lihat detail kompensasi (dengan audit trail siapa akses) | GET `/organizations/:orgId/compensations/:id` + audit log |
+
+### Batasan Eksplisit
+
+- Tidak perlu enkripsi field kompensasi di database
+- Tidak perlu PII redaction library
+- Tidak perlu hash email (cukup tidak log email sama sekali)
+- Tidak perlu infrastruktur dashboard terpisah (endpoint atau structured metrics sudah cukup)
+
+---
+
+## 10. Testing Deterministik
+
+### Kriteria Tinggi
+
+| # | Kriteria | Cara Verifikasi |
+|---|----------|-----------------|
+| 10.1 | Tes kegagalan Clerk sementara: mock timeout → status = `REVOKE_FAILED`, `retry_count` bertambah | Unit test |
+| 10.2 | Tes kegagalan Clerk permanen: mock 4xx non-retryable → status = `REVOKE_PERMANENTLY_FAILED` | Unit test |
+| 10.3 | Tes crash di tengah transisi: kill proses → restart → status konsisten, lease expired → job kembali available | Integration test |
+| 10.4 | Tes retry paralel: 5 worker coba claim job sama → hanya 1 berhasil, sisanya return tanpa panggil Clerk | Concurrency test |
+| 10.5 | Tes dead-letter: 10 retry gagal berturut-turut → status = `DEAD_LETTER`, tidak di-claim worker | Integration test |
+| 10.6 | Tes safety: undangan setiap status kompensasi tidak dapat diterima dan tidak menghasilkan membership | Integration test |
+| 10.7 | Tes persistensi baris: finalisasi gagal → baris tetap ada dengan status `PENDING_REVOKE` dan `clerk_invitation_id` | Integration test |
+| 10.8 | Tes idempotensi: 2 worker coba revoke bersamaan → hanya 1 panggilan Clerk, yang lain gagal claim | Concurrency test |
+| 10.9 | Tes job baru: job dengan `lease_expires_at = NULL` berhasil diklaim | Integration test |
+| 10.10 | Tes self-transition: 3 retry gagal berturut-turut → status tetap `REVOKE_FAILED`, `retry_count` = 3 | Integration test |
+| 10.11 | Tes retry manual: endpoint reset metadata, worker kemudian proses revoke | Integration test |
+| 10.12 | Tes retry manual ditolak: job dengan lease aktif → endpoint tolak | Integration test |
+| 10.13 | Tes 429: mock rate limit → status = `REVOKE_FAILED`, next_retry_at menghormati Retry-After | Unit test |
+
+### Kriteria Sedang
+
+| # | Kriteria | Cara Verifikasi |
+|---|----------|-----------------|
+| 10.14 | Tes backoff: delay antar retry mengikuti exponential pattern dengan batas atas | Unit test |
+| 10.15 | Tes mock error Clerk sesuai bentuk error SDK yang dipakai | Audit test |
+| 10.16 | Tes isolasi organisasi: owner org A tidak bisa akses kompensasi org B | Integration test |
+
+### Batasan Eksplisit
+
+- Tidak perlu tes end-to-end dengan Clerk sandbox
+- Tidak perlu load testing
+
+---
+
+## Checklist Audit Final
+
+| Area | Status |
+|------|--------|
+| **State machine** | |
+| Transisi lengkap termasuk self-transition REVOKE_FAILED | [ ] |
+| Lease terpisah dari status bisnis | [ ] |
+| Transisi atomik | [ ] |
+| Crash recovery | [ ] |
+| **Atomic claim** | |
+| Predicate mencakup `lease_expires_at IS NULL` | [ ] |
+| Predicate menggunakan `<=` | [ ] |
+| Claim menghasilkan claim_token baru | [ ] |
+| Finalisasi hanya oleh lease holder | [ ] |
+| Lease dibersihkan setelah finalisasi | [ ] |
+| Respons "not found"/"already revoked" = REVOKED | [ ] |
+| **Konkurensi** | |
+| Single-worker per job | [ ] |
+| Lease timeout | [ ] |
+| Crash tidak memblokir | [ ] |
+| **Klasifikasi kegagalan** | |
+| Empat kategori konsisten (terminal-success, retryable, permanent, unknown) | [ ] |
+| 429 = retryable | [ ] |
+| Retry-After dihormati | [ ] |
+| **Backoff & dead-letter** | |
+| Exponential backoff dengan batas atas | [ ] |
+| Max retry → DEAD_LETTER | [ ] |
+| Manual retry: kontrak eksplisit lengkap | [ ] |
+| Manual retry async (tidak panggil Clerk sinkron) | [ ] |
+| Manual retry reset metadata + audit log | [ ] |
+| Manual retry tolak jika lease aktif | [ ] |
+| **Safety** | |
+| Semua status kompensasi menolak acceptance | [ ] |
+| Tidak menghasilkan membership lokal | [ ] |
+| Tidak muncul di daftar aktif | [ ] |
+| Tidak dapat di-reinvite | [ ] |
+| Worker tetap retry | [ ] |
+| **Persistensi baris** | |
+| Baris tetap ada setelah finalisasi gagal | [ ] |
+| Metadata lengkap | [ ] |
+| Baris = state machine + penghalang | [ ] |
+| Baris hanya dihapus setelah REVOKED | [ ] |
+| **Otorisasi** | |
+| Organization-scoped | [ ] |
+| Hanya owner | [ ] |
+| Filter organization_id | [ ] |
+| Isolasi antar organisasi | [ ] |
+| **Observabilitas** | |
+| Log tanpa token atau email | [ ] |
+| Metrics via endpoint atau structured metrics | [ ] |
+| Admin endpoint | [ ] |
+| **Testing** | |
+| Kegagalan sementara & permanen | [ ] |
+| Crash recovery | [ ] |
+| Retry paralel | [ ] |
+| Dead-letter | [ ] |
+| Safety (semua status) | [ ] |
+| Persistensi baris | [ ] |
+| Idempotensi | [ ] |
+| Job baru (NULL lease) | [ ] |
+| Self-transition | [ ] |
+| Retry manual | [ ] |
+| 429 handling | [ ] |
+| Isolasi organisasi | [ ] |
+
+---
+
+## Batasan Eksplisit (Apa yang TIDAK Perlu Dilakukan)
+
+1. Tidak perlu saga pattern atau distributed transaction
+2. Tidak perlu idempotency key untuk revoke Clerk (kecuali SDK terbukti mendukung)
+3. Tidak perlu message queue eksternal
+4. Tidak perlu circuit breaker
+5. Tidak perlu dead-letter queue terpisah
+6. Tidak perlu enkripsi field kompensasi
+7. Tidak perlu integrasi alerting eksternal
+8. Tidak perlu tes end-to-end dengan Clerk sandbox
+9. Tidak perlu load testing
+10. Tidak perlu admin global (task terpisah)
+11. Tidak perlu log email (plaintext maupun hash)
+12. Tidak perlu infrastruktur dashboard terpisah
+
+---
+
+Kriteria ini sudah memasukkan delapan koreksi pertama dan empat koreksi kedua. Semua kontradiksi yang diidentifikasi (transisi REVOKE_FAILED, predicate NULL lease, klasifikasi 429, kontrak retry manual) telah diselesaikan. Dokumen ini siap dikunci sebagai dasar implementasi Task #67.
