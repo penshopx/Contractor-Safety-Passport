@@ -181,7 +181,7 @@ export default function DocumentGeneratorPage() {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {csmsProfiles?.map((profile) => (
+                            {csmsProfiles?.filter((profile) => !profile.archived).map((profile) => (
                               <SelectItem key={profile.id} value={profile.id}>
                                 <div className="flex flex-col items-start text-left">
                                   <span>{profile.issuer}</span>

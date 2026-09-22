@@ -985,6 +985,7 @@ export const ListCsmsProfilesResponseItem = zod.object({
   "source": zod.string(),
   "locked": zod.boolean(),
   "builtIn": zod.boolean(),
+  "archived": zod.boolean(),
   "stages": zod.array(zod.object({
   "code": zod.string(),
   "name": zod.string(),
@@ -1037,6 +1038,7 @@ export const CreateCsmsProfileResponse = zod.object({
   "source": zod.string(),
   "locked": zod.boolean(),
   "builtIn": zod.boolean(),
+  "archived": zod.boolean(),
   "stages": zod.array(zod.object({
   "code": zod.string(),
   "name": zod.string(),
@@ -1095,6 +1097,42 @@ export const UpdateCsmsProfileResponse = zod.object({
   "source": zod.string(),
   "locked": zod.boolean(),
   "builtIn": zod.boolean(),
+  "archived": zod.boolean(),
+  "stages": zod.array(zod.object({
+  "code": zod.string(),
+  "name": zod.string(),
+  "purpose": zod.string(),
+  "roles": zod.array(zod.string()),
+  "questions": zod.array(zod.string()),
+  "evidence": zod.array(zod.string()),
+  "validations": zod.array(zod.string())
+}))
+})
+
+
+/**
+ * @summary Archive or restore an organization-owned CSMS guideline version
+ */
+
+
+
+export const SetCsmsProfileArchivedParams = zod.object({
+  "id": zod.coerce.string().min(1)
+})
+
+export const SetCsmsProfileArchivedBody = zod.object({
+  "archived": zod.boolean()
+})
+
+export const SetCsmsProfileArchivedResponse = zod.object({
+  "id": zod.string(),
+  "issuer": zod.string(),
+  "version": zod.string(),
+  "title": zod.string(),
+  "source": zod.string(),
+  "locked": zod.boolean(),
+  "builtIn": zod.boolean(),
+  "archived": zod.boolean(),
   "stages": zod.array(zod.object({
   "code": zod.string(),
   "name": zod.string(),

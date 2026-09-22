@@ -8,9 +8,10 @@ import {
   useCreateCsmsProfile,
   useGetOrganizationContext,
   useListCsmsProfiles,
+  useSetCsmsProfileArchived,
   useUpdateCsmsProfile,
 } from "@workspace/api-client-react";
-import { BookOpenCheck, CopyPlus, Loader2, Lock, Plus, Save, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, BookOpenCheck, CopyPlus, Loader2, Lock, Plus, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -57,6 +58,7 @@ export default function CsmsProfilesPage() {
   const { data: profiles, isLoading } = useListCsmsProfiles();
   const createProfile = useCreateCsmsProfile();
   const updateProfile = useUpdateCsmsProfile();
+  const setArchived = useSetCsmsProfileArchived();
   const [selectedId, setSelectedId] = useState<string>("new");
   const [draft, setDraft] = useState<CsmsProfileInput>(emptyProfile);
 
@@ -153,6 +155,20 @@ export default function CsmsProfilesPage() {
     }
   };
 
+  const toggleArchived = () => {
+    if (!selected || selected.builtIn) return;
+    setArchived.mutate(
+      { id: selected.id, data: { archived: !selected.archived } },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getListCsmsProfilesQueryKey() });
+          toast.success(selected.archived ? "Versi pedoman dipulihkan" : "Versi pedoman diarsipkan");
+        },
+        onError: () => toast.error("Status arsip profil gagal diperbarui"),
+      },
+    );
+  };
+
   if (!canManage) {
     return (
       <Card>
@@ -186,7 +202,7 @@ export default function CsmsProfilesPage() {
               <SelectItem value="new">Profil dan versi baru</SelectItem>
               {profiles?.map((profile) => (
                 <SelectItem key={profile.id} value={profile.id}>
-                  {profile.issuer} · {profile.version}
+                  {profile.issuer} · {profile.version}{profile.archived ? " · Diarsipkan" : ""}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -194,8 +210,30 @@ export default function CsmsProfilesPage() {
           {selected && (
             <div className="flex items-center gap-2">
               <Badge variant="outline">
-                {selected.builtIn ? "Bawaan sistem" : selected.locked ? "Sudah dipakai" : "Draft"}
+                {selected.builtIn
+                  ? "Bawaan sistem"
+                  : selected.archived
+                    ? "Diarsipkan"
+                    : selected.locked
+                      ? "Sudah dipakai"
+                      : "Draft"}
               </Badge>
+              {!selected.builtIn && (
+                <Button
+                  variant="outline"
+                  onClick={toggleArchived}
+                  disabled={setArchived.isPending}
+                >
+                  {setArchived.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : selected.archived ? (
+                    <ArchiveRestore className="mr-2 h-4 w-4" />
+                  ) : (
+                    <Archive className="mr-2 h-4 w-4" />
+                  )}
+                  {selected.archived ? "Pulihkan" : "Arsipkan"}
+                </Button>
+              )}
               {readOnly && (
                 <Button variant="outline" onClick={duplicateAsNew}>
                   <CopyPlus className="mr-2 h-4 w-4" /> Salin sebagai versi baru

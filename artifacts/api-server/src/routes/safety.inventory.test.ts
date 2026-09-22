@@ -32,6 +32,7 @@ const organizationIsolationMatrix = {
   "GET /csms-profiles": ["active-organization"],
   "POST /csms-profiles": ["active-organization"],
   "PUT /csms-profiles/:id": ["active-organization", "foreign-id"],
+  "PATCH /csms-profiles/:id/archive": ["active-organization", "foreign-id"],
   "POST /generated-documents": ["active-organization", "foreign-id"],
   "GET /monthly-reports": ["active-organization"],
   "POST /monthly-reports": ["active-organization", "foreign-id"],

@@ -114,6 +114,7 @@ export const csmsProfileVersionsTable = pgTable(
       validations: string[];
     }>>().notNull(),
     locked: boolean("locked").notNull().default(false),
+    archived: boolean("archived").notNull().default(false),
     createdBy: text("created_by").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })

@@ -665,6 +665,33 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           description: Profile is already in use or issuer and version already exist
+  /csms-profiles/{id}/archive:
+    patch:
+      operationId: setCsmsProfileArchived
+      tags: [document-generator]
+      summary: Archive or restore an organization-owned CSMS guideline version
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, minLength: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CsmsProfileArchiveUpdate"
+      responses:
+        "200":
+          description: Updated CSMS profile archive status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CsmsProfile"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /generated-documents:
     post:
       operationId: generateDocument
@@ -1063,11 +1090,17 @@ components:
         source: { type: string }
         locked: { type: boolean }
         builtIn: { type: boolean }
+        archived: { type: boolean }
         stages:
           type: array
           items:
             $ref: "#/components/schemas/CsmsStage"
-      required: [id, issuer, version, title, source, stages, locked, builtIn]
+      required: [id, issuer, version, title, source, stages, locked, builtIn, archived]
+    CsmsProfileArchiveUpdate:
+      type: object
+      properties:
+        archived: { type: boolean }
+      required: [archived]
     CsmsProfileInput:
       type: object
       properties:

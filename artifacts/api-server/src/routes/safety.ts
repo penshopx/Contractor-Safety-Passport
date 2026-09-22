@@ -67,6 +67,9 @@ import {
   UpdateCsmsProfileBody,
   UpdateCsmsProfileParams,
   UpdateCsmsProfileResponse,
+  SetCsmsProfileArchivedBody,
+  SetCsmsProfileArchivedParams,
+  SetCsmsProfileArchivedResponse,
   ReplaceProjectSafetyBoqBody,
   ReplaceProjectSafetyBoqParams,
   ReplaceProjectSafetyBoqResponse,
@@ -135,7 +138,12 @@ export const createSafetyRouter = (
       .where(eq(csmsProfileVersionsTable.organizationId, organizationId))
       .orderBy(asc(csmsProfileVersionsTable.issuer), desc(csmsProfileVersionsTable.createdAt));
     return [
-      ...csmsProfiles.map((profile) => ({ ...profile, locked: true, builtIn: true })),
+      ...csmsProfiles.map((profile) => ({
+        ...profile,
+        locked: true,
+        builtIn: true,
+        archived: false,
+      })),
       ...customProfiles.map((profile) => ({ ...profile, builtIn: false })),
     ];
   };
@@ -145,7 +153,9 @@ export const createSafetyRouter = (
     profileId: string | undefined,
   ) => {
     const builtIn = findCsmsProfile(profileId);
-    if (builtIn) return { ...builtIn, locked: true, builtIn: true };
+    if (builtIn) {
+      return { ...builtIn, locked: true, builtIn: true, archived: false };
+    }
     if (!profileId) return undefined;
     const [custom] = await db
       .select()
@@ -491,7 +501,12 @@ export const createSafetyRouter = (
       const updatedByName = await resolveUserName(userId);
       const result = await db.transaction(async (tx) => {
         const profile = builtInProfile
-          ? { ...builtInProfile, locked: true, builtIn: true }
+          ? {
+              ...builtInProfile,
+              locked: true,
+              builtIn: true,
+              archived: false,
+            }
           : (
               await tx
                 .select()
@@ -505,6 +520,20 @@ export const createSafetyRouter = (
                 .for("update")
             )[0];
         if (!profile) return undefined;
+        if (!builtInProfile && profile.archived) {
+          const [current] = await tx
+            .select({ profileId: projectCsmsReadinessTable.profileId })
+            .from(projectCsmsReadinessTable)
+            .where(
+              and(
+                eq(projectCsmsReadinessTable.organizationId, organizationId),
+                eq(projectCsmsReadinessTable.projectId, project.id),
+              ),
+            );
+          if (current?.profileId !== profile.id) {
+            return { archived: true as const };
+          }
+        }
         const [updated] = await tx
           .update(projectCsmsReadinessTable)
           .set({
@@ -569,6 +598,12 @@ export const createSafetyRouter = (
       });
       if (!result) {
         res.status(400).json({ error: "Profil CSMS tidak valid" });
+        return;
+      }
+      if ("archived" in result) {
+        res.status(409).json({
+          error: "Profil CSMS sudah diarsipkan dan tidak dapat dipilih untuk kesiapan baru",
+        });
         return;
       }
       if (result.conflict) {
@@ -1161,6 +1196,44 @@ export const createSafetyRouter = (
     },
   );
 
+  router.patch(
+    "/csms-profiles/:id/archive",
+    requireRole("owner"),
+    async (req, res): Promise<void> => {
+      const params = SetCsmsProfileArchivedParams.safeParse(req.params);
+      const body = SetCsmsProfileArchivedBody.safeParse(req.body);
+      if (!params.success || !body.success) {
+        res.status(400).json({ error: "Status arsip profil CSMS tidak valid" });
+        return;
+      }
+      const [profile] = await db
+        .update(csmsProfileVersionsTable)
+        .set({ archived: body.data.archived, updatedAt: new Date() })
+        .where(
+          and(
+            eq(csmsProfileVersionsTable.id, params.data.id),
+            eq(
+              csmsProfileVersionsTable.organizationId,
+              req.organizationContext!.organizationId,
+            ),
+          ),
+        )
+        .returning();
+      if (!profile) {
+        res.status(404).json({
+          error: "Profil CSMS workspace tidak ditemukan",
+        });
+        return;
+      }
+      res.json(
+        SetCsmsProfileArchivedResponse.parse({
+          ...profile,
+          builtIn: false,
+        }),
+      );
+    },
+  );
+
   router.post(
     "/generated-documents",
     requireRole("owner", "safety_expert"),
@@ -1203,7 +1276,12 @@ export const createSafetyRouter = (
           parsed.data.template !== "CSMS_PRAKUALIFIKASI"
             ? undefined
             : builtInProfile
-              ? { ...builtInProfile, locked: true, builtIn: true }
+              ? {
+                  ...builtInProfile,
+                  locked: true,
+                  builtIn: true,
+                  archived: false,
+                }
               : (
                   await db
                     .update(csmsProfileVersionsTable)
@@ -1215,6 +1293,7 @@ export const createSafetyRouter = (
                           csmsProfileVersionsTable.organizationId,
                           req.organizationContext!.organizationId,
                         ),
+                        eq(csmsProfileVersionsTable.archived, false),
                       ),
                     )
                     .returning()

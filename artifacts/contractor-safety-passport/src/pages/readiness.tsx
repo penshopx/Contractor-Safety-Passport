@@ -111,6 +111,9 @@ export default function ReadinessPage() {
   };
 
   const selectedProject = projects?.find((project) => project.id === projectId);
+  const selectableProfiles = profiles?.filter(
+    (profile) => !profile.archived || profile.id === readiness?.profileId,
+  );
   const isLoading = projectsLoading || (projectId !== null && readinessLoading);
 
   return (
@@ -149,9 +152,10 @@ export default function ReadinessPage() {
             >
               <SelectTrigger><SelectValue placeholder="Pilih profil" /></SelectTrigger>
               <SelectContent>
-                {profiles?.map((profile) => (
+                {selectableProfiles?.map((profile) => (
                   <SelectItem key={profile.id} value={profile.id}>
                     {profile.issuer} · {profile.version}
+                    {profile.archived ? " · Diarsipkan" : ""}
                   </SelectItem>
                 ))}
               </SelectContent>

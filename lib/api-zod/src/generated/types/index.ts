@@ -13,6 +13,7 @@ export * from './certificateInputStatus';
 export * from './certificateStatus';
 export * from './conflictResponse';
 export * from './csmsProfile';
+export * from './csmsProfileArchiveUpdate';
 export * from './csmsProfileInput';
 export * from './csmsReadinessItemStatus';
 export * from './csmsReadinessItemStatusStatus';

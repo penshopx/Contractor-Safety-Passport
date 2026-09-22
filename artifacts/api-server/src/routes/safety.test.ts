@@ -572,6 +572,139 @@ describe("isolasi data antar kontraktor", () => {
     assert.equal(foreignUpdate.status, 404);
   });
 
+  it("mengarsipkan profil workspace tanpa memutus kesiapan yang sudah memakainya", async () => {
+    const created = await request("/csms-profiles", {
+      role: "owner",
+      method: "POST",
+      body: csmsProfileBody(`archive-${runId}`),
+    });
+    assert.equal(created.status, 201);
+    assert.equal(created.body.archived, false);
+
+    const deniedArchive = await request(
+      `/csms-profiles/${created.body.id}/archive`,
+      {
+        role: "safety_expert",
+        method: "PATCH",
+        body: { archived: true },
+      },
+    );
+    assert.equal(deniedArchive.status, 403);
+
+    const archived = await request(
+      `/csms-profiles/${created.body.id}/archive`,
+      {
+        role: "owner",
+        method: "PATCH",
+        body: { archived: true },
+      },
+    );
+    assert.equal(archived.status, 200);
+    assert.equal(archived.body.archived, true);
+
+    const profiles = await request("/csms-profiles", { role: "owner" });
+    assert.equal(
+      profiles.body.find(
+        (profile: { id: string }) => profile.id === created.body.id,
+      ).archived,
+      true,
+    );
+
+    const currentReadiness = await request(
+      `/projects/${projectAId}/csms-readiness`,
+    );
+    const rejectedSelection = await request(
+      `/projects/${projectAId}/csms-readiness`,
+      {
+        role: "owner",
+        method: "PUT",
+        body: {
+          profileId: created.body.id,
+          revision: currentReadiness.body.revision,
+          itemStatuses: [],
+        },
+      },
+    );
+    assert.equal(rejectedSelection.status, 409);
+
+    const rejectedDocument = await request("/generated-documents", {
+      role: "owner",
+      method: "POST",
+      body: {
+        projectId: projectAId,
+        template: "CSMS_PRAKUALIFIKASI",
+        companyName: "Kontraktor A",
+        directorName: "Direktur A",
+        safetyLead: "Ahli K3 A",
+        scopeOfWork: "Pekerjaan pengujian profil terarsip",
+        csmsProfileId: created.body.id,
+      },
+    });
+    assert.equal(rejectedDocument.status, 400);
+
+    const restored = await request(
+      `/csms-profiles/${created.body.id}/archive`,
+      {
+        role: "owner",
+        method: "PATCH",
+        body: { archived: false },
+      },
+    );
+    assert.equal(restored.status, 200);
+    assert.equal(restored.body.archived, false);
+
+    const selected = await request(`/projects/${projectAId}/csms-readiness`, {
+      role: "owner",
+      method: "PUT",
+      body: {
+        profileId: created.body.id,
+        revision: currentReadiness.body.revision,
+        itemStatuses: [],
+      },
+    });
+    assert.equal(selected.status, 200);
+
+    await request(`/csms-profiles/${created.body.id}/archive`, {
+      role: "owner",
+      method: "PATCH",
+      body: { archived: true },
+    });
+    const reopened = await request(`/projects/${projectAId}/csms-readiness`);
+    assert.equal(reopened.status, 200);
+    assert.equal(reopened.body.profileId, created.body.id);
+    assert.equal(reopened.body.title, created.body.title);
+
+    const existingItemUpdate = await request(
+      `/projects/${projectAId}/csms-readiness`,
+      {
+        role: "owner",
+        method: "PUT",
+        body: {
+          profileId: created.body.id,
+          revision: reopened.body.revision,
+          itemStatuses: [
+            {
+              key: `${reopened.body.stages[0].code}:question:0`,
+              status: "complete",
+            },
+          ],
+        },
+      },
+    );
+    assert.equal(existingItemUpdate.status, 200);
+    assert.equal(existingItemUpdate.body.profileId, created.body.id);
+
+    const builtInArchive = await request(
+      "/csms-profiles/PERTAMINA_2020/archive",
+      {
+        role: "owner",
+        method: "PATCH",
+        body: { archived: true },
+      },
+    );
+    assert.equal(builtInArchive.status, 404);
+  });
+
   it("menolak kode tahap profil yang duplikat tanpa membedakan huruf besar-kecil", async () => {
     const duplicateStages = [
       csmsProfileBody(`duplicate-${runId}`).stages[0],

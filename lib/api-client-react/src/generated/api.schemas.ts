@@ -376,7 +376,12 @@ export interface CsmsProfile {
   source: string;
   locked: boolean;
   builtIn: boolean;
+  archived: boolean;
   stages: CsmsStage[];
+}
+
+export interface CsmsProfileArchiveUpdate {
+  archived: boolean;
 }
 
 export interface CsmsProfileInput {

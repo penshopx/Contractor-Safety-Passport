@@ -25,6 +25,7 @@ import type {
   CertificateInput,
   ConflictResponse,
   CsmsProfile,
+  CsmsProfileArchiveUpdate,
   CsmsProfileInput,
   DashboardSummary,
   DocumentInput,
@@ -2869,6 +2870,95 @@ export const useUpdateCsmsProfile = <TError = ErrorType<ForbiddenResponse | NotF
         TContext
       > => {
       return useMutation(getUpdateCsmsProfileMutationOptions(options));
+    }
+
+export const getSetCsmsProfileArchivedUrl = (id: string,) => {
+
+
+
+
+  return `/api/csms-profiles/${id}/archive`
+}
+
+/**
+ * @summary Archive or restore an organization-owned CSMS guideline version
+ */
+export const setCsmsProfileArchived = async (id: string,
+    csmsProfileArchiveUpdate: CsmsProfileArchiveUpdate, options?: Parameters<typeof customFetch>[1]): Promise<CsmsProfile> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<CsmsProfile>(getSetCsmsProfileArchivedUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(csmsProfileArchiveUpdate)
+  }
+);}
+
+
+
+
+
+export const getSetCsmsProfileArchivedMutationKey = () => ['setCsmsProfileArchived'] as const;
+
+export const getSetCsmsProfileArchivedMutationOptions = <TError = ErrorType<ForbiddenResponse | NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setCsmsProfileArchived>>, TError,SetCsmsProfileArchivedMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof setCsmsProfileArchived>>, TError,SetCsmsProfileArchivedMutationVariables, TContext> => {
+
+const mutationKey = getSetCsmsProfileArchivedMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setCsmsProfileArchived>>, SetCsmsProfileArchivedMutationVariables> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  setCsmsProfileArchived(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SetCsmsProfileArchivedMutationResult = NonNullable<Awaited<ReturnType<typeof setCsmsProfileArchived>>>
+    export type SetCsmsProfileArchivedMutationBody = BodyType<CsmsProfileArchiveUpdate>
+    export type SetCsmsProfileArchivedMutationError = ErrorType<ForbiddenResponse | NotFoundResponse>
+    export type SetCsmsProfileArchivedMutationVariables = {id: string;data: BodyType<CsmsProfileArchiveUpdate>}
+
+    /**
+ * @summary Archive or restore an organization-owned CSMS guideline version
+ */
+export const useSetCsmsProfileArchived = <TError = ErrorType<ForbiddenResponse | NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setCsmsProfileArchived>>, TError,SetCsmsProfileArchivedMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof setCsmsProfileArchived>>,
+        TError,
+        SetCsmsProfileArchivedMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSetCsmsProfileArchivedMutationOptions(options));
     }
 
 export const getGenerateDocumentUrl = () => {
