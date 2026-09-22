@@ -1431,6 +1431,106 @@ describe("isolasi data antar kontraktor", () => {
     assert.ok(personB.name.includes("Personel B"));
   });
 
+  it("mengisolasi klasifikasi organisasi dan proyek antar-tenant", async () => {
+    const catalog = await request("/construction-classifications");
+    assert.equal(catalog.status, 200);
+    assert.ok(catalog.body.length > 0);
+    const classification = catalog.body[0] as {
+      id: string;
+      allowedQualifications: string[];
+    };
+    const qualification = classification.allowedQualifications[0];
+
+    const viewerWrite = await request("/organization-classifications", {
+      role: "viewer",
+      method: "POST",
+      body: { classificationId: classification.id, qualification },
+    });
+    assert.equal(viewerWrite.status, 403);
+
+    const capabilityA = await request("/organization-classifications", {
+      role: "owner",
+      method: "POST",
+      body: {
+        classificationId: classification.id,
+        qualification,
+        notes: "Khusus organisasi A",
+      },
+    });
+    assert.equal(capabilityA.status, 201);
+    assert.equal(capabilityA.body.organizationId, organizationA);
+
+    const hiddenFromB = await request("/organization-classifications", {
+      organizationId: organizationB,
+      role: "owner",
+    });
+    assert.equal(hiddenFromB.status, 200);
+    assert.ok(
+      hiddenFromB.body.every(
+        (item: { organizationId: string }) => item.organizationId === organizationB,
+      ),
+    );
+    assert.ok(
+      hiddenFromB.body.every(
+        (item: { notes?: string }) => item.notes !== "Khusus organisasi A",
+      ),
+    );
+
+    const capabilityB = await request("/organization-classifications", {
+      organizationId: organizationB,
+      role: "owner",
+      method: "POST",
+      body: {
+        classificationId: classification.id,
+        qualification,
+        notes: "Khusus organisasi B",
+      },
+    });
+    assert.equal(capabilityB.status, 201);
+    assert.equal(capabilityB.body.organizationId, organizationB);
+
+    const visibleToA = await request("/organization-classifications", {
+      role: "owner",
+    });
+    const savedA = visibleToA.body.find(
+      (item: { classificationId: string }) =>
+        item.classificationId === classification.id,
+    );
+    assert.equal(savedA.notes, "Khusus organisasi A");
+
+    const projectClassification = await request(
+      `/projects/${projectAId}/classifications`,
+      {
+        role: "owner",
+        method: "POST",
+        body: {
+          classificationId: classification.id,
+          role: "PRIMARY",
+          requiredQualification: qualification,
+        },
+      },
+    );
+    assert.equal(projectClassification.status, 201);
+    assert.equal(projectClassification.body.organizationId, organizationA);
+
+    for (const [path, method] of [
+      [`/projects/${projectAId}/classifications`, "GET"],
+      [`/projects/${projectAId}/classifications`, "POST"],
+      [`/projects/${projectAId}/organization-fit`, "GET"],
+    ] as const) {
+      const response = await request(path, {
+        organizationId: organizationB,
+        role: "owner",
+        method,
+        body:
+          method === "POST"
+            ? { classificationId: classification.id, role: "SUPPORTING" }
+            : undefined,
+      });
+      assert.equal(response.status, 404, `${method} ${path} harus terisolasi`);
+    }
+  });
+
   it("menerapkan izin viewer, petugas lapangan, ahli K3, dan pemilik", async () => {
     const managementWrites = [
       ["/projects", projectBody(`Baru ${runId}`)],

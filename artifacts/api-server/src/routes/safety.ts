@@ -110,6 +110,7 @@ import {
 } from "../lib/csmsProfiles.ts";
 import { qualificationSatisfies } from "../lib/classificationFit.ts";
 import { tagEvidence } from "../lib/objectStorage.ts";
+import { evidencePathLockQuery } from "../lib/evidencePathLock.ts";
 
 type SafetyRouterHooks = {
   beforeSafetyBoqItemsRead?: () => Promise<void>;
@@ -2025,41 +2026,51 @@ export const createSafetyRouter = (
         res.status(400).json({ error: "Proyek tidak ditemukan" });
         return;
       }
-      if (parsed.data.photoObjectPath) {
-        try {
+      let activity: typeof fieldActivitiesTable.$inferSelect | undefined;
+      try {
+        [activity] = await db.transaction(async (tx) => {
+          if (parsed.data.photoObjectPath) {
+            await tx.execute(
+              evidencePathLockQuery(parsed.data.photoObjectPath),
+            );
           await tagEvidence(
             parsed.data.photoObjectPath,
             req.organizationContext!.organizationId,
           );
-        } catch {
+          }
+          return tx
+            .insert(fieldActivitiesTable)
+            .values({
+              ...parsed.data,
+              project: project.name,
+              notes: parsed.data.notes ?? null,
+              photoObjectPath: parsed.data.photoObjectPath ?? null,
+              photoDataUrl: null,
+              latitude: parsed.data.latitude ?? null,
+              longitude: parsed.data.longitude ?? null,
+              locationAccuracy: parsed.data.locationAccuracy ?? null,
+              signatureSvg: parsed.data.signatureSvg ?? null,
+              occurredAt: new Date(parsed.data.occurredAt),
+              organizationId: req.organizationContext!.organizationId,
+              createdBy: req.organizationContext!.userId,
+            })
+            .onConflictDoNothing({
+              target: [
+                fieldActivitiesTable.organizationId,
+                fieldActivitiesTable.clientId,
+              ],
+              where: sql`${fieldActivitiesTable.clientId} <> 'legacy'`,
+            })
+            .returning();
+        });
+      } catch (error) {
+        if (parsed.data.photoObjectPath) {
+          req.log.warn({ err: error }, "Failed to link uploaded evidence");
           res.status(400).json({ error: "Foto bukti belum selesai diunggah" });
           return;
         }
+        throw error;
       }
-      const [activity] = await db
-        .insert(fieldActivitiesTable)
-        .values({
-          ...parsed.data,
-          project: project.name,
-          notes: parsed.data.notes ?? null,
-          photoObjectPath: parsed.data.photoObjectPath ?? null,
-          photoDataUrl: null,
-          latitude: parsed.data.latitude ?? null,
-          longitude: parsed.data.longitude ?? null,
-          locationAccuracy: parsed.data.locationAccuracy ?? null,
-          signatureSvg: parsed.data.signatureSvg ?? null,
-          occurredAt: new Date(parsed.data.occurredAt),
-          organizationId: req.organizationContext!.organizationId,
-          createdBy: req.organizationContext!.userId,
-        })
-        .onConflictDoNothing({
-          target: [
-            fieldActivitiesTable.organizationId,
-            fieldActivitiesTable.clientId,
-          ],
-          where: sql`${fieldActivitiesTable.clientId} <> 'legacy'`,
-        })
-        .returning();
       if (activity) {
         res.status(201).json(CreateFieldActivityResponse.parse(activity));
         return;

@@ -14,6 +14,11 @@ const organizationIsolationMatrix = {
   "GET /activity": ["active-organization"],
   "GET /projects": ["active-organization"],
   "POST /projects": ["active-organization"],
+  "GET /organization-classifications": ["active-organization"],
+  "POST /organization-classifications": ["active-organization"],
+  "GET /projects/:projectId/classifications": ["active-organization", "foreign-id"],
+  "POST /projects/:projectId/classifications": ["active-organization", "foreign-id"],
+  "GET /projects/:projectId/organization-fit": ["active-organization", "foreign-id"],
   "GET /projects/:id": ["active-organization", "foreign-id"],
   "GET /projects/:projectId/csms-readiness": ["active-organization", "foreign-id"],
   "PUT /projects/:projectId/csms-readiness": ["active-organization", "foreign-id"],
@@ -47,6 +52,8 @@ const organizationIsolationMatrix = {
 >;
 
 const organizationIsolationExceptions = {
+  "GET /construction-classifications":
+    "Referensi klasifikasi konstruksi bersifat global dan tidak memuat data organisasi.",
   "GET /document-templates":
     "Daftar template bersifat statis dan tidak membaca atau mengubah data organisasi.",
 } as const satisfies Partial<Record<SafetyRouteKey, string>>;

@@ -7,3 +7,4 @@
 - [Reservasi sebelum efek eksternal](external-side-effect-reservations.md) — pertahankan reservasi selama kompensasi belum terminal agar resource eksternal lama tidak dapat dikonsumsi atau dibuat ulang.
 - [Referensi klasifikasi konstruksi](construction-classification-references.md) — snapshot tetap belum terverifikasi; kecocokan kualifikasi bersifat hierarkis dan klasifikasi spesialis boleh tanpa level.
 - [Migrasi produksi Replit](replit-production-migrations.md) — perubahan schema dikelola alur Publish; proses build dan startup aplikasi tidak boleh menjalankan DDL atau db push.
+- [Kunci bukti lintas storage dan database](evidence-link-cleanup-lock.md) — tautan foto dan cleanup harus berbagi advisory transaction lock yang tetap ditahan sampai commit atau delete selesai.

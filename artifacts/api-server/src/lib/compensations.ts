@@ -325,16 +325,35 @@ export const reconcileOrphans = async () => {
 
 export const startCompensationWorker = () => {
   let running = true;
+  const activeRuns = new Set<Promise<void>>();
   const workerId = `compensation-${process.pid}-${crypto.randomUUID()}`;
   const tick = async () => {
     if (!running) return;
     const job = await claimNextJob(workerId);
     if (job) await processCompensationJob(job);
   };
-  const timer = setInterval(() => void tick().catch((error) => logger.error({ err: error }, "Compensation worker failed")), 5_000);
+  const track = (operation: Promise<unknown>, failureMessage: string) => {
+    const tracked = operation
+      .then(() => undefined)
+      .catch((error) => logger.error({ err: error }, failureMessage))
+      .finally(() => activeRuns.delete(tracked));
+    activeRuns.add(tracked);
+  };
+  const timer = setInterval(
+    () => track(tick(), "Compensation worker failed"),
+    5_000,
+  );
   timer.unref();
-  void tick().catch((error) => logger.error({ err: error }, "Compensation worker failed"));
-  const reconcileTimer = setInterval(() => void reconcileOrphans().catch((error) => logger.error({ err: error }, "Invitation reconciliation failed")), RECONCILIATION_GRACE_MS);
+  track(tick(), "Compensation worker failed");
+  const reconcileTimer = setInterval(
+    () => track(reconcileOrphans(), "Invitation reconciliation failed"),
+    RECONCILIATION_GRACE_MS,
+  );
   reconcileTimer.unref();
-  return () => { running = false; clearInterval(timer); clearInterval(reconcileTimer); };
+  return async () => {
+    running = false;
+    clearInterval(timer);
+    clearInterval(reconcileTimer);
+    await Promise.allSettled([...activeRuns]);
+  };
 };

@@ -59,17 +59,41 @@ describe("orphaned evidence cleanup selection", () => {
           currentMetageneration = "2";
           return new Set();
         },
-        deleteCandidate: async (snapshot) => {
+        deleteIfStillUnreferenced: async (snapshot) => {
           const preconditions = evidenceDeletePreconditions(snapshot);
           if (preconditions.ifMetagenerationMatch !== currentMetageneration) {
             const error = new Error("conditionNotMet");
             Object.assign(error, { code: 412 });
             throw error;
           }
+          return true;
         },
       },
     });
 
+    assert.deepEqual(result, { deletedCount: 0, deletedBytes: 0 });
+  });
+
+  it("rechecks the database reference while holding the deletion lock", async () => {
+    const candidate = candidates[0]!;
+    let referenceCommitted = false;
+    let deleteCalled = false;
+    const result = await cleanupOrphanedEvidence({
+      now: new Date("2026-09-21T00:00:00.000Z"),
+      gracePeriodMs: 24 * 60 * 60_000,
+      dependencies: {
+        listCandidates: async () => [candidate],
+        findReferencedPaths: async () => new Set(),
+        deleteIfStillUnreferenced: async () => {
+          referenceCommitted = true;
+          if (referenceCommitted) return false;
+          deleteCalled = true;
+          return true;
+        },
+      },
+    });
+
+    assert.equal(deleteCalled, false);
     assert.deepEqual(result, { deletedCount: 0, deletedBytes: 0 });
   });
 });

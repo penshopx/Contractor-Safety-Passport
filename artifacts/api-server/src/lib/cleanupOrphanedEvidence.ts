@@ -1,11 +1,12 @@
 import { db, fieldActivitiesTable } from "@workspace/db";
-import { inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { logger } from "./logger.ts";
 import {
   deleteEvidenceUploadCandidate,
   listEvidenceUploadCandidates,
   type EvidenceObjectCandidate,
 } from "./objectStorage.ts";
+import { evidencePathLockQuery } from "./evidencePathLock.ts";
 
 const DEFAULT_GRACE_PERIOD_MS = 24 * 60 * 60_000;
 const REFERENCE_QUERY_BATCH_SIZE = 500;
@@ -32,8 +33,10 @@ export async function cleanupOrphanedEvidence(
     gracePeriodMs?: number;
     dependencies?: {
       listCandidates: typeof listEvidenceUploadCandidates;
-      deleteCandidate: typeof deleteEvidenceUploadCandidate;
       findReferencedPaths: (paths: string[]) => Promise<ReadonlySet<string>>;
+      deleteIfStillUnreferenced: (
+        candidate: EvidenceObjectCandidate,
+      ) => Promise<boolean>;
     };
   } = {},
 ): Promise<EvidenceCleanupResult> {
@@ -41,7 +44,6 @@ export async function cleanupOrphanedEvidence(
   const now = options.now ?? new Date();
   const dependencies = options.dependencies ?? {
     listCandidates: listEvidenceUploadCandidates,
-    deleteCandidate: deleteEvidenceUploadCandidate,
     findReferencedPaths: async (paths: string[]) => {
       const references = await db
         .select({ objectPath: fieldActivitiesTable.photoObjectPath })
@@ -52,6 +54,18 @@ export async function cleanupOrphanedEvidence(
           reference.objectPath ? [reference.objectPath] : []),
       );
     },
+    deleteIfStillUnreferenced: (candidate: EvidenceObjectCandidate) =>
+      db.transaction(async (tx) => {
+        await tx.execute(evidencePathLockQuery(candidate.objectPath));
+        const [reference] = await tx
+          .select({ objectPath: fieldActivitiesTable.photoObjectPath })
+          .from(fieldActivitiesTable)
+          .where(eq(fieldActivitiesTable.photoObjectPath, candidate.objectPath))
+          .limit(1);
+        if (reference) return false;
+        await deleteEvidenceUploadCandidate(candidate);
+        return true;
+      }),
   };
   const candidates = await dependencies.listCandidates();
   const oldCandidates = candidates.filter(
@@ -78,7 +92,8 @@ export async function cleanupOrphanedEvidence(
 
   for (const candidate of orphaned) {
     try {
-      await dependencies.deleteCandidate(candidate);
+      const deleted = await dependencies.deleteIfStillUnreferenced(candidate);
+      if (!deleted) continue;
       deletedCount += 1;
       deletedBytes += candidate.sizeBytes;
     } catch (error) {
