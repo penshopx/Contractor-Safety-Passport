@@ -173,7 +173,7 @@ export default function DocumentGeneratorPage() {
                   {isCsms && (
                     <FormField control={form.control} name="csmsProfileId" render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Issuer & Versi Pedoman</FormLabel>
+                        <FormLabel>Penerbit & Versi Pedoman</FormLabel>
                         <Select onValueChange={field.onChange} value={field.value ?? ""} disabled={profilesLoading}>
                           <FormControl>
                             <SelectTrigger data-testid="select-csms-profile">
@@ -331,7 +331,7 @@ export default function DocumentGeneratorPage() {
                     </div>
                   </div>
                   <div className="mt-4 grid grid-cols-[110px_1fr] gap-x-3 gap-y-1 border-t border-black/20 pt-3 text-xs">
-                    <span className="font-semibold">Issuer</span><span>{generatedDoc.issuer}</span>
+                    <span className="font-semibold">Penerbit</span><span>{generatedDoc.issuer}</span>
                     <span className="font-semibold">Versi pedoman</span><span>{generatedDoc.guidelineVersion}</span>
                     <span className="font-semibold">Sumber</span><span>{generatedDoc.source}</span>
                   </div>

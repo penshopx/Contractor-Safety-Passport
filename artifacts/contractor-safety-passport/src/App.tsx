@@ -207,7 +207,7 @@ function WorkspaceGate({ children }: { children: ReactNode }) {
     return (
       <div className="min-h-[100dvh] flex flex-col items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 text-primary animate-spin mb-4" />
-        <p className="text-muted-foreground animate-pulse">Loading workspace...</p>
+        <p className="text-muted-foreground animate-pulse">Memuat ruang kerja...</p>
       </div>
     );
   }
@@ -303,14 +303,14 @@ function ClerkProviderWithRoutes() {
       localization={{
         signIn: {
           start: {
-            title: "Welcome back",
-            subtitle: "Sign in to access your compliance workspace",
+            title: "Selamat datang kembali",
+            subtitle: "Masuk untuk mengakses ruang kerja kepatuhan Anda",
           },
         },
         signUp: {
           start: {
-            title: "Create your account",
-            subtitle: "Get started with Contractor Safety Passport",
+            title: "Buat akun Anda",
+            subtitle: "Mulai menggunakan Contractor Safety Passport",
           },
         },
       }}

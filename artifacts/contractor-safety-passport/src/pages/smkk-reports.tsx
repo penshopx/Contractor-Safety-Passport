@@ -559,7 +559,7 @@ export default function SmkkReportsPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        <tr><td className="p-2 border border-gray-300">Toolbox Meeting</td><td className="p-2 border border-gray-300 text-center">{summary.toolbox}</td></tr>
+                        <tr><td className="p-2 border border-gray-300">Rapat Toolbox</td><td className="p-2 border border-gray-300 text-center">{summary.toolbox}</td></tr>
                         <tr><td className="p-2 border border-gray-300">Inspeksi / Patrol</td><td className="p-2 border border-gray-300 text-center">{summary.inspection}</td></tr>
                         <tr><td className="p-2 border border-gray-300">Izin Kerja (PTW)</td><td className="p-2 border border-gray-300 text-center">{summary.permit}</td></tr>
                         <tr><td className="p-2 border border-gray-300">Laporan Near Miss / Insiden</td><td className="p-2 border border-gray-300 text-center">{summary.nearMiss}</td></tr>

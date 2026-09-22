@@ -15,7 +15,7 @@ const types: { value: FieldActivityInputType; label: string; icon: keyof typeof 
   { value: 'Toolbox', label: 'TBM', icon: 'volume-2' },
   { value: 'Inspection', label: 'Inspeksi', icon: 'search' },
   { value: 'Permit to work', label: 'PTW', icon: 'file-text' },
-  { value: 'Near miss', label: 'Near miss', icon: 'alert-triangle' },
+  { value: 'Near miss', label: 'Nyaris celaka', icon: 'alert-triangle' },
 ];
 
 export default function CreateActivityScreen() {
@@ -104,7 +104,7 @@ export default function CreateActivityScreen() {
     <KeyboardAwareScrollViewCompat style={{ backgroundColor: colors.background }} contentContainerStyle={[styles.content, { paddingTop: Platform.OS === 'web' ? 67 : 16, paddingBottom: Platform.OS === 'web' ? 120 : 100 }]} bottomOffset={20}>
       <Text style={[styles.eyebrow, { color: colors.primary }]}>CATAT AKTIVITAS</Text>
       <Text style={[styles.title, { color: colors.foreground }]}>Bukti lapangan, tetap jalan tanpa sinyal.</Text>
-      <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>Waktu dicatat otomatis dan antrean akan dikirim saat online.</Text>
+      <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>Waktu dicatat otomatis dan antrean akan dikirim saat daring.</Text>
 
       <Text style={[styles.sectionLabel, { color: colors.foreground }]}>Jenis kegiatan</Text>
       <View style={styles.typeGrid}>
@@ -115,7 +115,7 @@ export default function CreateActivityScreen() {
       </View>
 
       <View style={styles.form}>
-        <Field label="Judul laporan" value={title} onChangeText={setTitle} placeholder="Toolbox meeting pekerjaan ketinggian" colors={colors} />
+        <Field label="Judul laporan" value={title} onChangeText={setTitle} placeholder="Rapat toolbox pekerjaan di ketinggian" colors={colors} />
         <Text style={[styles.fieldLabel, { color: colors.foreground }]}>Proyek</Text>
         <View style={styles.projectList}>
           {projects?.map((project) => {

@@ -128,10 +128,10 @@ export default function FieldActivitiesPage() {
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl><SelectTrigger><SelectValue placeholder="Pilih Jenis" /></SelectTrigger></FormControl>
                         <SelectContent>
-                          <SelectItem value="Toolbox">Toolbox Meeting</SelectItem>
+                          <SelectItem value="Toolbox">Rapat Toolbox</SelectItem>
                           <SelectItem value="Inspection">Inspeksi / Patrol</SelectItem>
                           <SelectItem value="Permit to work">Izin Kerja (PTW)</SelectItem>
-                          <SelectItem value="Near miss">Laporan Near Miss</SelectItem>
+                          <SelectItem value="Near miss">Laporan Nyaris Celaka</SelectItem>
                         </SelectContent>
                       </Select>
                       <FormMessage />

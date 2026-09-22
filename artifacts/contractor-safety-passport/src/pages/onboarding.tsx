@@ -73,7 +73,7 @@ export default function OnboardingPage() {
             {user?.primaryEmailAddress?.emailAddress}
           </span>
           <Button variant="ghost" size="sm" onClick={() => signOut()} className="text-muted-foreground hover:text-foreground">
-            Sign Out
+             Keluar
           </Button>
         </div>
       </header>
@@ -86,10 +86,10 @@ export default function OnboardingPage() {
               <Building2 className="h-6 w-6 text-primary" />
             </div>
             <h1 className="text-2xl font-bold text-foreground tracking-tight mb-2">
-              Create your workspace
+               Buat ruang kerja Anda
             </h1>
             <p className="text-sm text-muted-foreground">
-              Set up your contractor organization to start managing compliance and safety.
+               Siapkan organisasi kontraktor Anda untuk mulai mengelola kepatuhan dan keselamatan.
             </p>
           </div>
 
@@ -100,10 +100,10 @@ export default function OnboardingPage() {
                 name="name"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-foreground/90">Company Name</FormLabel>
+                   <FormLabel className="text-foreground/90">Nama Perusahaan</FormLabel>
                     <FormControl>
                       <Input
-                        placeholder="e.g. PT. Mitra Konstruksi"
+                         placeholder="contoh: PT. Mitra Konstruksi"
                         className="bg-input/50 border-input-border focus-visible:ring-primary h-11"
                         {...field}
                         disabled={createOrg.isPending}
@@ -120,10 +120,10 @@ export default function OnboardingPage() {
                 disabled={createOrg.isPending}
               >
                 {createOrg.isPending ? (
-                  "Creating workspace..."
+                   "Membuat ruang kerja..."
                 ) : (
                   <>
-                    Continue to Dashboard
+                     Lanjut ke Dasbor
                     <ArrowRight className="ml-2 h-4 w-4" />
                   </>
                 )}

@@ -41,10 +41,10 @@ import { Button } from "./ui/button";
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 const ROLE_LABELS: Record<string, { label: string, icon: any }> = {
-  owner: { label: "Workspace Owner", icon: ShieldCheck },
-  safety_expert: { label: "Safety Expert", icon: ShieldAlert },
-  field_officer: { label: "Field Officer", icon: HardHat },
-  viewer: { label: "Viewer", icon: Eye },
+  owner: { label: "Pemilik Ruang Kerja", icon: ShieldCheck },
+  safety_expert: { label: "Ahli Keselamatan", icon: ShieldAlert },
+  field_officer: { label: "Petugas Lapangan", icon: HardHat },
+  viewer: { label: "Pemantau", icon: Eye },
 };
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
@@ -54,16 +54,16 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const { data: orgContext } = useGetOrganizationContext();
 
   const navItems = [
-    { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard" },
-    { icon: FolderKanban, label: "Projects", href: "/projects" },
-    { icon: CheckSquare, label: "Readiness", href: "/readiness" },
-    { icon: FileText, label: "Safety Docs", href: "/documents" },
-    { icon: FileCog, label: "Doc Generator", href: "/document-generator" },
-    { icon: Calculator, label: "Safety BOQ", href: "/safety-boq" },
-    { icon: FileSpreadsheet, label: "SMKK Reports", href: "/smkk-reports" },
-    { icon: Users, label: "Personnel", href: "/people" },
-    { icon: Award, label: "Certificates", href: "/certificates" },
-    { icon: ActivitySquare, label: "Field Activity", href: "/field-activities" },
+    { icon: LayoutDashboard, label: "Dasbor", href: "/dashboard" },
+    { icon: FolderKanban, label: "Proyek", href: "/projects" },
+    { icon: CheckSquare, label: "Kesiapan", href: "/readiness" },
+    { icon: FileText, label: "Dokumen Keselamatan", href: "/documents" },
+    { icon: FileCog, label: "Pembuat Dokumen", href: "/document-generator" },
+    { icon: Calculator, label: "BOQ Keselamatan", href: "/safety-boq" },
+    { icon: FileSpreadsheet, label: "Laporan SMKK", href: "/smkk-reports" },
+    { icon: Users, label: "Personel", href: "/people" },
+    { icon: Award, label: "Sertifikat", href: "/certificates" },
+    { icon: ActivitySquare, label: "Aktivitas Lapangan", href: "/field-activities" },
   ];
 
   if (orgContext?.role === "owner") {
@@ -71,7 +71,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     navItems.push({ icon: UserCog, label: "Manajemen Tim", href: "/team" });
   }
 
-  const roleInfo = orgContext?.role ? ROLE_LABELS[orgContext.role] : { label: "Member", icon: User };
+  const roleInfo = orgContext?.role ? ROLE_LABELS[orgContext.role] : { label: "Anggota", icon: User };
   const RoleIcon = roleInfo.icon;
 
   return (
@@ -151,7 +151,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             onClick={() => signOut({ redirectUrl: basePath || "/" })}
           >
             <LogOut className="mr-2 h-4 w-4" />
-            Sign Out
+             Keluar
           </Button>
         </SidebarFooter>
       </Sidebar>

@@ -53,7 +53,7 @@ export const exportBoqPdf = (items: SafetyBoqItem[], projectName: string) => {
     }
   });
 
-  doc.save(`BOQ_SMKK_${projectName ? projectName.replace(/[^a-z0-9]/gi, '_').toLowerCase() : 'Draft'}.pdf`);
+  doc.save(`BOQ_SMKK_${projectName ? projectName.replace(/[^a-z0-9]/gi, '_').toLowerCase() : 'Draf'}.pdf`);
 };
 
 export const exportBoqCsv = (items: SafetyBoqItem[], projectName: string) => {
@@ -81,7 +81,7 @@ export const exportBoqCsv = (items: SafetyBoqItem[], projectName: string) => {
   const link = document.createElement('a');
   const url = URL.createObjectURL(blob);
   link.setAttribute('href', url);
-  link.setAttribute('download', `BOQ_SMKK_${projectName ? projectName.replace(/[^a-z0-9]/gi, '_').toLowerCase() : 'Draft'}.csv`);
+  link.setAttribute('download', `BOQ_SMKK_${projectName ? projectName.replace(/[^a-z0-9]/gi, '_').toLowerCase() : 'Draf'}.csv`);
   link.style.visibility = 'hidden';
   document.body.appendChild(link);
   link.click();

@@ -11,7 +11,7 @@ export default function DashboardPage() {
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Dashboard Operasional</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Dasbor Operasional</h1>
         <p className="text-muted-foreground mt-1 text-lg">Ringkasan status kepatuhan K3 dan aktivitas proyek.</p>
       </div>
 

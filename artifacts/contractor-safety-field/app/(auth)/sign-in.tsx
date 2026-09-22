@@ -31,7 +31,7 @@ export default function SignInScreen() {
       <View style={[styles.logo, { backgroundColor: colors.primary }]}><Feather name="shield" size={34} color={colors.primaryForeground} /></View>
       <Text style={[styles.eyebrow, { color: colors.primary }]}>SAFETY PASSPORT</Text>
       <Text style={[styles.title, { color: colors.foreground }]}>Masuk untuk bekerja aman di lapangan.</Text>
-      <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>Gunakan akun yang sama dengan dashboard kontraktor.</Text>
+      <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>Gunakan akun yang sama dengan dasbor kontraktor.</Text>
       <View style={styles.form}>
         <Text style={[styles.label, { color: colors.foreground }]}>Email</Text>
         <TextInput testID="email-input" value={emailAddress} onChangeText={setEmailAddress} autoCapitalize="none" keyboardType="email-address" placeholder="nama@perusahaan.co.id" placeholderTextColor={colors.mutedForeground} style={[styles.input, { color: colors.foreground, backgroundColor: colors.input, borderColor: colors.border }]} />

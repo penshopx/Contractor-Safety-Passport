@@ -103,7 +103,7 @@ export default function CsmsProfilesPage() {
 
   const validate = () => {
     if (!draft.issuer.trim() || !draft.version.trim() || !draft.title.trim() || !draft.source.trim()) {
-      toast.error("Issuer, versi, judul, dan sumber wajib diisi");
+      toast.error("Penerbit, versi, judul, dan sumber wajib diisi");
       return false;
     }
     if (
@@ -216,7 +216,7 @@ export default function CsmsProfilesPage() {
                     ? "Diarsipkan"
                     : selected.locked
                       ? "Sudah dipakai"
-                      : "Draft"}
+                       : "Draf"}
               </Badge>
               {!selected.builtIn && (
                 <Button
@@ -260,7 +260,7 @@ export default function CsmsProfilesPage() {
           {(["issuer", "version", "title", "source"] as const).map((field) => (
             <label key={field} className={`space-y-2 ${field === "title" || field === "source" ? "md:col-span-2" : ""}`}>
               <span className="text-sm font-medium">
-                {{ issuer: "Issuer / principal", version: "Versi pedoman", title: "Judul", source: "Sumber" }[field]}
+                {{ issuer: "Penerbit / principal", version: "Versi pedoman", title: "Judul", source: "Sumber" }[field]}
               </span>
               <Input
                 value={draft[field]}

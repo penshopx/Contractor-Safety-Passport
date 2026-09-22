@@ -141,7 +141,7 @@ function CatalogItemDialog({
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-[640px] bg-card border-border">
-        <DialogHeader><DialogTitle>{initialData ? "Edit Item Katalog" : "Tambah Item Katalog"}</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>{initialData ? "Ubah Item Katalog" : "Tambah Item Katalog"}</DialogTitle></DialogHeader>
         <form onSubmit={form.handleSubmit((data) => { onSave(data); onClose(); })} className="space-y-4 py-4">
           <div className="space-y-2">
             <Label htmlFor="catalog-description">Nama Item Standar</Label>
@@ -274,7 +274,7 @@ function BoqItemDialog({
       <DialogContent className="sm:max-w-[600px] bg-card border-border">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold tracking-tight">
-            {initialData ? "Edit Item BOQ" : "Tambah Item BOQ Baru"}
+            {initialData ? "Ubah Item BOQ" : "Tambah Item BOQ Baru"}
           </DialogTitle>
         </DialogHeader>
 
@@ -596,13 +596,13 @@ export default function SafetyBoqPage() {
           if (error.status === 409) {
             setConflictingEdit({ base: projectItems, proposed: nextItems, successMessage });
             await refetchShared();
-            toast.warning("Draft terbaru dimuat. Edit Anda tetap disimpan untuk ditinjau atau digabungkan.");
+            toast.warning("Draf terbaru dimuat. Perubahan Anda tetap disimpan untuk ditinjau atau digabungkan.");
             return;
           }
           toast.error(
             error.status === 403
               ? "Peran Anda tidak dapat mengubah draft BOQ proyek."
-              : "Draft BOQ gagal disimpan. Perubahan belum diterapkan.",
+              : "Draf BOQ gagal disimpan. Perubahan belum diterapkan.",
           );
         },
       },
@@ -672,13 +672,13 @@ export default function SafetyBoqPage() {
   };
 
   const handleDeleteCatalogItem = (id: string) => {
-    if (!canEditCatalog || !window.confirm("Hapus item katalog ini? Draft BOQ yang sudah memakai item tetap aman.")) return;
+    if (!canEditCatalog || !window.confirm("Hapus item katalog ini? Draf BOQ yang sudah memakai item tetap aman.")) return;
     deleteCatalogItem.mutate(
       { id },
       {
         onSuccess: async () => {
           await queryClient.invalidateQueries({ queryKey: getListSafetyPriceCatalogItemsQueryKey() });
-          toast.success("Item katalog dihapus. Draft lama tetap tidak berubah.");
+          toast.success("Item katalog dihapus. Draf lama tetap tidak berubah.");
         },
         onError: () => toast.error("Item katalog gagal dihapus"),
       },
@@ -764,7 +764,7 @@ export default function SafetyBoqPage() {
         onError: async (error) => {
           if (error.status === 409) {
             await refetchShared();
-            toast.warning("Draft berubah. Data lokal tetap aman; silakan coba pindahkan lagi.");
+              toast.warning("Draf berubah. Data lokal tetap aman; silakan coba pindahkan lagi.");
             return;
           }
           toast.error("Data lokal belum dipindahkan dan tetap aman di perangkat ini.");
@@ -801,13 +801,13 @@ export default function SafetyBoqPage() {
   };
 
   const handleExportPdf = () => {
-    const projName = selectedProjectId === 'all' ? 'Draft Umum' : projects?.find(p => p.id === Number(selectedProjectId))?.name || 'Proyek';
+    const projName = selectedProjectId === 'all' ? 'Draf Umum' : projects?.find(p => p.id === Number(selectedProjectId))?.name || 'Proyek';
     exportBoqPdf(projectItems, projName);
     toast.success("PDF berhasil diekspor");
   };
 
   const handleExportCsv = () => {
-    const projName = selectedProjectId === 'all' ? 'Draft Umum' : projects?.find(p => p.id === Number(selectedProjectId))?.name || 'Proyek';
+    const projName = selectedProjectId === 'all' ? 'Draf Umum' : projects?.find(p => p.id === Number(selectedProjectId))?.name || 'Proyek';
     exportBoqCsv(projectItems, projName);
     toast.success("CSV berhasil diekspor");
   };
@@ -819,10 +819,10 @@ export default function SafetyBoqPage() {
       <Dialog open={conflictingEdit !== null} onOpenChange={() => undefined}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Draft BOQ telah berubah</DialogTitle>
+            <DialogTitle>Draf BOQ telah berubah</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            Anggota tim lain menyimpan perubahan lebih dulu. Draft terbaru sudah dimuat, dan edit Anda masih disimpan sementara.
+            Anggota tim lain menyimpan perubahan lebih dulu. Draf terbaru sudah dimuat, dan perubahan Anda masih disimpan sementara.
           </p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setConflictingEdit(null)}>
@@ -851,7 +851,7 @@ export default function SafetyBoqPage() {
               <SelectValue placeholder="Pilih Proyek" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Draft Umum (Tanpa Proyek)</SelectItem>
+              <SelectItem value="all">Draf Umum (Tanpa Proyek)</SelectItem>
               {projects?.map(p => (
                 <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
               ))}
@@ -907,7 +907,7 @@ export default function SafetyBoqPage() {
           {isLoadingShared || isRefreshingShared ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
           <span>
             {canEditShared
-              ? "Draft proyek dibagikan ke anggota workspace dan diperbarui dari server."
+              ? "Draf proyek dibagikan ke anggota ruang kerja dan diperbarui dari server."
               : "Anda dapat melihat draft terbaru. Hanya Owner dan Ahli K3 yang dapat mengubahnya."}
           </span>
         </div>
@@ -917,7 +917,7 @@ export default function SafetyBoqPage() {
         <Card className="border-destructive/40 bg-destructive/5">
           <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-destructive">
-              Draft proyek gagal dimuat. Semua perubahan diblokir agar data yang sudah ada tidak tertimpa.
+              Draf proyek gagal dimuat. Semua perubahan diblokir agar data yang sudah ada tidak tertimpa.
             </p>
             <Button
               variant="outline"

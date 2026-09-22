@@ -38,7 +38,7 @@ export default function HistoryScreen() {
       <View style={[styles.summary, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <View><Text style={[styles.summaryNumber, { color: colors.foreground }]}>{pending.length}</Text><Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>belum terkirim</Text></View>
         <View style={[styles.divider, { backgroundColor: colors.border }]} />
-        <View><Text style={[styles.summaryNumber, { color: colors.foreground }]}>{serverActivities?.length ?? 0}</Text><Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>di dashboard</Text></View>
+        <View><Text style={[styles.summaryNumber, { color: colors.foreground }]}>{serverActivities?.length ?? 0}</Text><Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>di dasbor</Text></View>
       </View>
       {isLoading && rows.length === 0 ? <ActivityIndicator color={colors.primary} style={styles.loader} /> : (
         <FlatList
