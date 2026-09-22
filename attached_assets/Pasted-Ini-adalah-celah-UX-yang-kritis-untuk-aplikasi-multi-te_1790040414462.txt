@@ -1,0 +1,495 @@
+Ini adalah **celah UX yang kritis** untuk aplikasi multi-tenant. Ketika owner tidak tahu *mengapa* suatu tindakan gagal, mereka akan:
+1. Mencoba berulang kali (memperparah masalah)
+2. Menghubungi support (beban operasional)
+3. Menyerah dan meninggalkan aplikasi (churn)
+
+Mari kita bangun sistem error handling yang **spesifik, actionable, dan traceable**.
+
+---
+
+## 1. Pemetaan Skenario Kegagalan
+
+Berdasarkan operasi tim yang umum, berikut skenario kegagalan yang perlu ditangani:
+
+### A. Perubahan Peran (Role Update)
+| Skenario | Penyebab | Tindakan Owner |
+|----------|----------|----------------|
+| Target tidak ditemukan | Member sudah dihapus atau ID salah | Periksa daftar anggota terbaru |
+| Peran tidak valid | Role yang dipilih tidak ada di sistem | Pilih role yang tersedia |
+| Tidak bisa mengubah diri sendiri | Owner mencoba mengubah role sendiri | Tunjuk owner lain terlebih dahulu |
+| Tidak bisa menurunkan role last owner | Hanya ada 1 owner dan ingin dijadikan member | Tunjuk owner baru dulu |
+| Izin tidak cukup | User yang mengubah bukan owner | Hubungi owner organisasi |
+
+### B. Pencabutan Anggota (Member Removal)
+| Skenario | Penyebab | Tindakan Owner |
+|----------|----------|----------------|
+| Target tidak ditemukan | Member sudah dihapus | Periksa daftar anggota terbaru |
+| Tidak bisa menghapus diri sendiri | Owner mencoba menghapus akun sendiri | Transfer ownership terlebih dahulu |
+| Tidak bisa menghapus last owner | Hanya ada 1 owner | Tunjuk owner baru dulu |
+| Member memiliki proyek aktif | Member sedang mengelola proyek yang berjalan | Transfer proyek ke member lain |
+| Izin tidak cukup | User yang menghapus bukan owner | Hubungi owner organisasi |
+
+### C. Pembatalan Undangan (Invitation Revocation)
+| Skenario | Penyebab | Tindakan Owner |
+|----------|----------|----------------|
+| Undangan tidak ditemukan | Undangan sudah diterima/dibatalkan | Periksa status undangan |
+| Undangan sudah diterima | Target sudah menjadi member | Tidak perlu dibatalkan |
+| Undangan sudah kedaluwarsa | Undangan lewat dari masa berlaku | Kirim undangan baru |
+| Izin tidak cukup | User yang membatalkan bukan owner | Hubungi owner organisasi |
+
+---
+
+## 2. Error Code System (Backend)
+
+Definisikan error code yang **machine-readable** dan **human-readable**:
+
+```typescript
+// types/team-errors.ts
+export enum TeamErrorCode {
+  // Umum
+  MEMBER_NOT_FOUND = 'TEAM_MEMBER_NOT_FOUND',
+  INSUFFICIENT_PERMISSIONS = 'TEAM_INSUFFICIENT_PERMISSIONS',
+  ORGANIZATION_MISMATCH = 'TEAM_ORGANIZATION_MISMATCH',
+  
+  // Perubahan Peran
+  INVALID_ROLE = 'TEAM_INVALID_ROLE',
+  CANNOT_CHANGE_SELF_ROLE = 'TEAM_CANNOT_CHANGE_SELF_ROLE',
+  CANNOT_DOWNGRADE_LAST_OWNER = 'TEAM_CANNOT_DOWNGRADE_LAST_OWNER',
+  
+  // Pencabutan Anggota
+  CANNOT_REMOVE_SELF = 'TEAM_CANNOT_REMOVE_SELF',
+  CANNOT_REMOVE_LAST_OWNER = 'TEAM_CANNOT_REMOVE_LAST_OWNER',
+  MEMBER_HAS_ACTIVE_PROJECTS = 'TEAM_MEMBER_HAS_ACTIVE_PROJECTS',
+  
+  // Undangan
+  INVITATION_NOT_FOUND = 'TEAM_INVITATION_NOT_FOUND',
+  INVITATION_ALREADY_ACCEPTED = 'TEAM_INVITATION_ALREADY_ACCEPTED',
+  INVITATION_EXPIRED = 'TEAM_INVITATION_EXPIRED',
+  INVITATION_ALREADY_CANCELLED = 'TEAM_INVITATION_ALREADY_CANCELLED',
+}
+
+// utils/team-error-messages.ts
+export const teamErrorMessages: Record<TeamErrorCode, {
+  title: string;
+  message: string;
+  action?: string;
+}> = {
+  [TeamErrorCode.MEMBER_NOT_FOUND]: {
+    title: 'Anggota Tidak Ditemukan',
+    message: 'Anggota yang Anda coba ubah tidak ada atau sudah dihapus.',
+    action: 'Muat ulang halaman untuk melihat daftar anggota terbaru.'
+  },
+  [TeamErrorCode.CANNOT_CHANGE_SELF_ROLE]: {
+    title: 'Tidak Dapat Mengubah Role Sendiri',
+    message: 'Anda tidak dapat mengubah role akun Anda sendiri.',
+    action: 'Minta owner lain untuk mengubah role Anda, atau transfer ownership terlebih dahulu.'
+  },
+  [TeamErrorCode.CANNOT_DOWNGRADE_LAST_OWNER]: {
+    title: 'Organisasi Harus Memiliki Minimal 1 Owner',
+    message: 'Anda adalah satu-satunya owner di organisasi ini.',
+    action: 'Tunjuk member lain sebagai owner terlebih dahulu sebelum mengubah role Anda.'
+  },
+  [TeamErrorCode.MEMBER_HAS_ACTIVE_PROJECTS]: {
+    title: 'Anggota Masih Mengelola Proyek Aktif',
+    message: 'Anggota ini sedang mengelola proyek yang sedang berjalan.',
+    action: 'Transfer kepemilikan proyek ke member lain terlebih dahulu.'
+  },
+  [TeamErrorCode.INVITATION_ALREADY_ACCEPTED]: {
+    title: 'Undangan Sudah Diterima',
+    message: 'Undangan ini sudah diterima dan target sudah menjadi anggota.',
+    action: 'Periksa daftar anggota untuk melihat status mereka.'
+  },
+  [TeamErrorCode.INVITATION_EXPIRED]: {
+    title: 'Undangan Sudah Kedaluwarsa',
+    message: 'Undangan ini sudah lewat dari masa berlaku (7 hari).',
+    action: 'Kirim undangan baru ke email yang sama.'
+  },
+  // ... definisikan semua error code lainnya
+};
+```
+
+**Custom Error Class:**
+```typescript
+// errors/team-error.ts
+export class TeamOperationError extends Error {
+  constructor(
+    public code: TeamErrorCode,
+    public context?: Record<string, any>
+  ) {
+    super(code);
+    this.name = 'TeamOperationError';
+  }
+}
+```
+
+---
+
+## 3. Implementasi Handler dengan Error Spesifik
+
+**Contoh: Handler Perubahan Role**
+```typescript
+// handlers/update-member-role.ts
+async function updateMemberRole(
+  organizationId: string,
+  actorId: string,
+  targetMemberId: string,
+  newRole: string
+) {
+  // 1. Validasi actor adalah owner
+  const actor = await prisma.organizationMember.findFirst({
+    where: { organizationId, userId: actorId }
+  });
+  
+  if (!actor || actor.role !== 'OWNER') {
+    throw new TeamOperationError(TeamErrorCode.INSUFFICIENT_PERMISSIONS);
+  }
+  
+  // 2. Validasi role baru valid
+  if (!['OWNER', 'SAFETY_EXPERT', 'MEMBER'].includes(newRole)) {
+    throw new TeamOperationError(TeamErrorCode.INVALID_ROLE, { providedRole: newRole });
+  }
+  
+  // 3. Cari target member
+  const target = await prisma.organizationMember.findFirst({
+    where: { id: targetMemberId, organizationId }
+  });
+  
+  if (!target) {
+    throw new TeamOperationError(TeamErrorCode.MEMBER_NOT_FOUND, { targetMemberId });
+  }
+  
+  // 4. Tidak bisa mengubah diri sendiri
+  if (target.userId === actorId) {
+    throw new TeamOperationError(TeamErrorCode.CANNOT_CHANGE_SELF_ROLE);
+  }
+  
+  // 5. Jika mengubah owner menjadi non-owner, cek apakah ini last owner
+  if (target.role === 'OWNER' && newRole !== 'OWNER') {
+    const ownerCount = await prisma.organizationMember.count({
+      where: { organizationId, role: 'OWNER' }
+    });
+    
+    if (ownerCount === 1) {
+      throw new TeamOperationError(TeamErrorCode.CANNOT_DOWNGRADE_LAST_OWNER);
+    }
+  }
+  
+  // 6. Lakukan perubahan
+  return await prisma.organizationMember.update({
+    where: { id: targetMemberId },
+    data: { role: newRole, updatedAt: new Date() }
+  });
+}
+```
+
+**Contoh: Handler Pencabutan Anggota**
+```typescript
+// handlers/remove-member.ts
+async function removeMember(
+  organizationId: string,
+  actorId: string,
+  targetMemberId: string
+) {
+  // ... validasi actor adalah owner ...
+  
+  const target = await prisma.organizationMember.findFirst({
+    where: { id: targetMemberId, organizationId }
+  });
+  
+  if (!target) {
+    throw new TeamOperationError(TeamErrorCode.MEMBER_NOT_FOUND);
+  }
+  
+  // Tidak bisa menghapus diri sendiri
+  if (target.userId === actorId) {
+    throw new TeamOperationError(TeamErrorCode.CANNOT_REMOVE_SELF);
+  }
+  
+  // Cek apakah last owner
+  if (target.role === 'OWNER') {
+    const ownerCount = await prisma.organizationMember.count({
+      where: { organizationId, role: 'OWNER' }
+    });
+    
+    if (ownerCount === 1) {
+      throw new TeamOperationError(TeamErrorCode.CANNOT_REMOVE_LAST_OWNER);
+    }
+  }
+  
+  // Cek apakah memiliki proyek aktif
+  const activeProjects = await prisma.project.count({
+    where: { 
+      organizationId,
+      ownerId: target.userId,
+      status: { in: ['ACTIVE', 'PLANNING'] }
+    }
+  });
+  
+  if (activeProjects > 0) {
+    throw new TeamOperationError(TeamErrorCode.MEMBER_HAS_ACTIVE_PROJECTS, {
+      activeProjectCount: activeProjects
+    });
+  }
+  
+  // Lakukan penghapusan
+  return await prisma.organizationMember.delete({
+    where: { id: targetMemberId }
+  });
+}
+```
+
+---
+
+## 4. Error Response Format (API)
+
+Pastikan API mengembalikan error dalam format yang konsisten:
+
+```typescript
+// middleware/error-handler.ts
+app.use((error, req, res, next) => {
+  if (error instanceof TeamOperationError) {
+    const errorInfo = teamErrorMessages[error.code];
+    
+    return res.status(400).json({
+      success: false,
+      error: {
+        code: error.code,
+        title: errorInfo.title,
+        message: errorInfo.message,
+        action: errorInfo.action,
+        context: error.context // Untuk debugging
+      }
+    });
+  }
+  
+  // Handle error lainnya...
+});
+```
+
+**Contoh Response:**
+```json
+{
+  "success": false,
+  "error": {
+    "code": "TEAM_MEMBER_HAS_ACTIVE_PROJECTS",
+    "title": "Anggota Masih Mengelola Proyek Aktif",
+    "message": "Anggota ini sedang mengelola proyek yang sedang berjalan.",
+    "action": "Transfer kepemilikan proyek ke member lain terlebih dahulu.",
+    "context": {
+      "activeProjectCount": 3
+    }
+  }
+}
+```
+
+---
+
+## 5. UI Feedback yang Actionable (Frontend)
+
+**Komponen Toast/Alert yang Kaya Informasi:**
+```typescript
+// components/team-error-toast.tsx
+import { toast } from 'sonner';
+import { TeamErrorCode, teamErrorMessages } from '@/types/team-errors';
+
+export function showTeamError(error: { code: TeamErrorCode; context?: any }) {
+  const errorInfo = teamErrorMessages[error.code];
+  
+  if (!errorInfo) {
+    toast.error('Terjadi kesalahan yang tidak diketahui');
+    return;
+  }
+  
+  toast.error(errorInfo.title, {
+    description: (
+      <div className="space-y-2">
+        <p>{errorInfo.message}</p>
+        {errorInfo.action && (
+          <p className="text-sm font-medium text-muted-foreground">
+            💡 {errorInfo.action}
+          </p>
+        )}
+        {error.context?.activeProjectCount && (
+          <p className="text-xs text-muted-foreground">
+            Jumlah proyek aktif: {error.context.activeProjectCount}
+          </p>
+        )}
+      </div>
+    ),
+    duration: 8000, // Lebih lama agar owner sempat baca
+  });
+}
+```
+
+**Penggunaan di Halaman Tim:**
+```typescript
+// pages/team.tsx
+async function handleUpdateRole(memberId: string, newRole: string) {
+  try {
+    await api.put(`/team/members/${memberId}/role`, { role: newRole });
+    toast.success('Role berhasil diubah');
+    refetchMembers();
+  } catch (error) {
+    if (error.response?.data?.error) {
+      showTeamError(error.response.data.error);
+    } else {
+      toast.error('Gagal mengubah role. Silakan coba lagi.');
+    }
+  }
+}
+
+async function handleRemoveMember(memberId: string) {
+  if (!confirm('Yakin ingin menghapus anggota ini?')) return;
+  
+  try {
+    await api.delete(`/team/members/${memberId}`);
+    toast.success('Anggota berhasil dihapus');
+    refetchMembers();
+  } catch (error) {
+    if (error.response?.data?.error) {
+      showTeamError(error.response.data.error);
+    } else {
+      toast.error('Gagal menghapus anggota. Silakan coba lagi.');
+    }
+  }
+}
+
+async function handleRevokeInvitation(invitationId: string) {
+  try {
+    await api.delete(`/team/invitations/${invitationId}`);
+    toast.success('Undangan berhasil dibatalkan');
+    refetchInvitations();
+  } catch (error) {
+    if (error.response?.data?.error) {
+      showTeamError(error.response.data.error);
+    } else {
+      toast.error('Gagal membatalkan undangan. Silakan coba lagi.');
+    }
+  }
+}
+```
+
+---
+
+## 6. Testing Strategy
+
+**Test untuk Memastikan Error Spesifik Dikembalikan:**
+```typescript
+// tests/team-errors.test.ts
+describe('Team Error Handling', () => {
+  test('should return CANNOT_DOWNGRADE_LAST_OWNER when downgrading only owner', async () => {
+    const org = await createOrganization();
+    const owner = await addMember(org.id, 'OWNER');
+    
+    await expect(
+      updateMemberRole(org.id, owner.userId, owner.id, 'MEMBER')
+    ).rejects.toThrow(TeamOperationError);
+    
+    try {
+      await updateMemberRole(org.id, owner.userId, owner.id, 'MEMBER');
+    } catch (error) {
+      expect(error).toBeInstanceOf(TeamOperationError);
+      expect(error.code).toBe(TeamErrorCode.CANNOT_DOWNGRADE_LAST_OWNER);
+    }
+  });
+  
+  test('should return MEMBER_HAS_ACTIVE_PROJECTS when removing member with projects', async () => {
+    const org = await createOrganization();
+    const owner = await addMember(org.id, 'OWNER');
+    const member = await addMember(org.id, 'MEMBER');
+    await createProject(org.id, member.userId, 'ACTIVE');
+    
+    try {
+      await removeMember(org.id, owner.userId, member.id);
+    } catch (error) {
+      expect(error.code).toBe(TeamErrorCode.MEMBER_HAS_ACTIVE_PROJECTS);
+      expect(error.context.activeProjectCount).toBe(1);
+    }
+  });
+  
+  test('should return INVITATION_ALREADY_ACCEPTED when revoking accepted invitation', async () => {
+    const org = await createOrganization();
+    const owner = await addMember(org.id, 'OWNER');
+    const invitation = await createInvitation(org.id, 'test@example.com');
+    await acceptInvitation(invitation.id);
+    
+    try {
+      await revokeInvitation(org.id, owner.userId, invitation.id);
+    } catch (error) {
+      expect(error.code).toBe(TeamErrorCode.INVITATION_ALREADY_ACCEPTED);
+    }
+  });
+});
+```
+
+---
+
+## 7. Koneksi ke Task Sebelumnya
+
+Pola error handling ini **konsisten** dengan:
+- **Task #37 (Audit Profil)**: Menggunakan error code untuk validasi arsip
+- **Task #40 (Konkurensi Undangan)**: Menggunakan error code untuk race condition
+- **Task #11-13 (Offline & PDF)**: Menggunakan error code untuk sinkronisasi
+
+Ini menciptakan **pola yang dapat diprediksi** di seluruh aplikasi, yang sangat penting untuk:
+- Debugging (developer tahu persis apa yang salah)
+- Dokumentasi (error code bisa didokumentasikan)
+- Monitoring (bisa track error mana yang paling sering terjadi)
+
+---
+
+## 8. Rekomendasi Tambahan
+
+**A. Logging untuk Debugging**
+Setiap error yang dilempar harus di-log dengan konteks lengkap:
+```typescript
+logger.warn('Team operation failed', {
+  errorCode: error.code,
+  organizationId,
+  actorId,
+  targetMemberId,
+  context: error.context,
+  timestamp: new Date().toISOString()
+});
+```
+
+**B. Analytics untuk UX Improvement**
+Track error mana yang paling sering terjadi:
+```typescript
+analytics.track('team_operation_failed', {
+  errorCode: error.code,
+  operation: 'update_role' | 'remove_member' | 'revoke_invitation'
+});
+```
+Jika `MEMBER_HAS_ACTIVE_PROJECTS` sering terjadi, pertimbangkan fitur "Transfer Proyek Massal".
+
+**C. Help Center Integration**
+Setiap error code bisa punya link ke dokumentasi:
+```typescript
+const errorInfo = teamErrorMessages[error.code];
+const helpUrl = `https://help.yourapp.com/errors/${error.code}`;
+
+toast.error(errorInfo.title, {
+  description: (
+    <div>
+      <p>{errorInfo.message}</p>
+      <a href={helpUrl} target="_blank" className="text-sm underline">
+        Pelajari lebih lanjut →
+      </a>
+    </div>
+  )
+});
+```
+
+---
+
+## Urutan Pengerjaan
+
+1. **Definisikan semua error code** untuk operasi tim (role, remove, invitation)
+2. **Implementasi error handling** di semua handler backend
+3. **Buat komponen toast** yang menampilkan pesan actionable
+4. **Integrasi di UI** halaman tim
+5. **Tulis test** untuk setiap skenario kegagalan
+6. **Dokumentasikan** error code untuk developer dan user
+
+Apakah Anda ingin saya buatkan **daftar lengkap error code** untuk semua operasi tim, atau fokus pada **implementasi salah satu handler** (misal: pencabutan anggota dengan validasi proyek aktif)?
