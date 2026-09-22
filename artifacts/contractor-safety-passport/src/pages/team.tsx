@@ -74,7 +74,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   getInviteErrorMessage,
-  teamMutationErrorMessages,
+  getTeamMutationErrorMessage,
 } from '@/lib/team-errors';
 
 const formSchema = z.object({
@@ -246,8 +246,8 @@ export default function TeamPage() {
         toast.success("Peran berhasil diperbarui");
         queryClient.invalidateQueries({ queryKey: getListOrganizationMembersQueryKey() });
       },
-      onError: () => {
-        toast.error(teamMutationErrorMessages.updateRole);
+      onError: (error) => {
+        toast.error(getTeamMutationErrorMessage("updateRole", error));
       }
     });
   };
@@ -261,8 +261,8 @@ export default function TeamPage() {
         toast.success("Akses anggota berhasil dicabut");
         refreshTeam();
       },
-      onError: () => {
-        toast.error(teamMutationErrorMessages.removeMember);
+      onError: (error) => {
+        toast.error(getTeamMutationErrorMessage("removeMember", error));
       }
     });
   };
@@ -273,8 +273,8 @@ export default function TeamPage() {
         toast.success("Undangan berhasil dibatalkan");
         refreshTeam();
       },
-      onError: () => {
-        toast.error(teamMutationErrorMessages.revokeInvitation);
+      onError: (error) => {
+        toast.error(getTeamMutationErrorMessage("revokeInvitation", error));
       }
     });
   };
