@@ -1,0 +1,263 @@
+# Kriteria Audit Final — Task #67: Clerk Compensation Persistence
+
+## Tujuan Inti
+
+Jika finalisasi database gagal setelah Clerk berhasil membuat undangan, atau jika pencabutan Clerk gagal setelah finalisasi database gagal, sistem harus **memulihkan konsistensi secara otomatis tanpa intervensi manual**, dengan jaminan bahwa undangan tidak pernah berada dalam keadaan "setengah jadi" yang dapat digunakan oleh user.
+
+---
+
+## 1. Arsitektur State Machine Persisten
+
+### Kriteria Tinggi
+
+| # | Kriteria | Cara Verifikasi |
+|---|----------|-----------------|
+| 1.1 | Status kompensasi disimpan di database, bukan di memori | Query `SELECT compensation_status FROM invitations WHERE id = ?` setelah restart aplikasi |
+| 1.2 | Status hanya memiliki transisi yang valid: `NONE` → `PENDING_REVOKE` → `REVOKED` atau `REVOKE_FAILED` | Tes state machine: setiap transisi ilegal ditolak |
+| 1.3 | Transisi status atomik dalam transaksi database | Tes konkurensi: 2 worker mencoba transisi bersamaan, hanya 1 yang berhasil |
+| 1.4 | Worker yang crash di tengah transisi tidak meninggalkan status ambigu | Tes: kill proses saat update status, restart → status konsisten |
+
+### Kriteria Sedang
+
+| # | Kriteria | Cara Verifikasi |
+|---|----------|-----------------|
+| 1.5 | Timestamp setiap transisi dicatat (`compensation_updated_at`) | Query menunjukkan waktu perubahan status |
+| 1.6 | Alasan transisi dicatat (`compensation_reason`) | Nilai enum: `FINALIZATION_FAILED`, `REVOKE_FAILED`, `RETRY_SUCCESS`, `MANUAL_OVERRIDE` |
+
+### Batasan Eksplisit
+
+- **Tidak perlu** menyimpan payload request/response Clerk secara lengkap (cukup `clerk_invitation_id` dan status)
+- **Tidak perlu** menyimpan token API Clerk di database
+- **Tidak perlu** implementasi saga pattern atau distributed transaction (kompensasi satu arah sudah cukup)
+
+---
+
+## 2. Idempotensi & Pencegahan Revoke Ganda
+
+### Kriteria Tinggi
+
+| # | Kriteria | Cara Verifikasi |
+|---|----------|-----------------|
+| 2.1 | Retry revoke hanya dilakukan jika status = `PENDING_REVOKE` atau `REVOKE_FAILED` | Tes: coba revoke undangan dengan status `NONE` → ditolak |
+| 2.2 | Revoke ke Clerk memakai idempotency key atau verifikasi status sebelum revoke | Tes: 2 worker coba revoke bersamaan, hanya 1 panggilan Clerk terjadi |
+| 2.3 | Jika Clerk mengembalikan "invitation not found", status langsung berubah ke `REVOKED` (bukan error) | Tes: mock Clerk 404 → status = `REVOKED` |
+| 2.4 | Jika Clerk mengembalikan "invitation already revoked", status langsung berubah ke `REVOKED` | Tes: mock Clerk 409 → status = `REVOKED` |
+
+### Kriteria Sedang
+
+| # | Kriteria | Cara Verifikasi |
+|---|----------|-----------------|
+| 2.5 | Idempotency key untuk revoke berbeda dengan idempotency key untuk create | Audit log menunjukkan key berbeda |
+
+### Batasan Eksplisit
+
+- **Tidak perlu** menyimpan idempotency key di database (bisa digenerate dari `invitation_id` + `action`)
+- **Tidak perlu** implementasi distributed lock (optimistic locking via status sudah cukup)
+
+---
+
+## 3. Konkurensi Antar-Worker
+
+### Kriteria Tinggi
+
+| # | Kriteria | Cara Verifikasi |
+|---|----------|-----------------|
+| 3.1 | Hanya 1 worker yang berhasil mengambil job `PENDING_REVOKE` pada satu waktu | Tes: 5 worker paralel, hanya 1 yang memproses undangan yang sama |
+| 3.2 | Worker yang gagal mengambil job (karena worker lain sudah mengambil) tidak retry | Tes: worker kedua langsung return tanpa retry |
+| 3.3 | Worker yang crash saat memproses job tidak memblokir worker lain selamanya | Tes: kill worker, worker lain bisa mengambil job setelah timeout |
+
+### Kriteria Sedang
+
+| # | Kriteria | Cara Verifikasi |
+|---|----------|-----------------|
+| 3.4 | Timeout lease job dapat dikonfigurasi (default 5 menit) | Konfigurasi environment variable |
+| 3.5 | Job yang timeout otomatis kembali ke `PENDING_REVOKE` | Tes: set timeout 1 detik, tunggu → job kembali available |
+
+### Batasan Eksplisit
+
+- **Tidak perlu** implementasi leader election (semua worker bisa compete untuk job)
+- **Tidak perlu** message queue eksternal (polling database sudah cukup untuk skala ini)
+
+---
+
+## 4. Klasifikasi Kegagalan
+
+### Kriteria Tinggi
+
+| # | Kriteria | Cara Verifikasi |
+|---|----------|-----------------|
+| 4.1 | Kegagalan jaringan Clerk diklasifikasikan sebagai `RETRYABLE` | Tes: mock timeout → status = `REVOKE_FAILED`, job tetap available |
+| 4.2 | Kegagalan 5xx Clerk diklasifikasikan sebagai `RETRYABLE` | Tes: mock 500 → status = `REVOKE_FAILED` |
+| 4.3 | Kegagalan 4xx Clerk (selain 404/409) diklasifikasikan sebagai `PERMANENT` | Tes: mock 400 → status = `REVOKE_PERMANENTLY_FAILED` |
+| 4.4 | Kegagalan `PERMANENT` tidak di-retry otomatis | Tes: job dengan status `PERMANENT` tidak diambil worker |
+
+### Kriteria Sedang
+
+| # | Kriteria | Cara Verifikasi |
+|---|----------|-----------------|
+| 4.5 | Error message Clerk disimpan untuk debugging (tanpa token sensitif) | Audit log menunjukkan error message |
+| 4.6 | Rate limit Clerk (429) diklasifikasikan sebagai `RETRYABLE` dengan backoff panjang | Tes: mock 429 → job di-retry setelah delay lebih lama |
+
+### Batasan Eksplisit
+
+- **Tidak perlu** implementasi circuit breaker (backoff + max retry sudah cukup)
+- **Tidak perlu** membedakan jenis error Clerk secara granular (retryable vs permanent sudah cukup)
+
+---
+
+## 5. Backoff, Retry Limit, & Dead-Letter
+
+### Kriteria Tinggi
+
+| # | Kriteria | Cara Verifikasi |
+|---|----------|-----------------|
+| 5.1 | Retry memakai exponential backoff (1s, 2s, 4s, 8s, ...) | Tes: cek delay antar retry |
+| 5.2 | Backoff memiliki batas atas (max 5 menit) | Tes: retry ke-10 masih pakai delay 5 menit, bukan 512 detik |
+| 5.3 | Ada batas retry maksimum (default 10 kali) | Tes: setelah 10 retry, status berubah ke `DEAD_LETTER` |
+| 5.4 | Job `DEAD_LETTER` tidak di-retry otomatis | Tes: worker tidak mengambil job dengan status `DEAD_LETTER` |
+| 5.5 | Ada endpoint admin untuk retry manual job `DEAD_LETTER` | Tes: POST `/admin/compensations/:id/retry` → status kembali `PENDING_REVOKE` |
+
+### Kriteria Sedang
+
+| # | Kriteria | Cara Verifikasi |
+|---|----------|-----------------|
+| 5.6 | Jitter ditambahkan ke backoff untuk mencegah thundering herd | Tes: 10 retry paralel memiliki delay yang sedikit berbeda |
+| 5.7 | Ada endpoint admin untuk melihat daftar job `DEAD_LETTER` | GET `/admin/compensations?status=DEAD_LETTER` |
+
+### Batasan Eksplisit
+
+- **Tidak perlu** integrasi dengan sistem alerting eksternal (logging + endpoint admin sudah cukup)
+- **Tidak perlu** implementasi dead-letter queue terpisah (status di tabel yang sama sudah cukup)
+
+---
+
+## 6. Safety: Undangan Terkunci Selama Kompensasi
+
+### Kriteria Tinggi
+
+| # | Kriteria | Cara Verifikasi |
+|---|----------|-----------------|
+| 6.1 | Undangan dengan status `PENDING_REVOKE` atau `REVOKE_FAILED` tidak dapat diterima user | Tes: coba accept undangan dengan status kompensasi → ditolak |
+| 6.2 | Undangan dengan status kompensasi tidak muncul di daftar undangan aktif | Tes: GET `/invitations` tidak mengembalikan undangan dengan status kompensasi |
+| 6.3 | Undangan dengan status `DEAD_LETTER` tidak dapat diterima atau di-revoke manual | Tes: semua operasi ditolak |
+| 6.4 | Email undangan dengan status kompensasi tidak dapat diundang ulang sampai kompensasi selesai | Tes: coba invite email yang sama → error "compensation in progress" |
+
+### Kriteria Sedang
+
+| # | Kriteria | Cara Verifikasi |
+|---|----------|-----------------|
+| 6.5 | UI menampilkan pesan yang jelas jika user mencoba accept undangan yang sedang dikompensasi | Tes UI: pesan "Undangan sedang diproses, silakan coba lagi nanti" |
+
+### Batasan Eksplisit
+
+- **Tidak perlu** mengirim email notifikasi ke user tentang status kompensasi (cukup pesan di UI)
+- **Tidak perlu** implementasi "soft delete" undangan (status kompensasi sudah cukup mengunci)
+
+---
+
+## 7. Observabilitas Tanpa Data Sensitif
+
+### Kriteria Tinggi
+
+| # | Kriteria | Cara Verifikasi |
+|---|----------|-----------------|
+| 7.1 | Log kompensasi tidak mengandung token API Clerk | Grep log untuk pola token → tidak ditemukan |
+| 7.2 | Log kompensasi tidak mengandung email user dalam plaintext | Grep log untuk pola email → tidak ditemukan (atau di-hash) |
+| 7.3 | Log mencakup: invitation_id, organization_id, status lama, status baru, timestamp, error message (tanpa token) | Audit log entry |
+| 7.4 | Metrics tersedia: jumlah job per status, rata-rata waktu retry, jumlah dead-letter | Dashboard metrics |
+
+### Kriteria Sedang
+
+| # | Kriteria | Cara Verifikasi |
+|---|----------|-----------------|
+| 7.5 | Email di-hash dengan salt yang konsisten untuk debugging | Log menunjukkan hash, bukan email asli |
+| 7.6 | Ada endpoint admin untuk melihat detail kompensasi (dengan audit trail siapa yang akses) | GET `/admin/compensations/:id` + audit log |
+
+### Batasan Eksplisit
+
+- **Tidak perlu** enkripsi field kompensasi di database (akses database sudah terkontrol)
+- **Tidak perlu** implementasi PII redaction library (manual review sudah cukup)
+
+---
+
+## 8. Testing Deterministik
+
+### Kriteria Tinggi
+
+| # | Kriteria | Cara Verifikasi |
+|---|----------|-----------------|
+| 8.1 | Tes kegagalan Clerk: mock Clerk timeout, verifikasi status = `REVOKE_FAILED` | Unit test |
+| 8.2 | Tes crash di tengah transisi: kill proses saat update status, restart → status konsisten | Integration test |
+| 8.3 | Tes retry paralel: 5 worker coba process job yang sama, hanya 1 yang berhasil | Concurrency test |
+| 8.4 | Tes dead-letter: 10 retry gagal → status = `DEAD_LETTER`, tidak di-retry otomatis | Integration test |
+| 8.5 | Tes safety: undangan dengan status kompensasi tidak dapat diterima | Integration test |
+
+### Kriteria Sedang
+
+| # | Kriteria | Cara Verifikasi |
+|---|----------|-----------------|
+| 8.6 | Tes backoff: verifikasi delay antar retry mengikuti exponential pattern | Unit test |
+| 8.7 | Tes idempotensi: 2 worker coba revoke bersamaan, hanya 1 panggilan Clerk | Concurrency test |
+
+### Batasan Eksplisit
+
+- **Tidak perlu** tes end-to-end dengan Clerk sandbox (mock sudah cukup)
+- **Tidak perlu** tes load testing untuk kompensasi (skala kecil, polling database sudah cukup)
+
+---
+
+## Checklist Audit Final
+
+| Area | Status |
+|------|--------|
+| **State machine persisten** | |
+| Status disimpan di database | [ ] |
+| Transisi atomik | [ ] |
+| Crash recovery | [ ] |
+| **Idempotensi** | |
+| Retry hanya untuk status yang valid | [ ] |
+| Pencegahan revoke ganda | [ ] |
+| Handling 404/409 dari Clerk | [ ] |
+| **Konkurensi** | |
+| Single-worker per job | [ ] |
+| Timeout lease | [ ] |
+| Crash tidak memblokir | [ ] |
+| **Klasifikasi kegagalan** | |
+| Retryable vs permanent | [ ] |
+| Error message tanpa token | [ ] |
+| **Backoff & dead-letter** | |
+| Exponential backoff | [ ] |
+| Max retry limit | [ ] |
+| Dead-letter status | [ ] |
+| Manual retry endpoint | [ ] |
+| **Safety** | |
+| Undangan terkunci selama kompensasi | [ ] |
+| Tidak muncul di daftar aktif | [ ] |
+| Tidak dapat di-reinvite | [ ] |
+| **Observabilitas** | |
+| Log tanpa data sensitif | [ ] |
+| Metrics tersedia | [ ] |
+| Admin endpoint | [ ] |
+| **Testing** | |
+| Kegagalan Clerk | [ ] |
+| Crash recovery | [ ] |
+| Retry paralel | [ ] |
+| Dead-letter | [ ] |
+| Safety | [ ] |
+
+---
+
+## Batasan Eksplisit (Apa yang TIDAK Perlu Dilakukan)
+
+1. **Tidak perlu** saga pattern atau distributed transaction
+2. **Tidak perlu** message queue eksternal (Redis/RabbitMQ)
+3. **Tidak perlu** circuit breaker
+4. **Tidak perlu** dead-letter queue terpisah
+5. **Tidak perlu** enkripsi field kompensasi
+6. **Tidak perlu** integrasi alerting eksternal
+7. **Tidak perlu** tes end-to-end dengan Clerk sandbox
+8. **Tidak perlu** load testing untuk kompensasi
+
+---
+
+Kriteria ini sudah terkunci. Silakan implementasikan Task #67 berdasarkan kriteria ini, lalu lampirkan hasil audit untuk validasi.
