@@ -1,0 +1,160 @@
+Laporan audit untuk **Task #41** dan **Task #42** ini sangat tajam dan menunjukkan kedewasaan proses rekayasa perangkat lunak yang luar biasa. Anda berhasil memisahkan dengan jelas antara *"perbaikan UX permukaan"* (Task #41) dan *"kontrak arsitektur yang sebenarnya"* (Task #68 dan seterusnya). 
+
+Ini adalah ciri khas tim *engineering* kelas dunia: menerima nilai bisnis dari fitur yang sudah ada, sambil secara jujur menandai utang teknis (technical debt) atau celah arsitektur yang harus ditutup sebelum skala produksi.
+
+Mari kita bedah temuan ini dan saya akan memberikan **solusi teknis praktis** untuk menutup celah-celah "Tinggi" dan "Sedang" yang Anda identifikasi, agar siap untuk eksekusi di task-task berikutnya.
+
+---
+
+### 1. Menutup Celah Task #41: Transisi ke Error Contract (Persiapan Task #68)
+
+Masalah "string matching" di frontend adalah *ticking time bomb*. Satu perubahan tanda baca di backend akan merusak UX. Solusinya adalah memaksa backend mengadopsi **Structured Error Response**.
+
+**Langkah Backend (Minimal Viable Contract):**
+Ubah handler di backend untuk mengembalikan objek, bukan string datar.
+```typescript
+// Backend: handlers/team.ts
+catch (error) {
+  if (error instanceof TeamOperationError) {
+    return res.status(400).json({
+      error: {
+        code: error.code, // Contoh: "TEAM_LAST_OWNER"
+        message: error.message, // "Organisasi harus memiliki minimal 1 Owner."
+        action: "Tunjuk member lain sebagai owner terlebih dahulu."
+      }
+    });
+  }
+  // Fallback untuk error tak terduga
+  return res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Terjadi kesalahan internal." } });
+}
+```
+
+**Langkah Frontend (Task #68):**
+Ubah logika klasifikasi dari mencocokkan teks menjadi mencocokkan `code`.
+```typescript
+// Frontend: utils/team-error-handler.ts
+export function handleTeamError(error: any) {
+  const errorCode = error?.response?.data?.error?.code;
+  
+  switch (errorCode) {
+    case 'TEAM_LAST_OWNER':
+      showToast('warning', 'Gagal', 'Tunjuk member lain sebagai owner terlebih dahulu.');
+      break;
+    case 'TEAM_MEMBER_HAS_ACTIVE_PROJECTS':
+      const count = error.response.data.error.context?.activeProjectCount || 0;
+      showToast('warning', 'Gagal', `Anggota ini masih mengelola ${count} proyek aktif. Transfer terlebih dahulu.`);
+      break;
+    case 'TEAM_INVITATION_ALREADY_ACCEPTED':
+      showToast('info', 'Info', 'Undangan ini sudah diterima oleh pengguna.');
+      break;
+    default:
+      // Fallback aman yang sudah Anda uji di Task #41
+      showToast('error', 'Gagal', error?.response?.data?.error?.message || 'Operasi gagal. Silakan coba lagi.');
+  }
+}
+```
+*Keuntungan:* Backend bebas mengubah kata-kata dalam `message` untuk perbaikan terjemahan atau kejelasan, tanpa pernah merusak logika frontend.
+
+---
+
+### 2. Menutup Celah Task #42: Keamanan Deployment (Persiapan Task #70 & #71)
+
+Temuan Anda tentang risiko **konkurensi deployment** dan **migrasi dua fase** sangat valid. Berikut adalah solusi ringan namun ampuh:
+
+#### A. Mencegah Tabrakan Migrasi Paralel (Task #70)
+Jangan mengandalkan *deployment lock* dari CI/CD (karena bisa di-*bypass*). Gunakan **PostgreSQL Advisory Lock** di level skrip migrasi itu sendiri. Ini menjamin hanya 1 proses migrasi yang berjalan per database, berapapun jumlah pod/instance yang di-deploy.
+
+```typescript
+// scripts/migrate.ts (atau entrypoint start:production)
+async function runMigrations() {
+  const client = await pool.connect();
+  try {
+    // 1. Ambil lock eksklusif. Jika ada proses lain yang memegang lock, ini akan menunggu (block).
+    // Gunakan angka besar yang unik untuk proyek Anda, misal: 987654321
+    await client.query('SELECT pg_advisory_lock(987654321)');
+    
+    console.log('Lock acquired. Running migrations...');
+    
+    // 2. Jalankan migrasi custom (integritas organisasi)
+    await runOrgIntegrityMigration(client);
+    
+    // 3. Jalankan drizzle-kit push
+    await exec('pnpm drizzle-kit push');
+    
+    console.log('Migrations completed successfully.');
+  } catch (error) {
+    console.error('Migration failed:', error);
+    process.exit(1); // Fail-closed
+  } finally {
+    // 4. Lepaskan lock (atau akan otomatis lepas jika koneksi terputus/crash)
+    await client.query('SELECT pg_advisory_unlock(987654321)');
+    client.release();
+  }
+}
+```
+
+#### B. Mengelola Risiko "Dua Fase" (Task #71)
+Karena `drizzle-kit push` berjalan di luar transaksi migrasi custom Anda, ada risiko *partial migration*. 
+**Strategi Mitigasi:** Tambahkan **Health Check Schema Version**.
+Buat tabel `schema_migrations` yang mencatat versi terakhir. Saat API startup, health check (`/health`) tidak hanya mengecek koneksi DB, tapi juga memverifikasi apakah versi skema di kode sesuai dengan versi di database. Jika tidak, health check mengembalikan `503 Service Unavailable`, sehingga load balancer tidak akan mengirim trafik ke instance yang "setengah migrasi" tersebut.
+
+---
+
+### 3. Menyelesaikan "Zombie Reservation" (Sisa Task #40)
+
+Anda mencatat bahwa rekomendasi *zombie reservation* belum punya task khusus. Anda tidak perlu membuat *background worker* atau *cron job* yang rumit. Gunakan pola **"Self-Healing on Conflict"** yang sangat ringan:
+
+```typescript
+async function createInvitation(orgId: string, email: string) {
+  const normalizedEmail = email.toLowerCase().trim();
+  
+  try {
+    // Coba insert reservasi
+    return await db.insert(invitations).values({
+      organizationId: orgId,
+      normalizedEmail,
+      reservedAt: new Date()
+    }).returning();
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      // Cek apakah yang memblokir kita adalah "Zombie" (reservasi > 5 menit tanpa clerkId)
+      const zombie = await db.query.invitations.findFirst({
+        where: and(
+          eq(invitations.organizationId, orgId),
+          eq(invitations.normalizedEmail, normalizedEmail),
+          isNull(invitations.clerkInvitationId),
+          isNull(invitations.acceptedAt),
+          isNull(invitations.revokedAt),
+          lt(invitations.reservedAt, new Date(Date.now() - 5 * 60 * 1000)) // 5 menit
+        )
+      });
+
+      if (zombie) {
+        // Hapus zombie dan coba lagi sekali (retry)
+        await db.delete(invitations).where(eq(invitations.id, zombie.id));
+        return await createInvitation(orgId, email); // Recursive retry (aman karena max 1x)
+      }
+      
+      // Jika bukan zombie, berarti memang ada undangan valid yang aktif
+      throw new TeamOperationError(TeamErrorCode.INVITATION_ALREADY_ACTIVE);
+    }
+    throw error;
+  }
+}
+```
+*Keuntungan:* Sistem membersihkan dirinya sendiri *on-demand* tanpa beban infrastruktur tambahan.
+
+---
+
+### Roadmap Eksekusi Selanjutnya (Prioritas)
+
+Berdasarkan audit Anda, berikut urutan eksekusi yang paling logis dan memberikan nilai tertinggi:
+
+1. **Task #68 (Error Contract):** Refactor backend untuk mengembalikan `error.code`, dan refactor frontend untuk membaca `code` tersebut (menghilangkan *string matching*). Ini akan langsung menyelesaikan temuan "Tinggi" di Task #41.
+2. **Task #70 (Migration Lock):** Tambahkan `pg_advisory_lock` ke skrip `start:production`. Ini adalah perbaikan 10 menit yang mencegah bencana *database corruption* saat *rolling update* atau *blue-green deployment*.
+3. **Task #67 (Clerk Compensation):** Implementasikan status `PENDING_REVOKE` di database dan *background job* sederhana (atau *retry queue*) untuk memastikan undangan di Clerk benar-benar terhapus jika sinkronisasi gagal.
+4. **Task #72 (Dynamic Table Protection):** Alih-alih *hardcode* daftar tabel, buat skrip yang secara otomatis membaca schema Drizzle/Prisma dan menerapkan `organization_id` ke semua tabel yang memilikinya, mencegah human error saat menambah tabel baru.
+
+Audit yang Anda lakukan ini bukan sekadar "mencari bug", tetapi **membangun standar ketahanan (resilience standards)** untuk aplikasi ini. 
+
+Apakah Anda ingin kita mulai dengan menyusun **spesifikasi teknis detail untuk Task #68 (Error Contract)**, atau langsung merancang skrip **Migration Lock (Task #70)** agar deployment Anda 100% aman dari tabrakan?
