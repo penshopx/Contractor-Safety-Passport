@@ -3,11 +3,12 @@ import { useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { ShieldCheck, Building2, ArrowRight } from "lucide-react";
+import { Building2, ArrowRight } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { useCreateOrganization, useGetOrganizationContext, getGetOrganizationContextQueryKey } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
+import { Logo } from "@/components/logo";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -63,11 +64,8 @@ export default function OnboardingPage() {
   return (
     <div className="min-h-[100dvh] flex flex-col bg-background relative overflow-hidden">
       {/* Header */}
-      <header className="px-6 h-16 flex items-center border-b border-border/50 bg-card/30 backdrop-blur shrink-0 justify-between relative z-10">
-        <div className="flex items-center gap-2 font-bold text-lg text-primary tracking-tight">
-          <ShieldCheck className="h-6 w-6" />
-          <span>Safety Passport</span>
-        </div>
+      <header className="px-6 h-20 flex items-center border-b border-border/50 bg-card/30 backdrop-blur shrink-0 justify-between relative z-10">
+        <Logo />
         <div className="flex items-center gap-3">
           <span className="text-sm text-muted-foreground hidden sm:inline-block">
             {user?.primaryEmailAddress?.emailAddress}

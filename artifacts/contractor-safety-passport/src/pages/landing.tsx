@@ -1,15 +1,13 @@
 import { Link } from "wouter";
-import { ShieldCheck, ArrowRight, Activity, Users, FileText } from "lucide-react";
+import { ArrowRight, Activity, Users, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Logo } from "@/components/logo";
 
 export default function LandingPage() {
   return (
     <div className="min-h-[100dvh] flex flex-col bg-background selection:bg-primary selection:text-primary-foreground">
-      <header className="px-6 h-16 flex items-center border-b border-border/50 bg-card/30 backdrop-blur shrink-0 justify-between relative z-10">
-        <div className="flex items-center gap-2 font-bold text-lg text-primary tracking-tight">
-          <ShieldCheck className="h-6 w-6" />
-          <span>Safety Passport</span>
-        </div>
+      <header className="px-6 h-20 flex items-center border-b border-border/50 bg-card/30 backdrop-blur shrink-0 justify-between relative z-10">
+        <Logo />
         <div className="flex items-center gap-4">
            <Button variant="ghost" asChild className="hidden sm:inline-flex text-muted-foreground hover:text-foreground">
              <Link href="/sign-in">Masuk</Link>

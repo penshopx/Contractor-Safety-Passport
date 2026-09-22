@@ -38,6 +38,7 @@ import {
 import { useClerk, useUser } from "@clerk/react";
 import { useGetOrganizationContext } from "@workspace/api-client-react";
 import { Button } from "./ui/button";
+import { Logo } from "./logo";
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -80,9 +81,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     <SidebarProvider>
       <Sidebar className="border-r border-border/50">
         <SidebarHeader className="border-b border-border/50 p-4 bg-sidebar">
-          <div className="flex items-center gap-2 font-bold text-lg text-primary tracking-tight mb-4">
-            <ShieldCheck className="h-6 w-6" />
-            <span>Safety Passport</span>
+          <div className="mb-4">
+            <Logo className="scale-90 origin-left" />
           </div>
           
           {orgContext && (
