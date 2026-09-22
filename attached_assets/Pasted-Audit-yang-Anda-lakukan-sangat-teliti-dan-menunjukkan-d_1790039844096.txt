@@ -1,0 +1,103 @@
+Audit yang Anda lakukan sangat teliti dan menunjukkan disiplin *code review* yang matang. Anda tidak hanya membaca diff, tetapi menelusuri implikasi sistemik dari setiap perubahan. Mari saya bantu mempertajam audit Anda dengan menyoroti *blind spot* dan memberikan rekomendasi spesifik untuk setiap area yang sedang Anda periksa.
+
+---
+
+### 1. Task #35: Riwayat Immutable per Revision
+
+Temuan Anda bahwa ini bukan sekadar kolom `last_changed_by` melainkan **tabel riwayat immutable per revision** adalah kabar sangat baik. Ini adalah pola yang tepat untuk aplikasi kepatuhan regulasi. Namun, ada beberapa area yang perlu Anda periksa lebih dalam:
+
+**A. Konsistensi Pencatatan pada Sukses vs Konflik**
+*   **Yang perlu dicek:** Apakah *every code path* yang memodifikasi kesiapan (readiness) menulis ke tabel riwayat? Termasuk:
+    *   Path sukses normal (HTTP 200/201)
+    *   Path konflik optimistik (HTTP 409) — apakah konflik ini juga dicatat sebagai *attempt* yang gagal?
+    *   Path error validasi (HTTP 422) — idealnya TIDAK dicatat karena tidak ada perubahan state
+    *   Path *batch update* (jika ada endpoint yang mengubah banyak tahap sekaligus)
+*   **Rekomendasi:** Jika konflik tidak dicatat, pertimbangkan untuk menambahkan tabel terpisah `readiness_change_attempts` yang mencatat setiap percobaan (sukses maupun gagal). Untuk audit forensik di masa depan (misal: investigasi insiden), mengetahui bahwa "seseorang mencoba mengubah status tapi gagal karena konflik" bisa menjadi informasi kritis.
+
+**B. Fallback Identitas**
+*   **Yang perlu dicek:** Bagaimana sistem menentukan identitas pengubah jika:
+    *   Token JWT sudah expired tapi request masih diproses oleh *background worker*?
+    *   Perubahan dilakukan oleh *system/cron job* (misal: auto-archive dokumen kedaluwarsa)?
+    *   Perubahan dilakukan via API key (integrasi pihak ketiga)?
+*   **Rekomendasi:** Pastikan kolom `changed_by` di tabel riwayat memiliki tipe yang bisa menampung bukan hanya `user_id` (integer/UUID), tapi juga *system actor*. Pola yang umum:
+    ```
+    actor_type: ENUM('user', 'system', 'api_key')
+    actor_id: UUID (nullable — NULL jika system)
+    actor_label: VARCHAR (misal: "System: Auto-Archive", "API: Integration-XYZ")
+    ```
+    Ini mencegah kolom `user_id` diisi dengan nilai *dummy* seperti `0` atau `-1` yang akan membingungkan saat Task #63 mengekspos riwayat ke pengguna.
+
+**C. Isolasi Lintas Organisasi (Multi-Tenant)**
+*   **Yang perlu dicek:** Saat sistem me-*resolve* identitas pengubah (misal: mengambil nama dan role dari tabel `users`), apakah query tersebut dibatasi oleh `organization_id`? 
+*   **Skenario Bahaya:** Kontraktor A dan Kontraktor B sama-sama punya user dengan `id = 42`. Jika query *resolve* identitas tidak memfilter berdasarkan organisasi, riwayat perubahan Kontraktor A bisa menampilkan nama user dari Kontraktor B.
+*   **Rekomendasi:** Pastikan tabel riwayat memiliki kolom `organization_id` dan setiap query yang me-*resolve* identitas selalu menyertakan filter `WHERE organization_id = current_user.organization_id`. Jika menggunakan PostgreSQL RLS, pastikan policy RLS juga mencakup tabel riwayat ini.
+
+**D. Persiapan untuk Task #63 (Ekspos Riwayat ke Pengguna)**
+*   Meskipun Task #63 belum dikerjakan, pastikan model data saat ini sudah mendukung kebutuhan UI masa depan:
+    *   Apakah ada kolom `change_summary` atau `diff_snapshot` yang menyimpan *before/after* state? Jika hanya menyimpan *after* state, Task #63 nanti harus melakukan *self-join* untuk menampilkan "Diubah dari X ke Y", yang bisa lambat jika riwayat sudah ribuan baris.
+    *   Apakah ada indeks pada `(project_id, stage_id, created_at)` untuk query riwayat per tahap?
+
+---
+
+### 2. Task #36: Keunikan Kode Tahap & Validasi API/Editor
+
+**A. Cakupan Validasi (Create vs Update)**
+*   **Yang perlu dicek:** Apakah *unique constraint* pada kode tahap diterapkan di:
+    1.  **Database level** (UNIQUE constraint atau UNIQUE index)? Ini adalah pertahanan terakhir dan **wajib ada**.
+    2.  **API level** (validasi di controller/service saat CREATE dan UPDATE)?
+    3.  **UI/Editor level** (validasi di frontend)?
+*   **Skenario Bahaya yang Umum:** Developer sering menambahkan validasi unik hanya di path CREATE, tapi lupa di path UPDATE. Akibatnya, saat admin mengedit stage code dari "STG-01" ke "STG-02" (yang sudah ada), API tidak menolak dan database melempar error 500 yang tidak ramah.
+*   **Rekomendasi:** Pastikan validasi UPDATE mengecualikan *current record* dari pengecekan unik:
+    ```sql
+    -- Validasi saat UPDATE stage id=5, code baru='STG-02'
+    SELECT COUNT(*) FROM csms_stages 
+    WHERE code = 'STG-02' 
+      AND csms_standard_id = ? 
+      AND id != 5;  -- ← Pengecualian ini sering terlupa
+    ```
+
+**B. Scope Keunikan Kode Tahap**
+*   **Yang perlu dicek:** Keunikan kode tahap harus *scoped* dengan benar. Kode "STG-01" boleh ada di CSMS Pertamina 2020 dan juga di CSMS PLN 2021. Jadi constraint-nya harus:
+    ```sql
+    UNIQUE(csms_standard_id, code)
+    ```
+    **Bukan** `UNIQUE(code)` secara global. Periksa apakah ini sudah benar di migrasi database Anda.
+
+**C. Race Condition pada Create**
+*   **Skenario:** Dua admin secara bersamaan menekan "Simpan" untuk membuat tahap baru dengan kode "STG-05" di standar yang sama.
+*   **Rekomendasi:** Validasi di level aplikasi saja tidak cukup untuk mencegah ini. Pastikan ada **UNIQUE constraint di database** sebagai *safety net*. Di level aplikasi, tangkap error *unique violation* dari database dan kembalikan respons 422 yang ramah: *"Kode tahap 'STG-05' sudah digunakan. Silakan gunakan kode lain."*
+
+**D. Validasi Editor (Frontend)**
+*   **Yang perlu dicek:** Jika editor menggunakan *inline editing* (klik sel tabel, ketik, tekan Enter), apakah:
+    *   Validasi unik berjalan *sebelum* request dikirim ke API?
+    *   UI menampilkan error yang jelas jika API menolak?
+    *   Editor mengembalikan nilai ke state sebelumnya jika save gagal (rollback UI)?
+*   **Rekomendasi:** Untuk editor inline, gunakan pola *optimistic update with rollback*: Tampilkan perubahan di UI segera, kirim ke API di background, dan jika API menolak, kembalikan UI ke nilai lama + tampilkan toast error.
+
+---
+
+### 3. Rekomendasi Checklist Audit Tambahan
+
+Berdasarkan apa yang sedang Anda periksa, tambahkan item ini ke checklist audit Anda:
+
+| # | Item Audit | Mengapa Penting |
+|---|-----------|----------------|
+| 1 | Apakah tabel riwayat memiliki `organization_id` dan tercakup oleh RLS? | Mencegah kebocoran data lintas kontraktor |
+| 2 | Apakah *unique constraint* kode tahap di-scoped ke `csms_standard_id`? | Mencegah kode tahap PLN bentrok dengan Pertamina |
+| 3 | Apakah validasi unik di API mencakup path UPDATE (bukan hanya CREATE)? | Mencegah error 500 saat edit |
+| 4 | Apakah ada *database-level* UNIQUE constraint sebagai *safety net*? | Mencegah race condition |
+| 5 | Apakah riwayat mencatat *before/after* state atau hanya *after*? | Mempengaruhi kompleksitas Task #63 |
+| 6 | Bagaimana sistem menangani identitas untuk *system-triggered changes*? | Mencegah null reference di UI riwayat |
+| 7 | Apakah ada tes regresi yang secara eksplisit menguji: (a) create duplikat ditolak, (b) update ke kode yang sudah ada ditolak, (c) update ke kode sendiri diizinkan? | Menjamin validasi tidak regresi di commit berikutnya |
+
+---
+
+### 4. Catatan tentang Lampiran Task #37
+
+Anda menyebutkan bahwa lampiran membahas Task #37 dan akan digunakan setelah task itu selesai. Ini adalah pendekatan yang tepat — jangan membiarkan konteks dari task berikutnya mengkontaminasi audit task saat ini. Fokus audit Anda pada #35 dan #36 sudah benar.
+
+Satu saran: setelah Task #37 selesai dan Anda kembali ke lampiran tersebut, periksa apakah Task #37 memperkenalkan *code path* baru yang memodifikasi kesiapan (readiness). Jika ya, pastikan path baru tersebut juga menulis ke tabel riwayat immutable yang dibuat di Task #35. Ini adalah jenis regresi yang sangat mudah terlewat.
+
+---
+
+Audit Anda sudah sangat komprehensif. Apakah ada area spesifik dari temuan audit ini yang ingin Anda diskusikan lebih dalam, misalnya cara mengimplementasikan *actor polymorphism* untuk fallback identitas, atau cara menulis tes regresi untuk validasi unik di path UPDATE?

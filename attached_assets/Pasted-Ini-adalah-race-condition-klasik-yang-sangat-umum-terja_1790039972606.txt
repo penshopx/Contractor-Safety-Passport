@@ -1,0 +1,281 @@
+Ini adalah **race condition klasik** yang sangat umum terjadi pada sistem invite user, dan Anda sudah mengidentifikasinya dengan tepat. Masalah ini sering disebut **"Check-Then-Act Race"** — antara waktu pengecekan ("apakah user sudah ada?") dan waktu aksi ("buat user baru"), request lain bisa menyelinap masuk.
+
+Mari kita bangun pertahanan berlapis (*defense in depth*) untuk masalah ini.
+
+---
+
+### 1. Pertahanan Lapis 1: Frontend Debounce & Disable
+
+Ini bukan solusi teknis yang andal, tapi mengurangi 90% kasus dari sisi UX.
+
+```javascript
+// React example
+const [isInviting, setIsInviting] = useState(false);
+
+const handleInvite = async (email) => {
+  if (isInviting) return; // Cegah double-click
+  setIsInviting(true);
+  try {
+    await inviteUser(email);
+  } finally {
+    setIsInviting(false);
+  }
+};
+
+<button disabled={isInviting}>
+  {isInviting ? 'Mengirim...' : 'Kirim Undangan'}
+</button>
+```
+
+**Catatan:** Ini tidak mencegah race condition dari dua admin berbeda atau dari API call langsung. Tetap butuh pertahanan backend.
+
+---
+
+### 2. Pertahanan Lapis 2: Idempotency Key (Pola yang Sudah Anda Kenal)
+
+Gunakan pola yang sama dengan *outbox pattern* di task sebelumnya. Setiap permintaan invite harus memiliki *unique key*.
+
+```typescript
+// Client generates idempotency key
+const idempotencyKey = `${workspaceId}:invite:${email.toLowerCase().trim()}`;
+
+await api.post('/invites', { 
+  email, 
+  role 
+}, {
+  headers: { 'Idempotency-Key': idempotencyKey }
+});
+```
+
+Di backend, sebelum memanggil Clerk:
+
+```typescript
+async function inviteUser(workspaceId: string, email: string, role: string, idempotencyKey: string) {
+  // 1. Cek apakah invite dengan key ini sudah pernah diproses
+  const existing = await db.invite.findUnique({ 
+    where: { idempotencyKey } 
+  });
+  
+  if (existing) {
+    return existing; // Kembalikan hasil sebelumnya, jangan proses ulang
+  }
+
+  // 2. Lanjut ke proses invite...
+}
+```
+
+---
+
+### 3. Pertahanan Lapis 3: Database-Level Advisory Lock (Kunci Inti)
+
+Ini adalah **solusi paling andal** untuk race condition. Gunakan *PostgreSQL Advisory Lock* untuk mengunci proses invite per email dalam satu workspace.
+
+```typescript
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
+
+async function inviteUserWithLock(workspaceId: string, email: string, role: string) {
+  const normalizedEmail = email.toLowerCase().trim();
+  
+  // Generate lock key dari hash workspace + email
+  // PostgreSQL advisory lock butuh integer, jadi kita hash
+  const lockKey = hashCode(`${workspaceId}:${normalizedEmail}`);
+  
+  return await prisma.$transaction(async (tx) => {
+    // 1. Ambil advisory lock (akan menunggu jika ada yang sedang hold)
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(${lockKey})`;
+    
+    // 2. Sekarang kita dalam zona aman - cek ulang di dalam transaction
+    const existingUser = await tx.user.findFirst({
+      where: { 
+        email: normalizedEmail,
+        workspaceId 
+      }
+    });
+    
+    if (existingUser) {
+      return { status: 'already_exists', user: existingUser };
+    }
+    
+    const existingInvite = await tx.invite.findFirst({
+      where: { 
+        email: normalizedEmail,
+        workspaceId,
+        status: 'PENDING'
+      }
+    });
+    
+    if (existingInvite) {
+      return { status: 'invite_pending', invite: existingInvite };
+    }
+    
+    // 3. Panggil Clerk untuk buat user
+    const clerkUser = await clerkClient.users.createUser({
+      emailAddress: [normalizedEmail],
+      // ... other fields
+    });
+    
+    // 4. Simpan invite ke database
+    const invite = await tx.invite.create({
+      data: {
+        email: normalizedEmail,
+        workspaceId,
+        role,
+        clerkUserId: clerkUser.id,
+        status: 'PENDING',
+        invitedAt: new Date()
+      }
+    });
+    
+    return { status: 'created', invite };
+    
+    // 5. Advisory lock otomatis dilepas saat transaction selesai
+  });
+}
+
+// Helper function untuk hash string ke integer
+function hashCode(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  return Math.abs(hash);
+}
+```
+
+**Mengapa ini bekerja:**
+- `pg_advisory_xact_lock` akan **memblokir** request kedua sampai request pertama selesai (commit/rollback).
+- Request kedua yang masuk akan mengantri, lalu saat giliran, akan melihat data yang sudah dibuat request pertama → langsung return "already exists".
+- Lock otomatis lepas saat transaction selesai, tidak perlu manual unlock.
+
+---
+
+### 4. Pertahanan Lapis 4: Error Handling yang Ramah
+
+Meskipun Clerk sudah punya unique constraint di email, Anda harus menangkap error ini dengan elegan, bukan menampilkan error 500 ke user.
+
+```typescript
+import { ClerkAPIResponseError } from '@clerk/backend';
+
+async function createClerkUserSafely(email: string) {
+  try {
+    return await clerkClient.users.createUser({
+      emailAddress: [email],
+    });
+  } catch (error) {
+    if (error instanceof ClerkAPIResponseError) {
+      // Cek apakah error karena email sudah ada
+      const emailExists = error.errors.some(
+        e => e.code === 'form_email_address_exists' || 
+             e.meta?.paramName === 'email_address'
+      );
+      
+      if (emailExists) {
+        // Cari user yang sudah ada di database kita
+        const existing = await prisma.user.findFirst({
+          where: { email: email.toLowerCase().trim() }
+        });
+        
+        if (existing) {
+          return { recovered: true, user: existing };
+        }
+      }
+    }
+    throw error; // Lempar error lain seperti biasa
+  }
+}
+```
+
+---
+
+### 5. Strategi Testing (Wajib!)
+
+Race condition sulit dideteksi tanpa testing khusus. Tambahkan test ini:
+
+```typescript
+test('concurrent invites for same email should not create duplicates', async () => {
+  const email = 'test@example.com';
+  const workspaceId = 'ws_123';
+  
+  // Kirim 5 request invite secara paralel
+  const results = await Promise.all(
+    Array(5).fill(null).map(() => 
+      inviteUserWithLock(workspaceId, email, 'member')
+    )
+  );
+  
+  // Hanya 1 yang berhasil dibuat, sisanya harus return 'already_exists' atau 'invite_pending'
+  const created = results.filter(r => r.status === 'created');
+  expect(created.length).toBe(1);
+  
+  // Verifikasi di database hanya ada 1 user
+  const users = await prisma.user.findMany({
+    where: { email, workspaceId }
+  });
+  expect(users.length).toBe(1);
+});
+```
+
+---
+
+### 6. Pertimbangan Tambahan untuk Aplikasi Anda
+
+Mengingat konteks aplikasi K3 Anda (multi-tenant, ada Principal dan Kontraktor):
+
+**A. Undangan Lintas Workspace**
+Seorang Ahli K3 bisa bekerja untuk beberapa kontraktor sekaligus. Pastikan logika Anda:
+- **Boleh**: User dengan email yang sama ada di workspace berbeda (kontraktor A dan kontraktor B).
+- **Tidak Boleh**: User dengan email yang sama ada dua kali di workspace yang sama.
+
+```typescript
+// Unique constraint di database
+@@unique([email, workspaceId])  // Bukan @@unique([email])
+```
+
+**B. Undangan ke Principal (Role Khusus)**
+Jika Principal mengundang seorang kontraktor untuk bergabung ke portal mereka, logikanya sedikit berbeda:
+- Kontraktor sudah punya akun di workspace mereka sendiri.
+- Undangan Principal adalah **"link akun"** atau **"grant akses lintas workspace"**, bukan buat user baru.
+- Pertimbangkan model **"Organization Membership"** (mirip Clerk Organizations) daripada membuat user duplikat.
+
+**C. Undangan via Email vs Direct Add**
+Untuk efisiensi di lapangan (misal: mandor menambahkan pekerja baru), pertimbangkan opsi **"Direct Add without Email"**:
+- Admin input nama + NIK pekerja, langsung dibuatkan akun.
+- Email bisa diisi nanti atau pakai email placeholder (NIK@internal.yourapp.com).
+- Ini mengurangi friksi saat onboarding massal pekerja.
+
+---
+
+### 7. Rekomendasi Batch Pekerjaan Selanjutnya
+
+Setelah task race condition ini selesai, Anda memiliki fondasi user management yang solid. Berikut 3 fitur yang bisa dibangun:
+
+1. **Bulk Invite via CSV/Excel**
+   Kontraktor sering perlu mengundang 50-100 pekerja sekaligus. Fitur upload CSV dengan validasi batch + progress bar akan sangat disukai. Gunakan *background job* (BullMQ/Inngest) untuk proses async.
+
+2. **Role-Based Access Control (RBAC) yang Granular**
+   Sekarang user management sudah aman, saatnya mendefinisikan permission yang detail:
+   - `contractor.admin` vs `contractor.safety_officer` vs `contractor.field_worker`
+   - `principal.hse_manager` vs `principal.procurement`
+   - Gunakan library seperti **CASL** atau **AccessControl** untuk maintainability.
+
+3. **Self-Service Onboarding untuk Pekerja Lapangan**
+   Daripada mandor yang input data 100 pekerja, beri pekerja link registrasi:
+   - Pekerja scan QR code di proyek → isi data sendiri → upload KTP & sertifikat K3 → mandor approve.
+   - Ini mengurangi beban admin dan mempercepat onboarding.
+
+---
+
+### Catatan tentang Clerk-Specific
+
+Karena Anda menggunakan Clerk, ada beberapa hal yang perlu diperhatikan:
+- **Clerk Rate Limiting**: Clerk punya rate limit untuk API calls. Jika Anda melakukan bulk invite, pastikan ada *throttling* di sisi Anda.
+- **Webhook untuk Sync**: Gunakan Clerk Webhooks (`user.created`, `invitation.created`) untuk sync status ke database Anda, bukan hanya mengandalkan response API. Ini lebih reliable.
+- **Clerk Organizations**: Pertimbangkan untuk migrasi ke fitur **Clerk Organizations** jika aplikasi Anda akan semakin multi-tenant. Ini akan menyederhanakan banyak logika yang sedang Anda bangun manual.
+
+Anda sedang menangani masalah *concurrency* dengan pendekatan yang sangat profesional. Pola *advisory lock + idempotency* ini akan menjadi fondasi yang bisa dipakai ulang di banyak fitur lain (misal: pembuatan proyek, submit laporan, dll).
+
+Apakah Anda ingin kita mendetailkan **skema database untuk RBAC** yang akan mendukung role kontraktor dan principal, atau merancang **alur bulk invite dengan background job** untuk onboarding massal pekerja?
