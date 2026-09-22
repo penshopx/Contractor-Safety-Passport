@@ -14,8 +14,8 @@ export function Logo({ className = "" }: { className?: string }) {
           <div className="absolute inset-0 bg-gradient-to-b from-white/20 to-transparent pointer-events-none" />
           
           <ShieldCheck 
-            className="h-5 w-5 sm:h-6 sm:w-6 text-[#05101a] relative z-10" 
-            strokeWidth={3} 
+            className="h-6 w-6 sm:h-8 sm:w-8 text-[#05101a] relative z-10" 
+            strokeWidth={2.75} 
           />
         </div>
       </div>
