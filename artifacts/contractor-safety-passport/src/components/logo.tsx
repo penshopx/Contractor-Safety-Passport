@@ -1,4 +1,4 @@
-import { ShieldCheck } from "lucide-react";
+import { Check, Shield } from "lucide-react";
 
 export function Logo({ className = "" }: { className?: string }) {
   return (
@@ -13,10 +13,16 @@ export function Logo({ className = "" }: { className?: string }) {
           <div className="absolute top-0 inset-x-0 h-[1px] bg-white/60" />
           <div className="absolute inset-0 bg-gradient-to-b from-white/20 to-transparent pointer-events-none" />
           
-          <ShieldCheck 
-            className="h-8 w-8 sm:h-10 sm:w-10 text-slate-950 relative z-10" 
-            strokeWidth={2.5} 
+          <Shield
+            className="relative z-10 h-8 w-8 text-slate-950 sm:h-10 sm:w-10"
+            strokeWidth={2.5}
           />
+          <span className="absolute z-20 flex h-4 w-4 items-center justify-center rounded-full bg-slate-950 shadow-sm ring-1 ring-white/35 sm:h-5 sm:w-5">
+            <Check
+              className="h-3 w-3 text-white sm:h-3.5 sm:w-3.5"
+              strokeWidth={4}
+            />
+          </span>
         </div>
       </div>
       
