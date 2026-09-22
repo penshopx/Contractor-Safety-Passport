@@ -22,3 +22,10 @@ timeoutMs = 120000
 [nix]
 channel = "stable-25_05"
 packages = ["freetype", "gumbo", "harfbuzz", "jbig2dec", "libjpeg_turbo", "mupdf", "openjpeg", "swig", "xcbuild"]
+
+[userenv]
+
+[userenv.production]
+
+[userenv.shared]
+ALLOWED_ORIGINS = "https://contractor-safety-passport.replit.app"
