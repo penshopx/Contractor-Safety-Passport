@@ -1,0 +1,111 @@
+Keputusan untuk mengarsipkan (bukan menghapus) versi pedoman lama adalah **prinsip desain yang sangat tepat** untuk aplikasi yang menangani kepatuhan regulasi dan audit. Dalam dunia *enterprise software*, ini dikenal sebagai **Soft-Delete dengan Referential Integrity Preservation**.
+
+Jika Anda melakukan *hard-delete*, Anda akan menghancurkan integritas data historis: proyek yang sedang berjalan akan *error*, laporan bulanan yang sudah disetujui akan kehilangan konteks, dan audit trail akan rusak. Ini bisa berakibat hukum karena dokumen K3 adalah dokumen legal.
+
+Mari kita bedah arsitektur untuk task ini agar skalabel dan aman.
+
+### 1. Skema Database: Versioning & Archiving
+
+Tambahkan beberapa kolom kunci pada tabel `csms_standards` (dan terapkan pola serupa untuk tabel regulasi lain seperti `regulations` untuk Permen PUPR, Permenaker, dll):
+
+```sql
+ALTER TABLE csms_standards ADD COLUMN 
+  status VARCHAR(20) DEFAULT 'ACTIVE',          -- 'ACTIVE', 'ARCHIVED', 'DRAFT'
+  superseded_by INT REFERENCES csms_standards(id),  -- ID versi pengganti
+  archived_at TIMESTAMP,
+  archived_by INT REFERENCES users(id),
+  archive_reason TEXT,                          -- Alasan pengarsipan (misal: "Diganti oleh CSMS Pertamina 2025 Rev.3")
+  effective_from DATE,                          -- Tanggal berlaku
+  effective_until DATE;                         -- Tanggal tidak berlaku (NULL jika masih aktif)
+```
+
+**Logika Status:**
+*   `DRAFT`: Admin sedang menyusun profil baru, belum dipublikasikan ke kontraktor.
+*   `ACTIVE`: Versi yang sedang berlaku dan muncul di dropdown pilihan.
+*   `ARCHIVED`: Versi lama yang tidak muncul di dropdown baru, tapi masih bisa diakses dari proyek yang merujuknya.
+
+---
+
+### 2. Logika Query: Pemisahan Tampilan
+
+Kunci dari fitur ini adalah **konteks tampilan**. Data yang sama, ditampilkan berbeda tergantung siapa yang melihat dan dari halaman mana.
+
+**A. Dropdown "Buat Proyek Baru" / "Pilih Standar untuk Kontraktor"**
+Hanya tampilkan versi `ACTIVE`:
+```sql
+SELECT id, name, year FROM csms_standards 
+WHERE principal_id = ? AND status = 'ACTIVE' 
+ORDER BY year DESC;
+```
+
+**B. Halaman "Riwayat Proyek" / "Detail Proyek Lama"**
+Tampilkan versi yang **sedang dirujuk oleh proyek tersebut**, meskipun sudah `ARCHIVED`:
+```sql
+SELECT cs.* FROM csms_standards cs
+JOIN projects p ON p.csms_standard_id = cs.id
+WHERE p.id = ?;
+```
+*Catatan:* Jangan pernah mengubah `csms_standard_id` di tabel `projects` saat versi lama diarsipkan. Biarkan proyek tetap merujuk ke versi yang berlaku saat proyek itu dimulai.
+
+**C. Halaman Admin "Kelola Standar Principal"**
+Tampilkan semua versi, tapi bedakan secara visual:
+*   Versi `ACTIVE`: Badge hijau "Berlaku"
+*   Versi `ARCHIVED`: Badge abu-abu "Diarsipkan (Diganti oleh versi X)" + tombol "Lihat Detail (Read-Only)"
+*   Versi `DRAFT`: Badge kuning "Draft"
+
+---
+
+### 3. Implikasi pada Fitur Lain (Cek Silang)
+
+Saat Anda mengarsipkan sebuah standar, Anda harus memastikan tidak ada fitur lain yang rusak. Lakukan audit silang:
+
+*   **Laporan Bulanan SMKK/CSMS**: Jika laporan bulan lalu dibuat berdasarkan CSMS Pertamina 2020, dan sekarang diarsipkan, laporan tersebut **tetap harus bisa dibuka, diedit (jika masih draft), dan di-export PDF** dengan format 2020. Jangan paksakan migrasi otomatis ke versi 2025.
+*   **Katalog Harga (Task 16)**: Jika ada harga yang dirujuk ke requirement tertentu di standar lama, pastikan relasi `price_items` -> `csms_requirements` tetap valid.
+*   **Rules Engine (Task 18)**: Struktur `csms_stages`, `csms_elements`, `csms_requirements` di bawah standar yang diarsipkan **tidak boleh dihapus**. Mereka adalah "fosil" yang menjelaskan mengapa proyek lama memiliki pertanyaan tertentu.
+
+---
+
+### 4. UI/UX untuk Admin (Alur Pengarsipan)
+
+Jangan buat tombol "Arsipkan" yang langsung mengeksekusi. Buatlah **Dialog Konfirmasi dengan Dampak Analisis**:
+
+Saat admin klik "Arsipkan CSMS Pertamina 2020":
+1.  Sistem menampilkan: *"Standar ini sedang dirujuk oleh 12 proyek aktif dan 45 laporan bulanan."*
+2.  Admin **wajib** memilih standar pengganti dari dropdown (yang akan mengisi kolom `superseded_by`).
+3.  Admin **wajib** mengisi alasan pengarsipan (untuk audit trail).
+4.  Sistem menampilkan opsi: *"Apakah Anda ingin menawarkan migrasi otomatis ke proyek-proyek aktif tersebut?"* 
+    *   **Pilih "Tidak" (Recommended)**: Proyek tetap pakai versi lama sampai selesai.
+    *   **Pilih "Ya"**: Sistem menandai proyek-proyek tersebut dengan status "Perlu Migrasi Standar", dan kontraktor bisa melakukan pemetaan manual (mapping requirement lama ke requirement baru).
+
+---
+
+### 5. Edge Cases yang Harus Diwaspadai
+
+*   **Kontraktor yang Sedang Proses Tender**: Jika kontraktor sedang menyusun HSE Plan berdasarkan CSMS versi lama, lalu versi itu diarsipkan di tengah jalan, apa yang terjadi? 
+    *   *Solusi*: Saat kontraktor membuka draft HSE Plan tersebut, tampilkan *banner warning*: *"Standar yang Anda gunakan telah digantikan oleh [Versi Baru] pada [Tanggal]. Klik di sini untuk melihat perbedaan (gap analysis)."*
+*   **Audit oleh Principal**: Principal mungkin meminta data berdasarkan standar lama (misal: untuk investigasi insiden di proyek tahun lalu). Aplikasi harus bisa men-generate laporan dengan konteks standar yang berlaku **pada saat insiden terjadi**, bukan standar hari ini.
+
+---
+
+### 6. Rekomendasi Batch Pekerjaan Selanjutnya
+
+Setelah fitur arsip ini selesai, Anda memiliki fondasi versioning yang matang. Berikut 3 fitur yang bisa dibangun di atasnya:
+
+1.  **Gap Analysis & Migration Assistant (Versi Lama -> Versi Baru)**
+    Saat kontraktor ingin "naik versi" dari CSMS Pertamina 2020 ke 2025, aplikasi membandingkan requirement kedua versi. Dokumen yang sudah diunggah di versi lama (misal: "Kebijakan K3") yang formatnya sama di versi baru, otomatis di-*mapping*. Kontraktor hanya perlu melengkapi requirement baru yang muncul.
+2.  **Regulation Timeline / Changelog Viewer**
+    Tampilkan halaman "Riwayat Perubahan" untuk setiap Principal. Misal: *"CSMS Pertamina: 2015 -> 2020 (Revisi Tahap Seleksi) -> 2025 (Penambahan Tahap Pasca-Proyek)"*. Ini sangat berguna untuk tim legal dan HSE manager yang perlu memahami evolusi standar.
+3.  **Template Dokumen Berbasis Versi Standar**
+    Saat kontraktor men-generate dokumen (RKK, HSE Plan, Laporan Bulanan), template yang digunakan harus sesuai dengan versi standar yang dirujuk proyek. Proyek lama pakai template lama, proyek baru pakai template baru. Ini menjaga konsistensi dokumen.
+
+---
+
+### Catatan Penting tentang Regulasi (Permen PUPR, Permenaker)
+
+Pola yang sama persis harus Anda terapkan untuk **regulasi pemerintah** (yang Anda sebutkan di awal: "regulasi atau format yang tidak boleh diperlakukan sebagai versi terbaru tanpa verifikasi"). 
+
+Buatlah tabel `regulations` terpisah dengan skema serupa, dan beri kolom `verification_status` (Verified by Legal Team / Unverified). Jangan pernah membiarkan admin biasa mengubah status regulasi pemerintah tanpa jejak audit, karena ini menyangkut kepatuhan hukum.
+
+Anda sedang membangun sistem yang tidak hanya fungsional, tapi juga **legally defensible** (dapat dipertanggungjawabkan secara hukum). Ini adalah pembeda utama antara aplikasi main-main dan aplikasi *enterprise-grade*.
+
+Apakah Anda ingin kita mendetailkan **skema JSON untuk menyimpan "mapping" requirement antar versi** (untuk fitur Gap Analysis nanti), atau merancang **alur UI untuk admin melakukan pengarsipan dengan analisis dampak**?
