@@ -1,0 +1,131 @@
+Sempurna. Koreksi Anda sangat presisi dan menunjukkan pemahaman mendalam terhadap kode aktual proyek (format `.mjs`, konfigurasi `trust proxy` di level Express, dinamika CORS, dan lifecycle Drizzle client). 
+
+Mari kita fokus 100% pada **PR 1** sesuai rekomendasi Anda. Ini adalah fondasi keamanan paling kritis sebelum menyentuh aspek reliabilitas (PR 2).
+
+Berikut adalah implementasi kode yang sudah disesuaikan dengan koreksi Anda, siap untuk di-review dan di-merge.
+
+---
+
+### PR 1: Keamanan Dasar & Stabilitas Startup
+
+#### 1. Hapus `db push` dari Startup Produksi
+Pastikan skrip di `apps/api/package.json` (atau root `package.json` tergantung struktur) hanya menjalankan artefak yang sudah di-build, tanpa memicu migrasi otomatis.
+
+```json
+{
+  "scripts": {
+    "build": "tsc --build",
+    "start": "node dist/index.mjs",
+    "start:production": "pnpm run start"
+  }
+}
+```
+*Catatan: Perubahan schema di Replit harus tetap dilakukan secara manual melalui panel "Database" atau "Publish" yang menyediakan diff dan konfirmasi, bukan via script startup.*
+
+#### 2. Konfigurasi Environment (`.env`)
+Tambahkan variabel environment untuk allowlist CORS agar fleksibel terhadap custom domain di masa depan.
+
+```env
+# .env.production
+ALLOWED_ORIGINS=https://contractor-safety-passport.replit.app,https://api.customdomain.com
+```
+
+#### 3. Implementasi CORS & Rate Limiting di Express (`apps/api/src/index.ts` atau `app.ts`)
+
+```typescript
+import express from 'express';
+import cors from 'cors';
+import rateLimit from 'express-rate-limit';
+
+const app = express();
+
+// 1. Trust Proxy (Wajib untuk Replit / Reverse Proxy agar IP asli klien terbaca oleh rate limiter)
+app.set("trust proxy", 1);
+
+// 2. CORS Konfigurasi Dinamis
+const allowedOrigins = process.env.ALLOWED_ORIGINS 
+  ? process.env.ALLOWED_ORIGINS.split(',').map((origin) => origin.trim()) 
+  : [];
+
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      // Izinkan request tanpa Origin (mobile apps, server-to-server, curl, dsb)
+      if (!origin) {
+        return callback(null, true);
+      }
+      
+      // Izinkan jika ada di allowlist production
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      
+      // Fallback untuk development: izinkan localhost dan preview Replit
+      if (process.env.NODE_ENV !== 'production' && (origin.includes('localhost') || origin.includes('.replit.dev'))) {
+        return callback(null, true);
+      }
+      
+      // Tolak origin yang tidak dikenal
+      callback(new Error('Not allowed by CORS'));
+    },
+    credentials: true,
+  })
+);
+
+// 3. Rate Limiting
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 menit
+  max: 100, // Maksimal 100 request per window per IP
+  standardHeaders: true, // Mengembalikan info rate limit di header `RateLimit-*`
+  legacyHeaders: false, // Nonaktifkan header `X-RateLimit-*` lama
+  message: { error: 'Terlalu banyak permintaan, silakan coba lagi nanti.' },
+  // Catatan: `trust proxy` sudah dihandle oleh app.set("trust proxy", 1) di atas
+});
+
+// Terapkan rate limiting pada endpoint yang rentan disalahgunakan
+app.use('/api/auth', apiLimiter);
+app.use('/api/invitations', apiLimiter);
+app.use('/api/upload', apiLimiter); // Melindungi pembuatan signed URL
+
+// ... router dan middleware lainnya ...
+```
+
+#### 4. Verifikasi & Pengujian PR 1
+
+Sebelum di-merge, pastikan 3 skenario uji ini lulus (bisa dilakukan via Postman atau `curl`):
+
+1. **Uji CORS dengan Origin yang Diizinkan**:
+   ```bash
+   curl -I -H "Origin: https://contractor-safety-passport.replit.app" https://contractor-safety-passport.replit.app/api/healthz
+   # Harus mengembalikan: Access-Control-Allow-Origin: https://contractor-safety-passport.replit.app
+   ```
+2. **Uji CORS dengan Origin yang Ditolak**:
+   ```bash
+   curl -I -H "Origin: https://evil.com" https://contractor-safety-passport.replit.app/api/healthz
+   # Harus mengembalikan error atau tidak ada header CORS yang mengizinkan.
+   ```
+3. **Uji CORS tanpa Origin (Server-to-Server / Mobile)**:
+   ```bash
+   curl -I https://contractor-safety-passport.replit.app/api/healthz
+   # Harus berhasil (HTTP 200 OK), membuktikan request tanpa header Origin tidak diblokir.
+   ```
+4. **Uji Rate Limiting**:
+   - Kirim >100 request dalam 15 menit ke `/api/invitations`.
+   - Pastikan respons ke-101 adalah `429 Too Many Requests` dengan pesan yang sudah ditentukan.
+
+---
+
+### Catatan untuk PR Selanjutnya (PR 2 & #3)
+
+Berdasarkan koreksi Anda, saya mencatat batasan berikut untuk iterasi berikutnya:
+- **Health Check**: Akan menggunakan sintaks Drizzle yang valid (misal: `await db.select({ val: sql`1` }).limit(1)` atau metode `db.$client.query` yang sesuai dengan adapter yang Anda pakai), bukan `db.execute` generik.
+- **Graceful Shutdown**: Akan memanggil metode penutupan pool yang benar (misal: `await db.$client.end()` hanya jika kita yakin itu adalah instance `pg.Pool`, atau menggunakan metode teardown resmi dari Drizzle/ORM yang Anda gunakan), setelah `server.close()` selesai.
+- **Task #45 & #78**: Dianggap sudah mewakili pekerjaan pengujian, tidak akan dibuatkan task duplikat. Fokus hanya pada memastikan statusnya `DONE` di board.
+
+---
+
+### Langkah Selanjutnya
+
+Apakah implementasi PR 1 di atas sudah sesuai dengan struktur kode aktual Anda? Jika ya, Anda bisa langsung menerapkannya. 
+
+Setelah PR 1 di-merge, beri tahu saya, dan kita akan langsung menyusun **PR 2 (Health Check yang valid & Graceful Shutdown yang aman)** dengan sintaks Drizzle dan lifecycle pool yang tepat sesuai kode Anda.
