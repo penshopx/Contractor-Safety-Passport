@@ -1,0 +1,102 @@
+Audit untuk **Task #40** ini sangat memuaskan. Keputusan untuk menggunakan **Atomic Database Reservation** (`INSERT ... ON CONFLICT DO NOTHING`) alih-alih *Advisory Lock* atau *Idempotency Key* adalah pilihan arsitektur yang sangat elegan. Ini memindahkan beban konkurensi ke tempat yang paling tepat: **Database Engine (PostgreSQL)**, yang menjamin ACID properties tanpa perlu mengelola *state* di level aplikasi atau koneksi pool.
+
+Namun, temuan **Medium** mengenai *Zombie Reservations* (reservasi tertinggal saat proses crash) dan *Split-Brain* (kegagalan revoke Clerk) adalah risiko nyata di lingkungan produksi. Mari kita selesaikan kedua masalah ini sebelum beralih ke audit **Task #41**.
+
+---
+
+### 1. Solusi untuk Temuan Task #40 (Sebelum Ditutup)
+
+#### A. Mengatasi "Zombie Reservations" (Process Crash)
+Jika server crash setelah `INSERT` reservasi tetapi sebelum panggilan Clerk selesai, baris tersebut akan terkunci selamanya karena `clerkInvitationId = null` dan `acceptedAt/revokedAt = null`.
+
+**Solusi: Pola "Self-Healing Insert" (Tanpa Background Worker)**
+Daripada membuat *cron job* untuk membersihkan zombie, kita bisa membuat logika *insert* yang menyembuhkan dirinya sendiri:
+
+1. Tambahkan kolom `reserved_at TIMESTAMP DEFAULT NOW()` pada tabel `invitations`.
+2. Saat aplikasi menangkap error *Unique Violation* (409), jangan langsung lempar error ke user. Lakukan investigasi:
+   ```typescript
+   try {
+     await insertReservation(orgId, email);
+   } catch (error) {
+     if (isUniqueViolation(error)) {
+       // Cari baris yang memblokir kita
+       const blockingReservation = await prisma.invitation.findFirst({
+         where: { organizationId: orgId, normalizedEmail: email, acceptedAt: null, revokedAt: null }
+       });
+       
+       // Cek apakah ini Zombie (reservasi > 5 menit tanpa Clerk ID)
+       if (blockingReservation && 
+           !blockingReservation.clerkInvitationId && 
+           blockingReservation.reservedAt < new Date(Date.now() - 5 * 60 * 1000)) {
+         
+         // Hapus Zombie dan coba insert lagi
+         await prisma.invitation.delete({ where: { id: blockingReservation.id } });
+         return await insertReservation(orgId, email); // Retry
+       }
+       
+       // Jika bukan zombie, berarti memang ada undangan aktif yang valid
+       throw new TeamOperationError(TeamErrorCode.INVITATION_ALREADY_ACTIVE);
+     }
+   }
+   ```
+   *Keuntungan:* Tidak perlu infrastruktur *background worker* tambahan. Sistem membersihkan dirinya sendiri secara *on-demand* saat ada user baru yang mencoba mengundang email yang sama.
+
+#### B. Mengatasi "Split-Brain" (Revoke Clerk Gagal)
+Jika finalisasi DB gagal, lalu aplikasi mencoba me-*revoke* undangan di Clerk tetapi API Clerk sedang *down*, reservasi lokal terhapus tetapi undangan di Clerk tetap hidup. Percobaan berikutnya akan membuat duplikat di Clerk.
+
+**Solusi: Status Kompensasi Persisten (Persiapan untuk Task #67)**
+Jangan hapus reservasi lokal di blok `finally` jika revoke gagal.
+1. Tambahkan kolom `compensation_status` (`NONE`, `PENDING_REVOKE`, `REVOKE_FAILED`).
+2. Jika DB gagal dan revoke Clerk juga gagal, ubah status menjadi `REVOKE_FAILED` dan **biarkan barisnya ada**.
+3. Buat *Background Job* (menggunakan BullMQ, Inngest, atau pg_cron) yang berjalan setiap 5 menit, mencari baris dengan `compensation_status = 'REVOKE_FAILED'`, dan mencoba memanggil API Clerk kembali.
+4. Baris baru boleh dihapus dari DB hanya setelah Clerk mengonfirmasi bahwa undangan tersebut berhasil dicabut.
+
+---
+
+### 2. Persiapan Audit Task #41 (Actionable Team Errors)
+
+Anda menyebutkan bahwa Task #41 (menampilkan alasan kegagalan tim yang dapat ditindaklanjuti) sudah diimplementasikan namun belum di-*merge*. Berdasarkan lampiran yang Anda berikan, berikut adalah **Checklist Audit Ketat untuk Task #41** yang bisa Anda gunakan untuk memverifikasi kode sebelum menyetujui *merge request*.
+
+#### Kategori 1: Arsitektur Error Code (Backend)
+| Pemeriksaan | Kriteria Kelulusan | Status |
+| :--- | :--- | :--- |
+| **Machine-Readable Codes** | API mengembalikan `code` (misal: `TEAM_MEMBER_NOT_FOUND`), bukan hanya string pesan yang bisa berubah-ubah. | [ ] |
+| **Struktur Respons Konsisten** | Semua error tim mengikuti format JSON yang sama: `{ error: { code, title, message, action, context } }`. | [ ] |
+| **Pemisahan Logika & Teks** | Pesan error (`message`, `action`) dipusatkan di satu file/kamus (misal: `teamErrorMessages.ts`), tidak di-*hardcode* di dalam *controller/service*. | [ ] |
+| **Konteks Dinamis** | Error menyertakan `context` (misal: `activeProjectCount: 3`) yang bisa dipakai UI untuk menampilkan detail spesifik. | [ ] |
+
+#### Kategori 2: Kelengkapan Skenario (Bisnis Logika)
+| Pemeriksaan | Kriteria Kelulusan | Status |
+| :--- | :--- | :--- |
+| **Not-Found** | Membedakan antara "Member tidak ada" dan "Undangan tidak ada". | [ ] |
+| **Invalid Role** | Menolak jika role yang dikirim tidak ada di enum sistem (bukan sekadar error validasi Joi/Zod, tapi error bisnis). | [ ] |
+| **Self-Operation** | Mencegah dan memberi pesan spesifik jika user mencoba mengubah role/menghapus dirinya sendiri. | [ ] |
+| **Last-Owner Protection** | Mencegah penurunan role owner jika hanya ada 1 owner di organisasi, dengan pesan yang menyuruh menunjuk owner baru. | [ ] |
+| **Invitation States** | Membedakan kegagalan cabut undangan: "Sudah Diterima", "Sudah Kedaluwarsa", atau "Sudah Dibatalkan". | [ ] |
+| **Insufficient Permissions** | Pesan spesifik jika user yang mencoba bukan Owner (bukan sekadar HTTP 403 generik). | [ ] |
+
+#### Kategori 3: Integrasi UI (Frontend)
+| Pemeriksaan | Kriteria Kelulusan | Status |
+| :--- | :--- | :--- |
+| **Parsing Error API** | Frontend mengekstrak `error.code` dari respons API, bukan mencocokkan teks `error.message` (karena teks bisa berubah). | [ ] |
+| **Toast/Alert Actionable** | UI menampilkan `title`, `message`, dan `action` (saran perbaikan) dari kamus error frontend. | [ ] |
+| **Fallback Handling** | Jika API mengembalikan error code yang belum terdaftar di frontend, UI tetap menampilkan pesan *fallback* yang sopan, bukan *crash* atau *blank*. | [ ] |
+| **UI State Reset** | Setelah error terjadi, tombol/loading state dikembalikan ke normal (tidak *stuck* dalam keadaan *loading*). | [ ] |
+
+#### Kategori 4: Ketahanan Testing (Contract Testing)
+| Pemeriksaan | Kriteria Kelulusan | Status |
+| :--- | :--- | :--- |
+| **Test Berbasis Code** | Unit test memverifikasi `expect(error.code).toBe('TEAM_LAST_OWNER')`, **bukan** `expect(error.message).toContain('Owner')`. | [ ] |
+| **Test UI Mock** | Test frontend memverifikasi bahwa jika API me-return `code: 'TEAM_MEMBER_HAS_ACTIVE_PROJECTS'`, UI merender teks "Transfer kepemilikan proyek". | [ ] |
+| **Test Isolasi Organisasi** | Memastikan error "Member tidak ditemukan" tidak bocor ke organisasi lain (user A di Org 1 tidak bisa menebak keberadaan user B di Org 2). | [ ] |
+
+---
+
+### Rekomendasi Langkah Selanjutnya
+
+1. **Untuk Task #40**: Terapkan pola *Self-Healing Insert* untuk zombie reservation. Ini hanya membutuhkan beberapa baris kode di *handler* undangan dan satu kolom `reserved_at` di database. Setelah itu, Task #40 benar-benar *bulletproof*.
+2. **Untuk Task #41**: Jalankan checklist audit di atas terhadap kode yang sudah diimplementasikan. Jika ada yang belum terpenuhi (terutama bagian *Testing Berbasis Code*), minta developer untuk memperbaikinya sebelum di-*merge*.
+
+Sistem yang Anda bangun ini memiliki standar kualitas yang sangat tinggi. Pendekatan *Atomic Reservation* di Task #40 dan *Structured Error Handling* di Task #41 adalah ciri khas aplikasi *enterprise* yang dirancang untuk bertahan selama 5-10 tahun ke depan tanpa menjadi *legacy code* yang membingungkan.
+
+Apakah Anda ingin saya buatkan **snippet kode Prisma/TypeScript untuk implementasi Self-Healing Insert** (Zombie Reservation), atau kita langsung bedah hasil implementasi **Task #41** berdasarkan checklist di atas?
