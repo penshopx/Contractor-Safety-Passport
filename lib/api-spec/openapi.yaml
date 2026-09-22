@@ -1079,6 +1079,7 @@ components:
           type: array
           minItems: 1
           maxItems: 20
+          description: Stage codes must be unique within the profile, case-insensitively.
           items:
             $ref: "#/components/schemas/CsmsStage"
       required: [issuer, version, title, source, stages]

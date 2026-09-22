@@ -1026,7 +1026,7 @@ export const CreateCsmsProfileBody = zod.object({
   "questions": zod.array(zod.string()),
   "evidence": zod.array(zod.string()),
   "validations": zod.array(zod.string())
-})).min(1).max(createCsmsProfileBodyStagesMax)
+})).min(1).max(createCsmsProfileBodyStagesMax).describe('Stage codes must be unique within the profile, case-insensitively.')
 })
 
 export const CreateCsmsProfileResponse = zod.object({
@@ -1084,7 +1084,7 @@ export const UpdateCsmsProfileBody = zod.object({
   "questions": zod.array(zod.string()),
   "evidence": zod.array(zod.string()),
   "validations": zod.array(zod.string())
-})).min(1).max(updateCsmsProfileBodyStagesMax)
+})).min(1).max(updateCsmsProfileBodyStagesMax).describe('Stage codes must be unique within the profile, case-insensitively.')
 })
 
 export const UpdateCsmsProfileResponse = zod.object({

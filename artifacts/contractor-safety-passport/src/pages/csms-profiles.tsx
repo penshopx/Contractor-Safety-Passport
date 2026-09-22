@@ -40,6 +40,17 @@ const emptyProfile = (): CsmsProfileInput => ({
 const lines = (value: string) =>
   value.split("\n").map((item) => item.trim()).filter(Boolean);
 
+const findDuplicateStageCode = (stages: CsmsStage[]) => {
+  const seen = new Set<string>();
+  for (const stage of stages) {
+    const code = stage.code.trim();
+    const normalizedCode = code.toLowerCase();
+    if (seen.has(normalizedCode)) return code;
+    seen.add(normalizedCode);
+  }
+  return undefined;
+};
+
 export default function CsmsProfilesPage() {
   const queryClient = useQueryClient();
   const { data: organization } = useGetOrganizationContext();
@@ -107,6 +118,13 @@ export default function CsmsProfilesPage() {
       )
     ) {
       toast.error("Setiap tahap harus memiliki kode, tujuan, peran, pertanyaan, bukti, dan validasi");
+      return false;
+    }
+    const duplicateStageCode = findDuplicateStageCode(draft.stages);
+    if (duplicateStageCode) {
+      toast.error(
+        `Kode tahap harus unik tanpa membedakan huruf besar-kecil. Kode duplikat: ${duplicateStageCode}`,
+      );
       return false;
     }
     return true;

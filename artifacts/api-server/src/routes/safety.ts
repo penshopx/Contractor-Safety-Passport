@@ -1040,6 +1040,19 @@ export const createSafetyRouter = (
     res.json(ListCsmsProfilesResponse.parse(profiles));
   });
 
+  const findDuplicateStageCode = (
+    stages: Array<{ code: string }>,
+  ): string | undefined => {
+    const seen = new Set<string>();
+    for (const stage of stages) {
+      const code = stage.code.trim();
+      const normalizedCode = code.toLowerCase();
+      if (seen.has(normalizedCode)) return code;
+      seen.add(normalizedCode);
+    }
+    return undefined;
+  };
+
   router.post(
     "/csms-profiles",
     requireRole("owner"),
@@ -1047,6 +1060,13 @@ export const createSafetyRouter = (
       const body = CreateCsmsProfileBody.safeParse(req.body);
       if (!body.success) {
         res.status(400).json({ error: body.error.message });
+        return;
+      }
+      const duplicateStageCode = findDuplicateStageCode(body.data.stages);
+      if (duplicateStageCode) {
+        res.status(400).json({
+          error: `Kode tahap harus unik tanpa membedakan huruf besar-kecil. Kode duplikat: ${duplicateStageCode}`,
+        });
         return;
       }
       const { organizationId, userId } = req.organizationContext!;
@@ -1080,6 +1100,13 @@ export const createSafetyRouter = (
       const body = UpdateCsmsProfileBody.safeParse(req.body);
       if (!params.success || !body.success) {
         res.status(400).json({ error: "Data profil CSMS tidak valid" });
+        return;
+      }
+      const duplicateStageCode = findDuplicateStageCode(body.data.stages);
+      if (duplicateStageCode) {
+        res.status(400).json({
+          error: `Kode tahap harus unik tanpa membedakan huruf besar-kecil. Kode duplikat: ${duplicateStageCode}`,
+        });
         return;
       }
       const { organizationId } = req.organizationContext!;

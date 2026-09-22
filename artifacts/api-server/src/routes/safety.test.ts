@@ -572,6 +572,45 @@ describe("isolasi data antar kontraktor", () => {
     assert.equal(foreignUpdate.status, 404);
   });
 
+  it("menolak kode tahap profil yang duplikat tanpa membedakan huruf besar-kecil", async () => {
+    const duplicateStages = [
+      csmsProfileBody(`duplicate-${runId}`).stages[0],
+      {
+        ...csmsProfileBody(`duplicate-${runId}`).stages[0],
+        code: "pq",
+        name: "Prakualifikasi lanjutan",
+      },
+    ];
+    const rejectedCreate = await request("/csms-profiles", {
+      role: "owner",
+      method: "POST",
+      body: {
+        ...csmsProfileBody(`duplicate-create-${runId}`),
+        stages: duplicateStages,
+      },
+    });
+    assert.equal(rejectedCreate.status, 400);
+    assert.match(rejectedCreate.body.error, /kode tahap harus unik/i);
+
+    const created = await request("/csms-profiles", {
+      role: "owner",
+      method: "POST",
+      body: csmsProfileBody(`duplicate-update-${runId}`),
+    });
+    assert.equal(created.status, 201);
+
+    const rejectedUpdate = await request(`/csms-profiles/${created.body.id}`, {
+      role: "owner",
+      method: "PUT",
+      body: {
+        ...csmsProfileBody(`duplicate-update-${runId}`),
+        stages: duplicateStages,
+      },
+    });
+    assert.equal(rejectedUpdate.status, 400);
+    assert.match(rejectedUpdate.body.error, /kode tahap harus unik/i);
+  });
+
   it("mengunci snapshot profil saat pertama dipakai kesiapan atau dokumen", async () => {
     const readinessProfile = await request("/csms-profiles", {
       role: "owner",

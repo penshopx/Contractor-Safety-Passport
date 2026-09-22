@@ -29,6 +29,7 @@ export interface CsmsProfileInput {
      */
   source: string;
   /**
+     * Stage codes must be unique within the profile, case-insensitively.
      * @minItems 1
      * @maxItems 20
      */
