@@ -1,0 +1,305 @@
+Audit yang sangat rapi. Kedua task ini menunjukkan kematangan proses engineering yang tinggi — Anda tidak hanya memperbaiki gejala, tapi membangun fondasi yang dapat diverifikasi. Mari saya berikan solusi konkret untuk temuan-temuan kritis yang tersisa, dan menyiapkan transisi ke Task #45.
+
+---
+
+## 1. Menutup Celah Task #43: Auto-Detection Tabel (Task #72)
+
+Masalah "daftar manual" ini adalah **risiko laten yang paling berbahaya** untuk aplikasi K3 Anda. Setiap kali developer menambahkan tabel baru (misal: `incident_reports`, `risk_assessments`, `permit_to_work`), mereka bisa lupa menambahkannya ke daftar migrasi. Akibatnya: tabel baru tidak punya perlindungan organisasi, dan data bisa bocor lintas tenant.
+
+### Solusi: Single Source of Truth dari Schema Drizzle
+
+Alih-alih memelihara dua daftar (migrasi + tes), ambil daftar tabel **langsung dari schema Drizzle** secara otomatis.
+
+**Langkah 1: Tandai Tabel yang Butuh Perlindungan Organisasi**
+
+Gunakan metadata Drizzle untuk menandai tabel mana yang harus dilindungi:
+
+```typescript
+// packages/db/src/schema/projects.ts
+export const projects = pgTable(
+  'projects',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id').notNull(), // WAJIB untuk auto-detection
+    name: text('name').notNull(),
+    // ...
+  },
+  (table) => ({
+    orgIdx: index('projects_org_idx').on(table.organizationId),
+  })
+).enableRLS(); // Atau metadata custom
+
+// Tambahkan metadata custom untuk menandai tabel yang harus dilindungi migrasi
+export const projects = pgTable(
+  'projects',
+  // ... kolom
+).extra({
+  requiresOrgProtection: true, // Marker untuk auto-detection
+});
+```
+
+**Langkah 2: Fungsi Auto-Detection**
+
+```typescript
+// packages/db/src/migrations/discover-protected-tables.ts
+import { getTables } from 'drizzle-orm/pg-core';
+import * as schema from '../schema/index';
+
+export interface ProtectedTable {
+  name: string;
+  tableName: string; // nama tabel di database
+  organizationColumn: string;
+}
+
+export function discoverProtectedTables(): ProtectedTable[] {
+  const tables = getTables(schema);
+  const protectedTables: ProtectedTable[] = [];
+
+  for (const [key, table] of Object.entries(tables)) {
+    // Cek metadata custom
+    const requiresProtection = (table as any)[Symbol.for('drizzle:requiresOrgProtection')];
+    
+    // Atau cek berdasarkan konvensi: memiliki kolom organization_id
+    const columns = (table as any)[Symbol.for('drizzle:columns')];
+    const orgColumn = columns?.organization_id || columns?.organizationId;
+    
+    if (requiresProtection || orgColumn) {
+      protectedTables.push({
+        name: key,
+        tableName: (table as any)[Symbol.for('drizzle:Name')],
+        organizationColumn: 'organization_id',
+      });
+    }
+  }
+
+  return protectedTables;
+}
+```
+
+**Langkah 3: Migrasi Menggunakan Daftar Otomatis**
+
+```typescript
+// packages/db/src/migrations/organization-integrity.ts
+import { discoverProtectedTables } from './discover-protected-tables';
+
+export async function runOrganizationIntegrityMigration(client: Client) {
+  const protectedTables = discoverProtectedTables();
+  
+  console.log(`Discovered ${protectedTables.length} tables requiring organization protection`);
+  
+  await client.query('BEGIN');
+  try {
+    // 1. Buat organisasi referensi untuk semua organization_id yang ada
+    for (const table of protectedTables) {
+      await client.query(`
+        INSERT INTO organizations (id, name, created_by)
+        SELECT DISTINCT organization_id, 
+               'Migrated: ' || organization_id, 
+               'system:migration'
+        FROM ${table.tableName}
+        WHERE organization_id IS NOT NULL
+        ON CONFLICT (id) DO NOTHING
+      `);
+    }
+    
+    // 2. Tambahkan foreign key dan index
+    for (const table of protectedTables) {
+      await addForeignKeyIfMissing(client, table.tableName, 'organization_id', 'organizations', 'id');
+      await addIndexIfMissing(client, table.tableName, 'organization_id');
+    }
+    
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  }
+}
+```
+
+**Langkah 4: Tes Memverifikasi Kelengkapan**
+
+```typescript
+// tests/migrations/organization-integrity.test.ts
+test('semua tabel dengan organization_id tercakup dalam migrasi', async () => {
+  const discoveredTables = discoverProtectedTables();
+  
+  // Verifikasi setiap tabel yang ditemukan benar-benar dilindungi
+  for (const table of discoveredTables) {
+    const fkExists = await checkForeignKeyExists(client, table.tableName, 'organization_id');
+    const indexExists = await checkIndexExists(client, table.tableName, 'organization_id');
+    
+    expect(fkExists).toBe(true);
+    expect(indexExists).toBe(true);
+  }
+  
+  // Verifikasi tidak ada tabel yang "terlewat"
+  // Query PostgreSQL catalog untuk mencari tabel dengan kolom organization_id
+  const allTablesWithOrgColumn = await client.query(`
+    SELECT table_name 
+    FROM information_schema.columns 
+    WHERE column_name = 'organization_id' 
+    AND table_schema = 'public'
+  `);
+  
+  const protectedTableNames = discoveredTables.map(t => t.tableName);
+  const missingTables = allTablesWithOrgColumn.rows
+    .map(r => r.table_name)
+    .filter(name => !protectedTableNames.includes(name));
+  
+  expect(missingTables).toEqual([]);
+});
+```
+
+*Keuntungan:* Developer tidak perlu mengingat apa pun. Tambahkan kolom `organization_id` ke tabel baru, dan migrasi otomatis melindunginya.
+
+---
+
+## 2. Menutup Celah Task #44: Workspace-Wide Typecheck (Task #73)
+
+Masalah "hanya API yang diperbaiki" berarti package `web`, `shared`, dan lainnya masih rentan terhadap stale exports.
+
+### Solusi: Turborepo Pipeline dengan Dependency Graph
+
+Jika Anda menggunakan Turborepo (atau bisa migrasi), manfaatkan dependency graph untuk memastikan urutan build yang benar.
+
+**`turbo.json`:**
+```json
+{
+  "$schema": "https://turbo.build/schema.json",
+  "pipeline": {
+    "generate": {
+      "outputs": ["src/generated/**"]
+    },
+    "build": {
+      "dependsOn": ["^build", "generate"],
+      "outputs": ["dist/**"]
+    },
+    "typecheck": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "test": {
+      "dependsOn": ["build"],
+      "outputs": []
+    }
+  }
+}
+```
+
+**Script di setiap package:**
+```json
+// packages/db/package.json
+{
+  "scripts": {
+    "generate": "drizzle-kit generate",
+    "build": "tsc --build",
+    "typecheck": "tsc --noEmit"
+  }
+}
+
+// apps/api/package.json
+{
+  "scripts": {
+    "typecheck": "tsc --build ../../packages/db ../../packages/api-zod && tsc --noEmit"
+  }
+}
+
+// apps/web/package.json
+{
+  "scripts": {
+    "typecheck": "tsc --build ../../packages/api-client-react ../../packages/shared && tsc --noEmit"
+  }
+}
+```
+
+**Command root:**
+```bash
+# Di root monorepo
+pnpm turbo run typecheck
+```
+
+Turborepo akan secara otomatis:
+1. Menjalankan `generate` di `db` terlebih dahulu
+2. Menjalankan `build` di `db` dan `api-zod`
+3. Baru menjalankan `typecheck` di `api`
+4. Secara paralel menjalankan typecheck di `web` dengan dependency-nya sendiri
+
+*Keuntungan:* Satu command untuk seluruh workspace, urutan dijamin, caching otomatis.
+
+---
+
+## 3. Persiapan Task #45: Konkurensi Object Storage
+
+Anda menyebutkan bahwa catatan konkurensi object storage disimpan untuk audit Task #45. Berdasarkan diskusi kita sebelumnya, berikut **checklist audit ketat** yang bisa Anda gunakan untuk memverifikasi implementasi:
+
+### Checklist Audit Task #45
+
+#### Kategori 1: Arsitektur Lifecycle
+| Pemeriksaan | Kriteria Kelulusan | Status |
+| :--- | :--- | :--- |
+| **Two-Phase Cleanup** | Ada fase `mark` dan fase `delete` terpisah, bukan langsung hapus | [ ] |
+| **Grace Period** | Foto baru punya minimal 30-60 menit sebelum bisa di-mark sebagai orphan | [ ] |
+| **Deletion Delay** | Setelah di-mark, foto menunggu minimal 24 jam sebelum benar-benar dihapus | [ ] |
+| **Upload Session Token** | Foto yang sedang dalam sesi upload aktif tidak pernah di-mark | [ ] |
+
+#### Kategori 2: Atomicity & Referential Integrity
+| Pemeriksaan | Kriteria Kelulusan | Status |
+| :--- | :--- | :--- |
+| **Mark dalam Transaksi** | Proses mark orphan berjalan dalam satu transaksi database | [ ] |
+| **Double-Check Before Delete** | Sebelum hapus dari S3, sistem verifikasi ulang bahwa foto masih orphan | [ ] |
+| **Claim saat Tautan** | Saat user menautkan foto ke aktivitas, proses klaim atomik dalam satu transaksi | [ ] |
+| **Cancel Deletion Schedule** | Jika foto yang sudah di-mark kemudian ditautkan, penjadwalan hapus dibatalkan | [ ] |
+
+#### Kategori 3: Referensi Multi-Entitas
+| Pemeriksaan | Kriteria Kelulusan | Status |
+| :--- | :--- | :--- |
+| **Cek Semua Referensi** | Cleanup memeriksa semua kemungkinan referensi (activity, inspection, tbm, dll) | [ ] |
+| **LEFT JOIN Efisien** | Query menggunakan LEFT JOIN, bukan subquery per baris | [ ] |
+| **Index untuk Referensi** | Ada index untuk setiap kolom referensi (activity_id, inspection_id, dll) | [ ] |
+
+#### Kategori 4: Failure Handling
+| Pemeriksaan | Kriteria Kelulusan | Status |
+| :--- | :--- | :--- |
+| **S3 Gagal → DB Tidak Dihapus** | Jika S3 gagal hapus, baris database tetap ada untuk retry | [ ] |
+| **Audit Trail Immutable** | Setiap aksi (mark, cancel, delete, fail) dicatat di tabel audit | [ ] |
+| **Retry Mechanism** | Job cleanup bisa di-retry tanpa menyebabkan duplikasi atau data loss | [ ] |
+
+#### Kategori 5: Testing Konkurensi
+| Pemeriksaan | Kriteria Kelulusan | Status |
+| :--- | :--- | :--- |
+| **Test 1: Upload vs Cleanup** | Foto baru tidak dihapus oleh cleanup yang berjalan bersamaan | [ ] |
+| **Test 2: Mark → Link → Delete** | Foto yang di-mark lalu ditautkan tidak jadi dihapus | [ ] |
+| **Test 3: Parallel Link** | 5 request tautan paralel hanya menghasilkan 1 tautan valid | [ ] |
+| **Test 4: S3 Failure** | Jika S3 gagal, database tetap konsisten | [ ] |
+| **Test 5: Grace Period** | Foto dalam grace period tidak pernah di-mark | [ ] |
+
+---
+
+## 4. Roadmap Prioritas (Minggu Depan)
+
+Berdasarkan audit ini, berikut urutan eksekusi yang memberikan nilai tertinggi:
+
+### **Minggu 1: Fondasi Keamanan Data**
+1. **Task #72 (Auto-Detect Tabel)**: Implementasikan auto-discovery dari schema Drizzle. Ini mencegah kebocoran data lintas tenant saat Anda menambah fitur baru.
+2. **Task #70 (Migration Lock)**: Tambahkan `pg_advisory_lock` ke `start:production`. Mencegah tabrakan deployment paralel.
+
+### **Minggu 2: Konsistensi & Testing**
+3. **Task #73 (Workspace Typecheck)**: Setup Turborepo atau script `tsc --build` berantai untuk seluruh package.
+4. **Task #45 (Object Storage Concurrency)**: Implementasikan two-phase cleanup dengan checklist di atas.
+
+### **Minggu 3: Error Handling & Recovery**
+5. **Task #68 (Error Contract)**: Refactor backend untuk mengembalikan `error.code`, frontend membaca `code`.
+6. **Task #67 (Clerk Compensation)**: Implementasikan status `PENDING_REVOKE` + background retry.
+7. **Task #71 (Partial Migration Recovery)**: Tambahkan health check schema version.
+
+---
+
+## Pertanyaan untuk Anda
+
+Untuk membantu eksekusi yang lebih presisi:
+
+1. **Apakah Anda ingin saya buatkan implementasi lengkap untuk Task #72** (auto-detection tabel dari schema Drizzle + tes verifikasi kelengkapan)?
+2. **Atau Anda ingin langsung fokus ke Task #45** dan saya buatkan skrip migrasi + job cleanup + 5 test konkurensi yang siap pakai?
+3. **Atau Anda sedang mengerjakan task lain** yang belum tercantum di sini dan butuh guidance?
+
+Fundasi yang Anda bangun ini sangat solid. Dengan menutup celah-celah di Task #72, #73, dan #45, aplikasi K3 Anda akan memiliki standar keamanan data dan keandalan yang setara dengan aplikasi enterprise kelas dunia.
