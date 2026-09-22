@@ -1,0 +1,53 @@
+Saya siap melanjutkan ke arah mana pun yang Anda pilih. Namun, agar kita tetap menjaga standar ketelitian dan konsistensi seperti pada task-task sebelumnya, berikut adalah langkah yang saya usulkan untuk masing-masing opsi:
+
+---
+
+### Opsi 1: Lanjut ke Task #77 atau Task #78
+Karena ini adalah nomor task baru yang belum kita bahas dalam sesi audit ini, **mohon lampirkan ringkasan scope, tujuan, atau kriteria awal** untuk Task #77 dan/atau Task #78. 
+
+Segera setelah Anda memberikan konteksnya, saya akan langsung menyusun:
+1. Kriteria audit final (dengan pemisahan "Terpenuhi" vs "Belum", klasifikasi Tinggi/Sedang/Rendah).
+2. Checklist verifikasi teknis.
+3. Batasan eksplisit (apa yang *tidak* perlu dilakukan).
+
+---
+
+### Opsi 2: Publikasi Aplikasi (Production Release)
+Jika Anda memilih untuk langsung menuju **publikasi aplikasi**, ini adalah langkah yang sangat kritis. Mengingat aplikasi ini menangani data kepatuhan K3/CSMS, multi-tenancy, dan integrasi eksternal (Clerk, Object Storage), publikasi memerlukan *pre-flight checklist* yang ketat.
+
+Berikut adalah **Draf Checklist Pra-Publikasi** yang dapat kita jadikan acuan. Beri tahu saya jika ada yang perlu disesuaikan dengan infrastruktur Anda:
+
+#### A. Keamanan & Isolasi Data (Security & Tenant Isolation)
+- [ ] **Row-Level Security (RLS) / Query Filtering**: Terverifikasi bahwa *semua* query data bisnis memfilter berdasarkan `organization_id`.
+- [ ] **Secrets Management**: Semua variabel lingkungan sensitif (DB URL, Clerk Secret Keys, GCS Credentials) dikelola via secret manager, bukan hardcode atau `.env` yang ter-commit.
+- [ ] **CORS & Rate Limiting**: API memiliki proteksi rate limiting (terutama pada endpoint auth dan invitation) dan CORS yang dikunci ke domain produksi.
+- [ ] **Audit Logging**: Log produksi tidak mencetak PII (email, token) dan mencatat aksi kritis (retry manual, perubahan role, pengarsipan).
+
+#### B. Integritas Database & Migrasi
+- [ ] **Migrasi Idempoten**: Skrip migrasi telah diuji pada database kosong dan database yang sudah ada data (seperti Task #43).
+- [ ] **Migration Lock**: Deployment menggunakan `pg_advisory_lock` atau mekanisme serupa untuk mencegah tabrakan migrasi saat rolling update (Task #70).
+- [ ] **Backup Pra-Rilis**: Snapshot database produksi telah diambil sebelum deployment dimulai.
+
+#### C. Keandalan & Resiliensi (Reliability)
+- [ ] **Health Check Endpoint**: Endpoint `/health` memverifikasi koneksi database dan status migrasi, bukan hanya mengembalikan `200 OK` statis.
+- [ ] **Graceful Shutdown**: API dan background worker (seperti reconciler Task #67) menangani sinyal `SIGTERM` dengan benar (menyelesaikan job yang sedang berjalan, menolak job baru).
+- [ ] **Object Storage Precondition**: Fitur cleanup foto menggunakan `ifGenerationMatch` (GCS) untuk mencegah penghapusan file yang baru saja di-upload (Task #45).
+
+#### D. Observabilitas & Monitoring
+- [ ] **Error Tracking**: Integrasi dengan sistem pelacakan error (misal: Sentry) untuk menangkap exception yang tidak tertangani.
+- [ ] **Metrics**: Endpoint atau structured logging tersedia untuk memantau: jumlah job dead-letter, tingkat kegagalan Clerk, dan latency query kritis.
+- [ ] **Alerting**: Ada aturan alert dasar (misal: API down, migrasi gagal, atau lonjakan error 5xx).
+
+#### E. Kepatuhan & Dokumentasi
+- [ ] **Dokumen Arsitektur**: Diagram alur data dan kompensasi (Task #67) telah didokumentasikan untuk tim operasional.
+- [ ] **Runbook Operasional**: Panduan langkah demi langkah untuk menangani insiden umum (misal: "Cara manual retry kompensasi yang masuk ke DEAD_LETTER").
+
+---
+
+### Bagaimana Anda ingin melanjutkan?
+
+1. **Berikan detail Task #77 / #78**, dan saya akan langsung menyusun kriteria auditnya.
+2. **Konfirmasi "Publikasi Aplikasi"**, dan kita akan meninjau/menyempurnakan checklist pra-publikasi di atas agar sesuai 100% dengan stack dan kebijakan proyek Anda sebelum eksekusi.
+3. **Ada prioritas lain** yang lebih mendesak?
+
+Silakan berikan arahan Anda.
