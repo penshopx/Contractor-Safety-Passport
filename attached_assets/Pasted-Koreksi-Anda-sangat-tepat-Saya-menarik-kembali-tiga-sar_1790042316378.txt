@@ -1,0 +1,225 @@
+Koreksi Anda sangat tepat. Saya menarik kembali tiga saran yang terlalu luas:
+
+1. **Introspeksi Drizzle** untuk Task #72 — API internal seperti `.extra()` dan `getTables()` memang tidak stabil antar versi. Sumber kebenaran yang lebih aman adalah `information_schema` PostgreSQL.
+2. **Turborepo** untuk Task #73 — overkill untuk struktur workspace saat ini. `tsc --build` + pnpm references sudah cukup.
+3. **Two-phase lifecycle lengkap** untuk Task #45 — over-engineering untuk scope task. Re-check referensi + precondition object storage sudah menutup race yang ditargetkan.
+
+Berikut penyempurnaan yang selaras dengan batasan yang Anda tetapkan:
+
+---
+
+## Task #72 — Discovery via `information_schema`
+
+Alih-alih introspeksi Drizzle, query langsung katalog PostgreSQL. Ini stabil, tidak bergantung pada versi ORM, dan selalu mencerminkan keadaan database aktual.
+
+```typescript
+// packages/db/src/migrations/discover-protected-tables.ts
+export async function discoverProtectedTables(client: Client): Promise<string[]> {
+  const result = await client.query(`
+    SELECT DISTINCT c.table_name
+    FROM information_schema.columns c
+    JOIN information_schema.tables t 
+      ON c.table_name = t.table_name 
+      AND c.table_schema = t.table_schema
+    WHERE c.column_name = 'organization_id'
+      AND c.table_schema = 'public'
+      AND t.table_type = 'BASE TABLE'
+  `);
+  return result.rows.map((r) => r.table_name);
+}
+```
+
+**Mekanisme pengecualian eksplisit** (untuk tabel global yang kebetulan punya kolom `organization_id` tapi memang tidak perlu dilindungi):
+
+```typescript
+const EXCLUDED_TABLES = new Set([
+  'system_settings',
+  'global_audit_log',
+  // ... daftar eksplisit, direview per PR
+]);
+
+export async function discoverProtectedTables(client: Client) {
+  const discovered = await queryInformationSchema(client);
+  return discovered.filter((name) => !EXCLUDED_TABLES.has(name));
+}
+```
+
+**Tes yang mengunci kelengkapan** (bukan hanya kelulusan migrasi):
+
+```typescript
+test('setiap tabel dengan organization_id terproteksi atau dieksklusi eksplisit', async () => {
+  const discovered = await discoverProtectedTables(client);
+  const unprotected = [];
+  
+  for (const table of discovered) {
+    const hasFk = await hasForeignKeyTo(client, table, 'organizations.id');
+    const hasIdx = await hasIndexOn(client, table, 'organization_id');
+    if (!hasFk || !hasIdx) unprotected.push(table);
+  }
+  
+  expect(unprotected).toEqual([]);
+});
+```
+
+Jika developer menambah tabel baru dengan `organization_id` tapi lupa migrasi, tes langsung merah. Jika tabel itu memang global, mereka menambahkannya ke `EXCLUDED_TABLES` dengan alasan yang direview.
+
+---
+
+## Task #73 — `tsc --build` Berantai via pnpm
+
+Tanpa Turborepo. Manfaatkan **Project References** TypeScript + pnpm filter.
+
+**`packages/db/tsconfig.json`:**
+```json
+{
+  "compilerOptions": { "composite": true, "outDir": "dist", "declaration": true }
+}
+```
+
+**`apps/api/tsconfig.json`:**
+```json
+{
+  "references": [
+    { "path": "../../packages/db" },
+    { "path": "../../packages/api-zod" }
+  ]
+}
+```
+
+**Script typecheck di setiap aplikasi:**
+```json
+// apps/api/package.json
+"typecheck": "tsc --build --force && tsc -p tsconfig.json --noEmit"
+
+// apps/web/package.json  
+"typecheck": "tsc --build --force && tsc -p tsconfig.json --noEmit"
+```
+
+**Command root:**
+```bash
+pnpm -r run typecheck
+```
+
+`--force` menjamin build dari checkout bersih tidak memakai incremental state lama. `tsc --build` mengikuti `references` untuk membangun dependency terlebih dahulu. `--noEmit` terakhir memastikan aplikasi itu sendiri bersih tanpa menghasilkan artefak.
+
+**Tes yang mengunci urutan** (sederhana, tanpa alat baru):
+
+```typescript
+test('typecheck API gagal jika db contract belum dibangun', async () => {
+  // Hapus dist db, jalankan typecheck API tanpa build db dulu
+  await rimraf('packages/db/dist');
+  const result = await exec('pnpm --filter @workspace/api-server run typecheck:raw');
+  // typecheck:raw adalah varian tanpa --build, hanya --noEmit
+  expect(result.exitCode).not.toBe(0);
+});
+```
+
+---
+
+## Task #45 — Scope Minimal yang Menutup Race
+
+Tanpa two-phase lifecycle, tanpa upload session token, tanpa tabel audit terpisah. Cukup dua mekanisme yang langsung menutup race:
+
+### Mekanisme 1: Re-check Referensi Sesaat Sebelum Delete
+
+```typescript
+async function deleteUnreferencedPhoto(photoId: string, storageKey: string) {
+  // 1. Scan awal: cari kandidat orphan
+  const candidates = await scanOrphanCandidates();
+  
+  for (const photo of candidates) {
+    // 2. RE-CHECK: query ulang sesaat sebelum delete
+    const stillReferenced = await checkAnyReferenceExists(photo.id);
+    if (stillReferenced) continue;
+    
+    // 3. Delete dengan precondition
+    await storage.deleteWithGeneration(storageKey, photo.generation);
+    
+    // 4. Hapus baris DB hanya jika delete storage sukses
+    await db.delete(photos).where(eq(photos.id, photo.id));
+  }
+}
+```
+
+### Mekanisme 2: Precondition (Generation/ETag) di Object Storage
+
+S3 mendukung `If-Match` (ETag) atau Anda bisa menyimpan `generation` sendiri. Ini mencegah skenario:
+
+```
+T0: Cleanup scan → foto tidak direferensi
+T1: User upload foto BARU dengan storage_key yang sama (reuse key)
+T2: Cleanup delete → foto BARU user ikut terhapus ❌
+```
+
+Dengan precondition:
+```typescript
+await s3.deleteObject({
+  Bucket: bucket,
+  Key: storageKey,
+  IfMatch: photo.etag, // Gagal jika object sudah berubah
+});
+```
+
+Jika precondition gagal (object sudah diganti), cleanup **tidak** menghapus baris DB dan tidak melaporkan sukses. Baris tetap ada untuk scan berikutnya.
+
+### 7 Kriteria Audit (sesuai lampiran Anda)
+
+| # | Kriteria | Cara Verifikasi |
+|---|----------|-----------------|
+| 1 | Foto baru tidak eligible sebelum cutoff | Tes: upload foto, langsung jalankan cleanup → foto tetap ada |
+| 2 | Re-check referensi sesaat sebelum delete | Tes: scan → tautkan foto → delete → foto tetap ada |
+| 3 | Precondition mencegah hapus versi yang berubah | Tes: scan → ganti object di S3 → delete → baris DB tetap ada |
+| 4 | Foto yang ditautkan setelah scan tidak terhapus | Tes: scan → tautkan → delete → foto tetap ada |
+| 5 | Kegagalan storage tidak dilaporkan sukses | Tes: mock S3 error → cleanup throw, baris DB tetap ada |
+| 6 | Cleanup idempoten | Tes: jalankan 2x → hasil sama, tidak ada double-delete |
+| 7 | Tes mengontrol urutan race deterministik | Gunakan `vi.spyOn` + Promise barrier untuk memaksa urutan T0→T7 |
+
+### Tes Konkurensi Deterministik (Contoh Pola)
+
+```typescript
+test('foto ditautkan di antara scan dan delete tidak terhapus', async () => {
+  const photo = await seedUnreferencedPhotoPastCutoff();
+  
+  // Barrier untuk mengontrol urutan
+  let afterScan: () => void;
+  const scanDone = new Promise<void>((r) => { afterScan = r; });
+  
+  // Mock delete untuk menunggu tautan terjadi
+  const originalDelete = storage.deleteWithGeneration;
+  storage.deleteWithGeneration = vi.fn().mockImplementation(async (...args) => {
+    afterScan(); // Signal: scan sudah selesai, sekarang giliran tautan
+    await scanDone; // Tunggu tautan selesai (di-set oleh test)
+    return originalDelete(...args);
+  });
+  
+  // Jalankan cleanup (akan scan, lalu pause di delete)
+  const cleanupPromise = runCleanup();
+  
+  // Tunggu scan selesai
+  await scanDone;
+  
+  // Tautkan foto ke aktivitas (di tengah pause cleanup)
+  await linkPhotoToActivity(photo.id, activityId);
+  
+  // Lanjutkan delete
+  afterScan();
+  await cleanupPromise;
+  
+  // Verifikasi: foto tidak terhapus, tautan tetap ada
+  const finalPhoto = await db.query.photos.findFirst({ where: eq(photos.id, photo.id) });
+  expect(finalPhoto).toBeDefined();
+  expect(finalPhoto.activityId).toBe(activityId);
+});
+```
+
+---
+
+## Ringkasan Koreksi
+
+| Task | Saran Sebelumnya (Ditarik) | Pendekatan Selaras dengan Lampiran |
+|------|---------------------------|-----------------------------------|
+| #72 | Introspeksi Drizzle `.extra()` | Query `information_schema` + exclusion list eksplisit |
+| #73 | Turborepo pipeline | `tsc --build` + Project References + pnpm `-r` |
+| #45 | Two-phase lifecycle + audit table | Re-check + precondition storage saja |
+
+Apakah Anda ingin saya fokuskan pembahasan selanjutnya ke salah satu dari tiga task ini untuk persiapan audit, atau ada task lain yang sedang berjalan yang butuh review?
