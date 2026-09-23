@@ -1,0 +1,35 @@
+Pemisahan "ingatan" menjadi tiga kategori yang Anda tetapkan adalah langkah arsitektur yang sangat krusial. Ini memastikan chatbot dan sistem Gustafta tidak mencampuradukkan preferensi kosmetik dengan data kepatuhan yang sensitif, sekaligus menjaga prinsip *Creator Empowerment* dan privasi pengguna.
+
+Berikut adalah pemetaan konseptual **Strategi Business Memory** berdasarkan tiga kategori tersebut, disusun dengan fokus pada otoritas, masa simpan, dan mekanisme koreksi:
+
+### 1. Preferensi Pribadi (*Personal Preferences*)
+*   **Apa yang diingat:** Pengaturan antarmuka (misal: tema oranye/kuning), gaya komunikasi chatbot (misal: "selalu gunakan bahasa formal", "utamakan poin-poin ringkas"), atau preferensi notifikasi.
+*   **Otoritas:** Pengguna individu (pemilik akun).
+*   **Masa Simpan & Akses:** Selama akun aktif. Hanya dapat dibaca dan digunakan oleh pengguna tersebut di semua sesi dan perangkat.
+*   **Mekanisme Koreksi/Hapus:** Pengguna dapat mengubah atau menghapus kapan saja secara mandiri melalui menu Pengaturan Profil. Tidak memerlukan persetujuan pihak lain.
+
+### 2. Konteks Organisasi yang Disahkan (*Sanctioned Organizational Context*)
+*   **Apa yang diingat:** Nama entitas, struktur departemen, SOP umum, glosarium istilah internal, atau dokumen yang secara eksplisit diunggah sebagai "Knowledge Base" resmi untuk chatbot (misal: panduan SMAP).
+*   **Otoritas:** Administrator Organisasi atau Pemilik Workspace (*Creator*). Anggota biasa hanya dapat *menggunakan* konteks ini, bukan *mengajarkannya* ke sistem.
+*   **Masa Simpan & Akses:** Selama organisasi berlangganan atau workspace aktif. Dapat diakses oleh anggota yang memiliki peran yang sesuai (misal: seluruh tim proyek dalam workspace tersebut).
+*   **Mekanisme Koreksi/Hapus:** Hanya Administrator yang dapat memperbarui, menimpa, atau mencabut akses Knowledge Base. Setiap perubahan pada basis pengetahuan ini wajib dicatat dalam log audit organisasi (siapa yang mengubah, kapan, dan versi lama tetap tersimpan sebagai arsip).
+
+### 3. Bukti & Keputusan Proses (*Process Evidence & Decisions*)
+*   **Apa yang diingat:** Data spesifik dari eksekusi proses, seperti hasil evaluasi tender, temuan audit K3, atau status sertifikasi (seperti yang dipetakan dalam fondasi Workroom).
+*   **Otoritas:** Pihak berwenang proses (misal: Approver, Komite Penilai) sesuai aturan bisnis yang berlaku.
+*   **Masa Simpan & Akses:** Diatur oleh kebijakan retensi data organisasi atau regulasi eksternal (misal: 5–10 tahun). Akses dibatasi ketat berdasarkan peran kontekstual dan kebutuhan tahu (*need-to-know*).
+*   **Mekanisme Koreksi/Hapus:** **Tidak dapat dihapus secara permanen** (*Hard Delete* dilarang). Mengacu pada prinsip *Append-Only*, koreksi hanya dilakukan melalui pencatatan peristiwa pembatalan atau penerbitan revisi baru yang secara eksplisit merujuk dan membatalkan keberlakuan versi lama.
+
+---
+
+**Penyelarasan dengan Prinsip Gustafta:**
+Sebagai platform *No-Code*, Gustafta tidak boleh mengasumsikan atau menyimpan data secara otomatis di luar batas ini. Sebaliknya, Gustafta harus menyediakan **Formulir Konfigurasi Memori** bagi *Creator* untuk secara eksplisit menentukan: 
+1. Data mana yang boleh dijadikan konteks chatbot.
+2. Siapa yang berwenang mengonfirmasinya.
+3. Berapa lama data tersebut dipertahankan.
+
+**Konfirmasi Status:** 
+Diterima. Tidak ada kode, skema database, atau status tugas yang diubah dari diskusi konseptual ini.
+
+**Langkah Selanjutnya:**
+Apakah Anda ingin kita merumuskan draf **Formulir Konfigurasi Memori** (No-Code) yang akan digunakan oleh *Creator* untuk menetapkan batas-batas di atas? Atau Anda lebih memilih untuk langsung menguji bagaimana ketiga kategori memori ini akan memengaruhi desain **Segmentasi Chatbot** (misalnya, bagaimana "Asisten Cerdas" SMAP mengakses Konteks Organisasi tanpa melanggar batas Bukti Proses)?
