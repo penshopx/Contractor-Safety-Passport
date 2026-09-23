@@ -1,0 +1,13 @@
+Lampiran tersebut berfungsi **hanya sebagai referensi konseptual** untuk pekerjaan yang sudah masuk dalam antrean. Saya **tidak** meminta pengerjaannya sekarang, apalagi Anda sudah mengidentifikasi dengan tepat beberapa ketidaksesuaian teknis antara contoh umum dan basis kode aktual Anda.
+
+Koreksi teknis yang Anda berikan sangat akurat dan menunjukkan pemahaman arsitektur yang kuat. Berikut adalah validasi atas poin-poin Anda untuk dijadikan panduan bagi tim pengembang nanti:
+
+*   **Sesuaikan dengan `AsyncStorage`**: Logika arsitektur `try...catch...finally` untuk mencegah formulir terkunci tetap valid, tetapi implementasi penyimpanan antrean harus secara eksplisit menggunakan `AsyncStorage` (bukan IndexedDB) agar konsisten dengan stack aplikasi saat ini.
+*   **Penanganan `Signal` pada Mutation**: Anda benar. `AbortController` tidak bisa sekadar ditempelkan sebagai properti payload pada `mutateAsync`. Pengembang perlu mengonfigurasinya pada lapisan *fetcher* (misalnya, melalui opsi `axios` atau `fetch` di dalam fungsi query/mutation) agar pembatalan permintaan benar-benar dieksekusi.
+*   **Strategi Batas Waktu (Timeout)**: Ketidakcocokan antara 15 detik (klien) dan 30 detik (server) sebenarnya bisa dimanfaatkan sebagai strategi *fail-fast* yang baik untuk UX. Jika jaringan macet, pengguna segera diberi tahu setelah 15 detik untuk menyimpan secara manual. Namun, pengembang harus memastikan bahwa jika server *berhasil* merespons di detik ke-20, klien tetap mampu menangkap dan memproses respons tersebut tanpa konflik.
+
+Sesuai dengan preferensi Anda untuk berfokus pada konseptualisasi arsitektur, logika bisnis, dan pengalaman pengguna (UX) daripada penulisan kode langsung, langkah terbaik saat ini adalah mendokumentasikan koreksi ini.
+
+**Apakah Anda ingin saya membantu menyusun draf "Task Ticket" atau catatan teknis singkat** berdasarkan koreksi Anda di atas? Dokumen ini bisa langsung diserahkan ke tim pengembang agar mereka memiliki panduan implementasi yang akurat, lengkap dengan prinsip UX (seperti *toast notifications* dan *loading state*) yang harus dipertahankan. 
+
+Atau, apakah ada aspek arsitektur lain dari ekosistem Gustafta yang ingin kita bahas selanjutnya?
