@@ -14,7 +14,7 @@ export function Scene3() {
           exit={{ opacity: 0, y: -50 }}
           transition={{ duration: 4.5, ease: "easeOut" }}
           style={{
-            backgroundImage: `url(${import.meta.env.BASE_URL}images/bg_intro.jpg)`,
+            backgroundImage: `url(${import.meta.env.BASE_URL}images/bg_data_abstract.jpg)`,
             backgroundSize: 'cover',
             backgroundPosition: 'center',
           }}

@@ -52,7 +52,7 @@ export function Scene4() {
               transition={{ duration: 0.8, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
             >
               <div className="text-[2.2vw] text-white/70 leading-relaxed">
-                Tetap rekam inspeksi dan temuan meski tanpa sinyal. Sistem menyerap foto dan data, menyimpannya dalam antrean lokal dengan aman.
+                Tetap rekam inspeksi dan temuan meski tanpa sinyal. Sistem menyimpan foto dan data dalam antrean lokal.
               </div>
             </motion.div>
           </div>

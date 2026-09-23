@@ -10,3 +10,4 @@
 - [Kunci bukti lintas storage dan database](evidence-link-cleanup-lock.md) — tautan foto dan cleanup harus berbagi advisory transaction lock yang tetap ditahan sampai commit atau delete selesai.
 - [Klaim visual pemasaran](marketing-visual-claims.md) — audit teks di dalam gambar dan angka contoh pada animasi; keduanya dapat menyiratkan hasil produk yang tidak terbukti.
 - [Bingkai pertama animasi](animation-first-frame.md) — komposisi akhir yang penuh tidak cukup; tiap adegan perlu fokus yang terlihat segera agar tidak tampak kosong saat mulai.
+- [Lapisan transisi video](video-scene-layering.md) — transisi komponen adegan perlu lapisan DOM absolut; pergantian timer yang benar belum menjamin gambar tampil di bingkai.

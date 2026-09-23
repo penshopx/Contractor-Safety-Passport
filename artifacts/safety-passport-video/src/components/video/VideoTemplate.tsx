@@ -120,9 +120,18 @@ export default function VideoTemplate({
           transition={{ duration: 2, ease: "easeInOut" }}
         />
 
-        <AnimatePresence mode="popLayout">
+        <AnimatePresence mode="sync">
           {SceneComponent && (
-            <SceneComponent key={currentSceneKey} />
+            <motion.div 
+              key={currentSceneKey} 
+              className="absolute inset-0 z-10 origin-center"
+              initial={{ opacity: 0, scale: 1.02 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              transition={{ duration: 0.8, ease: "easeInOut" }}
+            >
+              <SceneComponent />
+            </motion.div>
           )}
         </AnimatePresence>
         <audio

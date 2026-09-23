@@ -26,7 +26,9 @@ _Populate as you build — short repo map plus pointers to the source-of-truth f
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- AI membantu pada aktivitas yang mendapat manfaat nyata (misalnya meninjau kelengkapan dokumen atau menyusun draf tindak lanjut), bukan ditambahkan ke setiap layar demi label "AI". Hasil AI berupa saran yang menyebutkan sumber dan dapat ditinjau manusia; AI tidak menetapkan kepatuhan, kelayakan, atau keputusan keselamatan secara otomatis.
+- OpenClaw/MultiClaw dan Hermes Agent adalah pendekatan agentic yang dapat dievaluasi untuk tugas terbatas. Jangan memasang beberapa runtime atau memberi akses tulis lintas organisasi sebelum ada kasus penggunaan, batas izin, audit, dan persetujuan manusia yang jelas.
+- Koneksi dengan gustafta.my.id hanya bila alur produk saling melengkapi. Tentukan terlebih dahulu pemilik data, izin pengguna, kontrak API, dan arah sinkronisasi; jangan menganggap situs publik sebagai izin atau API integrasi.
 
 ## Product
 
