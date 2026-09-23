@@ -1,0 +1,39 @@
+Pemahaman saya mengenai status *timeout* sudah diperbarui: pemeriksaan konteks (`request === draftRequest.current`) telah ada, dan strategi *warn-and-validate* adalah rencana kerja untuk implementasi peringatan di detik ke-15 nanti. Tidak ada perubahan pada kode atau antrean tugas.
+
+Langkah Anda untuk memprioritaskan **Modul Workroom** sangat tepat. Pendekatan bertahap ini memastikan kita mendefinisikan aturan main (izin, batasan data, dan otoritas manusia) sebelum sistem mencoba melakukan orkestrasi yang rumit. Menunda integrasi dengan *Safety Passport* hingga batas pertukaran data jelas adalah keputusan arsitektur yang sangat aman dan bijaksana.
+
+Mari kita mulai dengan memetakan **satu proses konkret**. Mengingat Gustafta telah memiliki area tender, dokumen, dan ruang proyek, saya mengajukan **Proses Tender** sebagai studi kasus pertama untuk Modul Workroom. 
+
+Berikut adalah draf kerangka konseptual berdasarkan empat elemen yang Anda sebutkan. Silakan tinjau, koreksi, atau tambahkan berdasarkan realitas operasional di Gustafta:
+
+### Studi Kasus: Alur Tender di Workroom
+
+#### 1. Peran (Roles)
+Siapa saja yang berinteraksi dalam ruang kerja ini, dan apa otoritas mereka?
+*   **Inisiator/Pemilik Proyek:** Pihak yang membutuhkan jasa dan membuat draf tender.
+*   **Administrator/Evaluator Teknis:** Pihak yang memeriksa kelengkapan administrasi dan menilai penawaran (bisa dibantu ringkasan dari AI, namun keputusan penilaian tetap manual).
+*   **Pemberi Persetujuan (Approver):** Otoritas yang berwenang mengesahkan penetapan pemenang (misal: Direktur atau Pejabat Pembuat Komitmen).
+*   **Peserta Tender (Kontraktor):** Pihak eksternal yang diundang untuk memasukkan penawaran ke dalam ruang kerja yang terisolasi.
+
+#### 2. Bukti yang Dibutuhkan (Artifacts)
+Dokumen atau data apa yang harus ada di setiap tahap?
+*   *Tahap Persiapan:* Kerangka Acuan Kerja (KAK), spesifikasi teknis, dan pagu anggaran.
+*   *Tahap Penawaran:* Dokumen metode kerja, rincian biaya, dan bukti kompetensi dasar (sebagai dokumen terlampir, belum dihubungkan via API ke sistem sertifikasi mana pun).
+*   *Tahap Evaluasi:* Berita acara perbandingan penawaran dan catatan klarifikasi.
+
+#### 3. Titik Persetujuan (Approval Gates)
+Di mana sistem harus berhenti dan menunggu keputusan manusia (Human-in-the-loop)?
+*   **Gate 1: Rilis Tender.** Sistem memperingatkan jika ada kolom wajib yang kosong pada KAK, tetapi Inisiator yang harus menekan "Setujui untuk Diumumkan".
+*   **Gate 2: Penetapan Pemenang.** Setelah evaluator memasukkan rekomendasi, sistem mengunci ruang kerja dari perubahan dokumen penawaran, dan memindahkan status ke "Menunggu Persetujuan Final". Approver meninjau ringkasan evaluasi dan memberikan otorisasi final.
+
+#### 4. Jejak Perubahan (Audit Trail)
+Apa yang harus dicatat sistem untuk keperluan audit?
+*   Riwayat versi dokumen (siapa yang merevisi KAK pada tahap persiapan).
+*   Waktu pasti (timestamp) saat setiap *Gate* dibuka dan ditutup, beserta identitas aktor yang menyetujui.
+*   Log akses: Siapa yang mengunduh atau melihat dokumen sensitif selama periode tender.
+
+---
+
+**Pertanyaan untuk Anda:**
+1. Apakah **Proses Tender** ini cukup mewakili kebutuhan Modul Workroom saat ini, atau Anda lebih memilih kita memetakan **Proses Sertifikasi/Audit K3** terlebih dahulu?
+2. Dari keempat elemen di atas, apakah ada peran atau *Gate* yang terlewat atau perlu disesuaikan dengan alur kerja Gustafta yang sebenarnya?

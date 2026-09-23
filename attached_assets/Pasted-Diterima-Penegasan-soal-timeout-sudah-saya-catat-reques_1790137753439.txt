@@ -1,0 +1,86 @@
+Diterima. Penegasan soal timeout sudah saya catat: `request === draftRequest.current` sudah ada, peringatan detik ke-15 belum, dan arah *warn-and-validate* tercatat untuk pekerjaan nanti. Tidak ada perubahan kode atau status tugas.
+
+---
+
+## Pemetaan Konseptual Modul Workroom: Proses Tender
+
+Saya memilih **tender** sebagai proses pertama karena Anda sudah menyebutkan adanya area tender dan dokumen di Gustafta. Ini adalah pemetaan konseptual awal — bukan desain final, dan **belum melibatkan pertukaran data dengan Safety Passport atau sistem eksternal mana pun**.
+
+### Prinsip Dasar
+
+Konsisten dengan fitur draf laporan: sistem menyiapkan, manusia memutuskan. Setiap titik persetujuan adalah gerbang eksplisit yang memerlukan tindakan sadar dari orang yang berwenang. Tidak ada persetujuan implisit atau otomatis.
+
+---
+
+### Peran
+
+| Peran | Tanggung Jawab Utama |
+|---|---|
+| **Pemilik Tender** | Menyiapkan persyaratan, mempublikasikan, menetapkan pemenang |
+| **Panitia Evaluasi** | Memeriksa kelengkapan dan menilai kualitas penawaran |
+| **Peserta (Kontraktor)** | Mengajukan dokumen penawaran dan bukti kompetensi |
+| **Pengawas Internal** | Memantau kepatuhan proses terhadap aturan organisasi |
+
+Peran-peran ini adalah kerangka awal. Dalam praktiknya, satu orang bisa memegang beberapa peran (misalnya pemilik tender sekaligus pengawas), tetapi sistem harus mencatat setiap tindakan berdasarkan peran yang sedang aktif, bukan berdasarkan identitas orangnya saja.
+
+---
+
+### Tahapan, Bukti, dan Titik Persetujuan
+
+**Tahap 1 — Persiapan Persyaratan**
+- Pemilik tender menyusun dokumen persyaratan: lingkup pekerjaan, kualifikasi yang dibutuhkan, kriteria evaluasi, dan tenggat waktu.
+- **Bukti:** Dokumen persyaratan tender.
+- **Titik persetujuan:** Pemilik tender menyetujui persyaratan sebelum dipublikasikan. Sampai disetujui, dokumen berstatus *draf* dan tidak terlihat oleh peserta.
+
+**Tahap 2 — Pengajuan Penawaran**
+- Peserta mengunggah dokumen penawaran: rencana kerja, bukti kompetensi personel, riwayat keselamatan, dan dokumen pendukung lainnya.
+- **Bukti:** Berkas penawaran yang diunggah peserta.
+- **Tidak ada titik persetujuan di sini** — pengajuan adalah tindakan satu arah. Sistem hanya memvalidasi kelengkapan format (bukan isi), dan memberi tanda jika ada berkas wajib yang belum diunggah.
+
+**Tahap 3 — Evaluasi Administrasi**
+- Panitia memeriksa apakah semua dokumen wajib hadir dan memenuhi format yang ditentukan.
+- **Titik persetujuan:** Panitia menandai setiap penawaran sebagai *lulus* atau *tidak lulus* administrasi, dengan catatan alasan untuk yang tidak lulus.
+- Peserta yang tidak lulus mendapat notifikasi beserta alasannya.
+
+**Tahap 4 — Evaluasi Teknis**
+- Panitia menilai kualitas rencana kerja, relevansi bukti kompetensi, dan kesesuaian dengan persyaratan.
+- **Titik persetujuan:** Panitia memberi skor dan rekomendasi tertulis untuk setiap penawaran yang lulus administrasi.
+- Pada tahap ini, AI *dapat* membantu (misalnya merangkum perbandingan antar-penawaran), tetapi rekomendasi akhir tetap ditulis dan ditandatangani oleh panitia.
+
+**Tahap 5 — Penetapan Pemenang**
+- Pemilik tender meninjau hasil evaluasi teknis dan mengambil keputusan.
+- **Titik persetujuan:** Pemilik tender menetapkan pemenang secara eksplisit. Sistem tidak bisa menetapkan pemenang secara otomatis berdasarkan skor tertinggi.
+- Alasan pemilihan dicatat, terutama jika pemenang bukan yang mendapat skor tertinggi.
+
+**Tahap 6 — Penutupan dan Pengarsipan**
+- Semua dokumen, keputusan, dan jejak perubahan dikunci sebagai arsip tender.
+- Tidak ada lagi perubahan yang bisa dilakukan setelah tahap ini.
+
+---
+
+### Jejak Perubahan
+
+Setiap objek dalam proses (dokumen persyaratan, berkas penawaran, catatan evaluasi, keputusan) memiliki riwayat versi yang mencatat:
+
+- **Siapa** yang membuat perubahan (identitas + peran aktif)
+- **Kapan** perubahan dilakukan (timestamp)
+- **Apa** yang berubah (ringkasan perubahan, bukan hanya diff teknis)
+- **Mengapa** (alasan yang diisi oleh pengubah, wajib untuk perubahan setelah tahap persetujuan)
+
+Jejak ini bersifat *append-only*: tidak ada penghapusan atau penyuntingan catatan sejarah. Jika sebuah keputusan perlu dikoreksi, koreksi ditambahkan sebagai entri baru dengan referensi ke entri yang dikoreksi.
+
+---
+
+### Batasan yang Disengaja
+
+1. **Tidak ada integrasi eksternal.** Verifikasi sertifikat atau riwayat keselamatan dilakukan secara manual oleh panitia berdasarkan dokumen yang diunggah peserta. Pertanyaan tentang apakah dan bagaimana Gustafta bisa bertukar data dengan Safety Passport atau sistem lain adalah pembahasan terpisah yang memerlukan kejelasan izin dan batas data terlebih dahulu.
+2. **Tidak ada persetujuan otomatis.** Sistem boleh memperingatkan, menyarankan, atau menandai ketidaksesuaian, tetapi tidak pernah mengubah status tahapan tanpa tindakan eksplisit dari orang yang berwenang.
+3. **AI bersifat opsional dan terbatas.** Jika AI digunakan (misalnya untuk merangkum perbandingan penawaran), prinsip yang sama dengan fitur draf laporan berlaku: usulan terpisah, tinjauan manusia wajib, data sensitif tidak dikirim tanpa pertimbangan.
+
+---
+
+### Pertanyaan untuk Anda
+
+1. **Apakah tahapan ini sesuai dengan proses tender yang Anda bayangkan di Gustafta?** Ada tahap yang kurang, berlebih, atau perlu diubah urutannya?
+2. **Apakah ada peran tambahan** yang spesifik untuk konteks Gustafta (misalnya verifikator sertifikasi internal)?
+3. **Apakah proses sertifikasi** memiliki struktur yang cukup berbeda sehingga perlu dipetakan secara terpisah, atau bisa menggunakan kerangka yang sama dengan penyesuaian?
