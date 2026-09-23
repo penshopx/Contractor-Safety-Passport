@@ -1,0 +1,39 @@
+Koreksi Anda sangat brilian dan mengubah draf ini dari sekadar "alur kerja digital" menjadi **sistem tata kelola (governance) yang matang, adil, dan dapat dipertanggungjawabkan**. 
+
+Empat koreksi dan satu skenario *edge-case* yang Anda berikan menyentuh prinsip dasar rekayasa sistem pengadaan yang sering diabaikan. Berikut adalah sintesis saya terhadap aturan-aturan baru ini ke dalam logika sistem untuk memastikan pemahaman saya selaras dengan standar Anda:
+
+### 1. Transisi Status Penawaran (Unggah ≠ Ajukan)
+Sistem harus menerapkan *state machine* yang ketat untuk dokumen peserta:
+*   `Draf Penawaran`: Peserta dapat mengunggah dan merevisi berkali-kali. Hanya peserta yang melihat.
+*   `Penawaran Diajukan`: Peserta menekan tombol "Ajukan". Setelah ini, dokumen **tidak dapat ditarik atau direvisi** oleh peserta, dan siap untuk dikunci oleh sistem saat tenggat tiba.
+*   *Logika Sistem:* *Cron job* (pemicu waktu) hanya akan mengunci dokumen dengan status `Penawaran Diajukan`. Dokumen dengan status `Draf Penawaran` yang ditinggalkan saat tenggat akan diabaikan (dianggap peserta tidak jadi ikut).
+
+### 2. Pemisahan Pemicu Waktu dan Tindakan Manual (Tenggat vs Pembukaan)
+*   **Tenggat (Otomatis):** Berdasarkan waktu server, sistem mengubah status semua `Penawaran Diajukan` menjadi `Terkunci`.
+*   **Pembukaan (Manual):** Pejabat pembukaan harus melakukan tindakan eksplisit ("Buka Segel") *setelah* status terkunci.
+*   **Koreksi Klaim Keamanan:** Saya sangat mengapresiasi koreksi Anda. Dalam rekayasa perangkat lunak, klaim "100% tersembunyi" adalah *red flag*. Aturan yang benar dan jujur secara teknis adalah: **"Dokumen terkunci tidak dapat diakses melalui peran aplikasi (Application-level access control)."** Ini mengakui bahwa admin infrastruktur/database secara teknis masih memiliki akses ke *storage*, sehingga untuk kepatuhan tingkat tinggi, diperlukan enkripsi *end-to-end* atau *hardware security module* (HSM) yang cakupannya di luar Workroom ini.
+
+### 3. Penegakan Kesetaraan (Fairness Enforcement)
+Aturan pengecualian individu dihapus karena melanggar prinsip kesetaraan. Jika terjadi insiden sistem yang terbukti (misal: server *down* selama 2 jam):
+*   **Opsi A (Perpanjangan):** Pejabat berwenang menerbitkan perpanjangan tenggat yang **berlaku untuk semua peserta**.
+*   **Opsi B (Pembatalan):** Jika insiden terlalu parah, proses dibatalkan dan diulang dari awal.
+*   *Tidak ada opsi C* (menerima penawaran terlambat secara diam-diam).
+
+### 4. Integritas Bukti dan *Append-Only Audit Trail*
+*   **Akses Approver:** Approver tidak hanya melihat ringkasan, tetapi **wajib** memiliki akses baca ke dokumen sumber (penawaran asli, dokumen klarifikasi) untuk memverifikasi sendiri.
+*   **Revisi Evaluasi:** Jika dikembalikan, evaluator membuat versi penilaian baru (v2) yang merujuk ke versi lama (v1).
+*   **Pembatalan Penetapan:** Menggunakan prinsip *Append-Only Log*. Keputusan lama tidak di-*hard delete* atau di-*overwrite*. Sistem mencatat entri baru: `[Timestamp] [Aktor] membatalkan penetapan [ID] dengan alasan [X]. Keputusan ini menggantikan keberlakuan keputusan sebelumnya.` Riwayat tetap utuh, tetapi *state* aktif sistem merujuk pada keputusan terbaru.
+
+### 5. Delegasi Penilaian (Edge-case Evaluator Mengundurkan Diri)
+*   **Pencabutan Akses:** Akses evaluator lama langsung dicabut.
+*   **Penunjukan Pengganti:** Dilakukan oleh pejabat berwenang.
+*   **Pemeriksaan Konflik Kepentingan:** Sistem mencegah pejabat yang menunjuk pengganti untuk juga menjadi Approver yang mengesahkan hasil akhir.
+*   **Deklarasi Pengganti:** Evaluator pengganti harus secara eksplisit memilih di sistem: "Melanjutkan penilaian dari titik X" atau "Menilai ulang dari awal". Pilihan ini dicatat dalam jejak audit.
+
+---
+
+**Status:** Saya mencatat bahwa ini adalah **pemetaan konseptual dan penyempurnaan aturan bisnis**. Tidak ada kode atau status tugas yang diubah dari diskusi ini.
+
+Kerangka ini kini sangat solid untuk mendefinisikan batasan Modul Workroom. 
+
+Sebagai langkah konseptual selanjutnya, apakah Anda ingin kita membahas **bagaimana struktur data (basis data) harus dirancang** untuk mendukung prinsip *Append-Only Audit Trail* dan *Versioning* ini? Atau Anda lebih memilih kita segera memetakan **studi kasus kedua (misalnya: Sertifikasi/Audit K3)** untuk menguji apakah komponen "Persetujuan" dan "Jejak Audit" ini dapat digunakan kembali (*reusable*)?
