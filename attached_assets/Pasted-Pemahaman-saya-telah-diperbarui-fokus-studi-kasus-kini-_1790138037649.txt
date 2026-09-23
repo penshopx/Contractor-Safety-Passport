@@ -1,0 +1,44 @@
+Pemahaman saya telah diperbarui: fokus studi kasus kini adalah **Seleksi Rekanan Berdasarkan Undangan** (pengadaan swasta/internal), dengan asumsi bahwa ini adalah cetak biru konseptual dan bukan spesifikasi final yang mengikat. Tidak ada kode atau status tugas yang diubah.
+
+Penyempitan ruang lingkup ini sangat membantu untuk merancang *state machine* (mesin keadaan) yang ketat namun tetap fleksibel. Berikut adalah pemetaan tahapan dan gerbang (*gates*) untuk alur tersebut, dengan menerapkan aturan aktor, visibilitas, dan mekanisme koreksi di setiap titik kritis.
+
+### Peta Alur: Seleksi Rekanan Berdasarkan Undangan
+
+#### Fase 1: Persiapan & Rilis Dokumen
+Tahap di mana panitia internal menyusun kebutuhan dan dokumen tender sebelum dikirim ke peserta undangan.
+
+*   **Aktor:** Inisiator (menyiapkan), Approver Rilis (otoritas internal yang menyetujui kesiapan).
+*   **Visibilitas:** Peserta belum memiliki akses. Evaluator teknis mungkin diundang untuk meninjau draf spesifikasi.
+*   **GERBANG 1: Persetujuan Rilis Tender**
+    *   *Tindakan:* Approver Rilis meninjau kelengkapan dokumen (KAK, spesifikasi, tenggat) dan menekan "Setujui & Kirim Undangan".
+    *   *Efek Sistem:* Status tender berubah dari `Draf` menjadi `Terbuka untuk Penawaran`. Undangan dikirim ke peserta, dan sistem mulai menerima unggahan.
+    *   *Mekanisme Koreksi (Tanpa Menghapus):* Jika setelah Gerbang 1 dilewati ditemukan kesalahan pada KAK, Inisiator **tidak dapat** menimpa dokumen asli. Inisiator harus membuat **Adendum/Amandemen**. Adendum ini membutuhkan persetujuan ulang dari Approver Rilis, dan sistem akan mencatat: *"Adendum #1 diterbitkan pada [waktu] oleh [aktor] karena [alasan]"*. Dokumen asli dan adendum tetap tersimpan berdampingan.
+
+#### Fase 2: Pengumpulan & Pembukaan Penawaran
+Tahap di mana peserta bekerja secara asinkron, dan sistem bertindak sebagai "kotak hitam" yang aman.
+
+*   **Aktor:** Peserta (mengunggah), Sistem (otomatis mengunci), Approver Pembukaan (otoritas yang membuka segel digital).
+*   **Aturan Penawaran Peserta:** Peserta dapat mengunggah, mengganti, atau menarik dokumen penawaran mereka dalam status `Draf Penawaran`. **Hanya unggahan terakhir sebelum tenggat** yang akan dikunci oleh sistem menjadi status `Terkunci`. Setelah tenggat, tidak ada lagi perubahan yang diizinkan.
+*   **Visibilitas:** Selama status `Terkunci`, isi penawaran (harga, metode) **100% tersembunyi** dari Inisiator, Evaluator, maupun Approver. Hanya metadata (waktu unggah, status) yang terlihat.
+*   **GERBANG 2: Penutupan & Pembukaan Penawaran**
+    *   *Tindakan:* Setelah tenggat lewat, Approver Pembukaan menekan "Tutup & Buka Segel Penawaran".
+    *   *Efek Sistem:* Status semua penawaran yang masuk berubah dari `Terkunci` menjadi `Siap Evaluasi`. Evaluator dan Inisiator kini dapat melihat isi dokumen penawaran.
+    *   *Mekanisme Koreksi (Tanpa Menghapus):* Jika ada peserta yang mengklaim terlambat mengunggah karena *error* sistem, Approver Pembukaan dapat memberikan **Pengecualian Akses** untuk peserta tersebut. Tindakan ini tidak mengubah aturan tenggat untuk peserta lain, melainkan dicatat dalam jejak audit sebagai: *"Pengecualian diberikan untuk Peserta X pada [waktu] oleh [aktor] dengan alasan [bukti error]"*.
+
+#### Fase 3: Evaluasi & Penetapan Hasil
+Tahap di mana penilaian terjadi dan keputusan final dibuat dengan pemisahan kewenangan yang ketat.
+
+*   **Aktor:** Evaluator (menilai dan memberikan rekomendasi), Approver Penetapan (otoritas tertinggi yang mengesahkan pemenang).
+*   **Visibilitas:** Evaluator melihat detail penawaran. Approver Penetapan melihat ringkasan perbandingan (komersial/teknis) dan rekomendasi Evaluator, namun tidak dapat mengubah nilai yang diberikan Evaluator secara diam-diam.
+*   **GERBANG 3: Persetujuan Penetapan Hasil**
+    *   *Tindakan:* Approver Penetapan meninjau rekomendasi. Mereka memiliki dua pilihan: "Tetapkan Pemenang" atau "Kembalikan untuk Evaluasi Ulang".
+    *   *Efek Sistem:* Jika ditetapkan, status berubah menjadi `Pemenang Ditetapkan` dan notifikasi dikirim ke peserta.
+    *   *Mekanisme Koreksi (Tanpa Menghapus):*
+        *   *Jika Dikembalikan:* Approver tidak menghapus nilai Evaluator, melainkan mengubah status tender kembali ke `Evaluasi Berjalan` dengan catatan: *"Dikembalikan oleh [aktor] pada [waktu] karena [alasan, misal: perlu klarifikasi teknis ulang]"*. Evaluator dapat menambahkan catatan klarifikasi baru tanpa menimpa riwayat penilaian awal.
+        *   *Jika Dibatalkan Setelah Ditetapkan:* Jika terjadi masalah hukum atau etika setelah pemenang diumumkan, Approver Penetapan (atau otoritas lebih tinggi) dapat menerbitkan **Pembatalan Penetapan**. Riwayat penetapan awal tidak dihapus, melainkan ditimpa oleh catatan baru: *"Penetapan dibatalkan pada [waktu] oleh [aktor] karena [alasan]"*.
+
+---
+
+Peta konseptual ini memisahkan secara tegas antara Inisiator (yang menyiapkan), Evaluator (yang menilai), dan Approver (yang mengesahkan), serta menjadikan sistem sebagai penjaga integritas arsip.
+
+Apakah struktur tiga gerbang ini sudah cukup merepresentasikan batas kendali (*control boundaries*) yang Anda bayangkan untuk Workroom, atau ada skenario *edge-case* (misalnya: apa yang terjadi jika evaluator mengundurkan diri di tengah jalan) yang perlu kita definisikan aturan mainnya?
