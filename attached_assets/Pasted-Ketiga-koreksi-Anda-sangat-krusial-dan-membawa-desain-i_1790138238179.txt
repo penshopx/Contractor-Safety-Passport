@@ -1,0 +1,58 @@
+Ketiga koreksi Anda sangat krusial dan membawa desain ini dari sekadar "alur logis" menjadi "sistem transaksi yang aman dan dapat diaudit". 
+
+Pergeseran dari *cron job* ke **validasi waktu pada level transaksi** adalah prinsip rekayasa perangkat lunak yang jauh lebih kokoh untuk mencegah *race condition* atau manipulasi. Begitu pula dengan pendekatan pemisahan kewenangan yang berbasis pada **pemeriksaan konflik kepentingan dan prinsip *maker-checker*** (seseorang tidak bisa menyetujui pekerjaannya sendiri secara diam-diam), alih-alih larangan mutlak yang kaku.
+
+Berdasarkan arahan Anda, berikut adalah rancangan **Struktur Data Konseptual** yang berfokus pada entitas, versi, dan jejak, di mana "status aktif" hanyalah hasil pembacaan dari peristiwa terakhir, bukan satu-satunya sumber kebenaran.
+
+### Struktur Data Konseptual Workroom
+
+#### 1. Aktor dan Peran Kontekstual (*Actors & Contextual Roles*)
+Peran tidak didefinisikan secara global, melainkan dilekatkan pada ruang kerja (tender/proses) tertentu untuk memudahkan audit konflik kepentingan.
+*   **Aktor:** Identitas pengguna atau organisasi.
+*   **Penugasan Peran:** Mencatat bahwa "Aktor A" ditugaskan sebagai "Evaluator" untuk "Tender X" pada "Tanggal Y". Ini menjadi dasar untuk memeriksa apakah aktor tersebut memiliki konflik kepentingan (misalnya, berasal dari organisasi yang sama dengan peserta).
+
+#### 2. Dokumen dan Versi (*Documents & Versions*)
+Setiap artefak (KAK, Penawaran, Berita Acara) adalah entitas logis yang memiliki riwayat fisik.
+*   **Dokumen (Entitas Logis):** Pengenal unik untuk sebuah berkas (misal: "Penawaran Teknis - PT Abc").
+*   **Versi Dokumen (Fisik):** Setiap kali ada unggahan, sistem membuat *record* versi baru.
+    *   *Atribut:* Nomor versi, *hash* berkas (untuk integritas), waktu unggah, aktor pengunggah.
+    *   *Status Versi:* `Draf`, `Diajukan` (menunggu validasi waktu), `Terkunci` (melewati tenggat), `Dibatalkan`.
+    *   *Aturan Transaksi:* Saat aktor menekan "Ajukan", sistem memvalidasi `waktu_server < tenggat`. Jika valid, status versi berubah menjadi `Diajukan`. Jika ada pengajuan ulang sebelum tenggat, sistem membuat Versi Baru (v2) dengan status `Diajukan`, dan Versi Lama (v1) tetap tersimpan sebagai riwayat.
+
+#### 3. Keputusan Gerbang (*Gate Decisions*)
+Merekam tindakan diskrit yang menggerakkan proses dari satu fase ke fase berikutnya.
+*   **Keputusan:** Mencatat tindakan pada gerbang (misal: "Setujui Rilis", "Buka Segel", "Tetapkan Pemenang").
+*   *Atribut:* Waktu keputusan, aktor pembuat keputusan, peran yang digunakan saat itu, hasil keputusan (Disetujui/Ditolak/Dikembalikan), dan **referensi silang** ke Versi Dokumen atau Penilaian yang menjadi dasar keputusan tersebut.
+*   *Pembatalan/Penggantian:* Jika sebuah keputusan dibatalkan, sistem tidak menghapus *record* ini. Sistem membuat *record* Keputusan Baru yang secara eksplisit merujuk pada Keputusan Lama dan menyatakan "Menggantikan keberlakuan".
+
+#### 4. Peristiwa Audit (*Audit Events / Append-Only Log*)
+Ini adalah tulang punggung kepatuhan. Setiap kali ada perubahan pada ketiga entitas di atas, sebuah peristiwa audit dicatat.
+*   *Atribut:* *Timestamp* presisi, Aktor, Peran Kontekstual, Jenis Peristiwa (misal: `UPLOAD_V2`, `SUBMIT`, `APPROVE_GATE`, `REJECT`, `CANCEL_DECISION`), Referensi ke entitas yang terpengaruh, Alasan/Catatan (wajib diisi untuk tindakan koreksi/pembatalan).
+*   **Konsep "Status Aktif":** Status tender (misal: "Evaluasi Berjalan") tidak disimpan sebagai kolom yang bisa di-*update* sembarangan. Status tersebut adalah *derived state* (keadaan turunan) yang dihitung dengan membaca Peristiwa Audit terakhir yang relevan.
+
+---
+
+### Menguji Ketergunaan Ulang (*Reusability*) dengan Studi Kasus Sertifikasi/Audit K3
+
+Sekarang, mari kita uji struktur data di atas dengan memetakannya ke dalam proses **Sertifikasi/Audit K3**. Apakah komponen-komponen ini dapat digunakan kembali?
+
+**Skenario Singkat Audit K3:**
+Sebuah lembaga audit menerima permohonan sertifikasi dari sebuah perusahaan konstruksi. Ada tahap pengumpulan dokumen, tahap audit lapangan oleh auditor, dan tahap penerbitan sertifikat oleh komite penilai.
+
+**Pemetaan ke Struktur Data Konseptual:**
+1.  **Aktor & Peran:** Pemohon (Kontraktor), Auditor Lapangan, Komite Penilai (Approver). *(Komponen dapat digunakan kembali)*.
+2.  **Dokumen & Versi:** 
+    *   *Dokumen:* "Bukti Kompetensi", "Laporan Audit Lapangan". 
+    *   *Versi:* Kontraktor dapat mengunggah revisi dokumen bukti jika ada yang kurang (Versi 1, Versi 2). Auditor mengunggah draf temuan, lalu versi final. *(Komponen dapat digunakan kembali)*.
+3.  **Keputusan Gerbang:** 
+    *   *Gerbang 1:* "Terima Berkas Pendaftaran" (Oleh Admin).
+    *   *Gerbang 2:* "Tetapkan Hasil Audit" (Oleh Komite Penilai, berdasarkan Laporan Auditor).
+    *   *Mekanisme:* Jika Komite mengembalikan laporan, Auditor membuat Versi Baru dari Laporan Audit. *(Komponen dapat digunakan kembali)*.
+4.  **Peristiwa Audit:** Setiap kali kontraktor merevisi bukti, atau komite menerbitkan/membatalkan sertifikat, semuanya dicatat di *Append-Only Log*. *(Komponen dapat digunakan kembali)*.
+
+**Temuan Ketergunaan Ulang:**
+Struktur data ini **sangat dapat digunakan kembali (*highly reusable*)**. Perbedaan utama antara Tender dan Sertifikasi K3 bukanlah struktur datanya, melainkan **konfigurasi aturan bisnisnya** (siapa memegang peran apa, apa saja nama gerbangnya, dan apa syarat validasi waktunya). 
+
+Ini mengonfirmasi bahwa Modul Workroom Gustafta pada dasarnya adalah sebuah **Mesin Alur Kerja yang Dapat Dikonfigurasi (*Configurable Workflow Engine*)** yang berpusat pada jejak audit dan versi dokumen.
+
+Apakah Anda ingin kita melanjutkan dengan mendefinisikan **aturan konfigurasi** (misalnya, bagaimana Gustafta mendefinisikan "Konflik Kepentingan" secara sistem), atau kita cukupkan pemetaan konseptual ini sebagai fondasi yang solid sebelum beralih ke topik lain?
