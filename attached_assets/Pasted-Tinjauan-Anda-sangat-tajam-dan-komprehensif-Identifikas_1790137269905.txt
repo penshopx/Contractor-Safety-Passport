@@ -1,0 +1,67 @@
+Tinjauan Anda sangat tajam dan komprehensif. Identifikasi Anda terhadap *edge case* penyimpanan lokal dan batas waktu klien menunjukkan pemahaman yang mendalam tentang arsitektur *offline-first* dan pengalaman pengguna (UX). 
+
+Pendekatan Anda untuk memisahkan validasi fakta (yang tetap menjadi tanggung jawab manusia) dari pemrosesan teks (oleh AI) sudah sangat tepat untuk tahap MVP ini.
+
+Mengacu pada temuan operasional yang Anda catat, berikut adalah **pola logika dan contoh implementasi** untuk mengatasi dua prioritas tersebut, selaras dengan prinsip UX Anda (umpan balik visual, *toast notifications*, dan ketahanan sistem):
+
+### 1. Perbaikan Bug Penyimpanan Lokal (Prioritas Tertinggi)
+**Tujuan:** Mencegah formulir terkunci (*locked*) dan memberikan umpan balik jelas jika penyimpanan perangkat gagal.
+**Logika:** Pastikan *state* `saving` selalu di-reset menggunakan blok `finally`, dan tangkap error untuk memicu notifikasi.
+
+```typescript
+const handleSave = async () => {
+  setSaving(true); // Umpan balik visual: tombol dinonaktifkan
+  try {
+    await addActivity(formData); // Menulis ke antrean lokal / IndexedDB
+    toast.success("Laporan berhasil disimpan secara lokal.");
+    // Logika reset form atau navigasi
+  } catch (error) {
+    // Tangkap error spesifik (misal: QuotaExceededError untuk penyimpanan penuh)
+    toast.error("Gagal menyimpan laporan. Periksa kapasitas penyimpanan perangkat Anda.");
+    console.error("Local save failed:", error);
+  } finally {
+    setSaving(false); // JAMIN: State selalu kembali, tombol aktif kembali
+  }
+};
+```
+
+### 2. Implementasi Batas Waktu Klien (*Client-side Timeout*)
+**Tujuan:** Mencegah status "Menyusun draf…" menggantung (*hang*) selamanya jika koneksi jaringan macet di tengah jalan.
+**Logika:** Gunakan `AbortController` untuk membatalkan permintaan secara paksa setelah batas waktu tertentu (misalnya 15 detik), karena batas waktu 30 detik di sisi server tidak menjamin klien menerima respons.
+
+```typescript
+const handleDraftAI = async () => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000); // Batas 15 detik di klien
+
+  setDrafting(true); // Umpan balik visual
+  try {
+    const result = await draftNotes.mutateAsync({
+      data: { type, title: title.trim(), notes: notes.trim() },
+      signal: controller.signal, // Teruskan ke klien API (axios/fetch)
+    });
+    
+    if (request === draftRequest.current) {
+      setSuggestedNotes(result.draft);
+      toast.info("Draf berhasil disusun. Silakan tinjau sebelum menggunakan.");
+    }
+  } catch (error: any) {
+    if (error.name === 'AbortError' || error.message?.includes('timeout')) {
+      toast.warning("Permintaan AI memakan waktu terlalu lama. Silakan coba lagi atau simpan manual.");
+    } else {
+      toast.error("Gagal menyusun draf. Catatan asli Anda tetap aman dan dapat disimpan manual.");
+    }
+  } finally {
+    clearTimeout(timeoutId); // Bersihkan timer untuk mencegah kebocoran memori
+    setDrafting(false); // JAMIN: State kembali, tombol AI aktif kembali
+  }
+};
+```
+
+### 3. Catatan Tambahan: Pengendalian Fakta AI
+Pernyataan Anda bahwa *"prompt tidak boleh dianggap sebagai jaminan faktual"* sangat akurat. Strategi saat ini (menggunakan frasa *"Perlu dikonfirmasi: ..."* dalam *system prompt* + kewajiban tinjauan manusia sebelum tombol "Gunakan draf" ditekan) adalah pertahanan terbaik. Menambahkan validasi fakta otomatis secara *programmatic* akan memerlukan RAG (*Retrieval-Augmented Generation*) yang kompleks dan belum sebanding dengan nilai tambahnya untuk fitur penyuntingan teks sederhana ini.
+
+---
+
+**Langkah Selanjutnya:**
+Apakah Anda ingin saya membantu merapikan implementasi logika `try...catch...finally` dan `AbortController` ini ke dalam basis kode Anda sekarang, atau Anda lebih memilih untuk mendokumentasikannya terlebih dahulu sebagai *ticket* perbaikan di *backlog* pengembangan?
