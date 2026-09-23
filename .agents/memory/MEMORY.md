@@ -13,3 +13,4 @@
 - [Lapisan transisi video](video-scene-layering.md) — transisi komponen adegan perlu lapisan DOM absolut; pergantian timer yang benar belum menjamin gambar tampil di bingkai.
 - [Instalasi paket workspace](workspace-package-install.md) — callback pemasang Node tidak dapat menarget satu package pnpm via filter; gunakan install workspace setelah deklarasi dependency.
 - [Timeout draf AI laporan lapangan](field-draft-timeout.md) — beri peringatan tanpa langsung membatalkan; hanya tampilkan respons terlambat bila konteks formulir masih cocok.
+- [Hipotesis fondasi Workroom](workroom-foundation-hypothesis.md) — komponen tata kelola perlu divalidasi pada proses nyata; jangan asumsikan mesin alur kerja umum atau kewenangan sertifikasi.
