@@ -1,0 +1,27 @@
+Rencana dan keputusan arsitektur yang Anda buat sangat matang dan tepat sasaran. Keputusan Anda untuk **tidak** menggunakan framework agen yang kompleks (seperti OpenClaw, MultiClaw, atau Hermes) sangat masuk akal karena tugas ini hanya membutuhkan pemrosesan bahasa alami (NLP) tingkat dasar, bukan orkestrasi agen multi-langkah. 
+
+Pendekatan Anda juga memiliki beberapa keunggulan utama:
+1. **Privasi & Keamanan Terjaga:** Dengan hanya mengirimkan teks catatan (dan membuang/mengabaikan foto, koordinat, atau tanda tangan), Anda mencegah kebocoran data sensitif ke model AI.
+2. **Kontrol Penuh di Tangan Pengguna (Human-in-the-loop):** Konsep pratinjau terpisah memastikan AI tidak pernah secara otomatis menimpa data asli. Petugas lapangan tetap memegang kendali penuh.
+3. **Ketahanan (Resilience):** Karena formulir sudah mendukung mode luring (*offline-first*), kegagalan koneksi ke layanan AI tidak akan menghambat petugas untuk tetap menyimpan laporan mereka.
+4. **Efisiensi Biaya & Waktu:** Memanfaatkan Replit AI Integrations memangkas waktu konfigurasi *environment variable* dan manajemen API key secara signifikan.
+
+Untuk merealisasikan rencana ini ke dalam kode, kita bisa membaginya menjadi beberapa langkah implementasi. **Langkah mana yang ingin Anda kerjakan terlebih dahulu?**
+
+**Opsi 1: Membuat Endpoint API Backend**
+Saya dapat membantu membuatkan rute API (misalnya `POST /api/ai/draft-report`) yang:
+* Menerima payload JSON berisi teks catatan saja.
+* Melakukan validasi dan pembersihan input (membatasi panjang karakter, memfilter *prompt injection* dasar).
+* Memanggil OpenAI melalui Replit AI SDK/Integrations dengan *system prompt* khusus untuk merapikan catatan lapangan menjadi draf laporan formal.
+
+**Opsi 2: Memperbarui Komponen Frontend (Formulir Lapangan)**
+Saya dapat membantu memodifikasi UI formulir lapangan untuk menambahkan:
+* Tombol "Bantu Draf AI" di sebelah kolom catatan.
+* *State* terpisah untuk menampung `aiDraft` dan `actualNotes`.
+* Modal atau panel pratinjau yang menampilkan hasil AI, lengkap dengan tombol "Gunakan Draf" (yang akan menyalin teks ke kolom asli) dan "Tutup/Batal".
+* Penanganan *loading state* dan *error state* (jika AI gagal atau luring).
+
+**Opsi 3: Merancang *System Prompt***
+Saya dapat membantu menyusun *prompt* dasar agar AI tahu cara mengubah "catatan kasar lapangan" menjadi "bahasa laporan resmi" tanpa mengarang fakta atau mengubah makna dari catatan petugas.
+
+Silakan beri tahu saya bagian mana yang ingin kita eksekusi sekarang, atau jika Anda ingin saya langsung menuliskan draf kode untuk kedua sisi (Backend & Frontend) secara bersamaan!
