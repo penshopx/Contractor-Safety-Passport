@@ -1,0 +1,37 @@
+Koreksi Anda sangat tepat dan mencegah asumsi yang berbahaya dalam desain sistem. Mengaitkan masa simpan dengan kewajiban hukum (bukan sekadar status langganan), mengakui bahwa *hard delete* terkadang diperlukan (misalnya untuk hak privasi atau koreksi fatal), dan memisahkan status *Creator* dari wewenang pengesahan dokumen adalah prinsip tata kelola data yang matang.
+
+Mari kita uji batas akses tersebut melalui skenario interaksi **Asisten Cerdas SMAP**. Berikut adalah sintesis aturan akses dan bagaimana chatbot harus merespons berdasarkan tiga kategori memori:
+
+### Aturan Akses Chatbot SMAP
+
+#### 1. Preferensi Pribadi (Gaya Interaksi)
+*   **Aturan:** Chatbot menggunakan preferensi ini hanya untuk *cara* menjawab (nada bahasa, format ringkas/panjang), **bukan** untuk memvalidasi fakta atau kepatuhan.
+*   **Skenario Pengujian:** Pengguna mengatur "Gunakan bahasa formal". 
+*   **Respons Chatbot:** Chatbot menyesuaikan nada bicaranya. Jika pengguna kemudian bertanya "Apakah SOP kita sudah diperbarui?", chatbot **tidak boleh** menggunakan preferensi bahasa ini untuk mengarang atau menganggap SOP sudah diperbarui. Preferensi ini dihapus dari konteks saat pengguna mengubahnya di pengaturan.
+
+#### 2. Pengetahuan Organisasi (Konteks yang Disahkan)
+*   **Aturan:** Chatbot hanya boleh merujuk pada versi dokumen yang **telah disahkan** (memiliki status `Approved` atau `Published` di Workroom) dan **hanya jika pengguna yang bertanya memiliki izin akses** ke ruang kerja atau dokumen tersebut.
+*   **Skenario Pengujian:** Pengguna A (anggota tim lapangan) bertanya tentang "Struktur biaya proyek X" yang ada di dokumen KAK. Pengguna A tidak memiliki izin akses ke ruang kerja Proyek X.
+*   **Respons Chatbot:** Chatbot harus menjawab: *"Maaf, Anda tidak memiliki izin akses untuk melihat dokumen terkait Proyek X. Silakan hubungi administrator ruang kerja tersebut."* Chatbot **tidak boleh** membocorkan isi dokumen meskipun ia "tahu" isinya dari konteks organisasi.
+
+#### 3. Bukti & Keputusan Proses (Data Transaksional)
+*   **Aturan:** Chatbot **tidak boleh** menyimpan percakapan atau data proses sebagai "ingatan" permanen. Jika pengguna bertanya tentang status proses (misal: "Siapa pemenang tender X?"), chatbot harus **mengambil data secara terbatas (real-time query)** berdasarkan izin pengguna saat itu, **menyebutkan sumber dan versinya**, dan **tidak** menjadikannya bagian dari pengetahuan organisasi.
+*   **Skenario Pengujian:** Pengguna bertanya, "Apa hasil audit K3 bulan lalu?"
+*   **Respons Chatbot:** Chatbot melakukan *lookup* ke sistem Workroom (bukan dari memori internalnya). Jika pengguna berhak, chatbot menjawab: *"Berdasarkan Laporan Audit Versi 2 yang disahkan pada [tanggal] oleh [aktor], temuan utamanya adalah [X]. [Tautan ke dokumen sumber]."* Chatbot tidak menyimpan fakta ini sebagai "ingatan" untuk pertanyaan di masa depan tanpa melakukan *lookup* ulang.
+
+---
+
+### Batasan Kritis yang Terungkap dari Pengujian Ini
+
+1. **Chatbot adalah "Jendela", bukan "Otak":** Untuk data proses dan keputusan, chatbot bertindak sebagai antarmuka yang mengambil data dari sistem Workroom secara *real-time* dengan penegakan izin (authorization check) yang ketat. Ia tidak memiliki "ingatan" independen tentang fakta transaksional.
+2. **Penegakan Izin Granular:** Chatbot harus memahami hierarki izin: apakah pengguna ini anggota organisasi? Apakah dia punya akses ke workspace ini? Apakah dia punya akses baca ke dokumen spesifik ini? Jika salah satu gagal, chatbot harus menolak dengan sopan.
+3. **Kewenangan Pengesahan Terpisah:** Karena *Creator* tidak otomatis menjadi pengesah dokumen, chatbot tidak boleh menganggap semua dokumen yang diunggah ke "Knowledge Base" sebagai kebenaran mutlak. Chatbot harus memeriksa metadata `status: approved` dan `approved_by: [aktor berwenang]` sebelum merujuknya.
+
+---
+
+**Konfirmasi Status:** 
+Diterima. Tidak ada kode, skema database, atau status tugas yang diubah dari pengujian konseptual ini.
+
+Pengujian ini telah memperjelas bahwa "Business Memory" untuk chatbot sebenarnya adalah **sistem pengambilan keputusan berbasis konteks dan izin (Context & Permission-Aware Retrieval)**, bukan sekadar penyimpanan data.
+
+Apakah pengujian batas akses ini sudah cukup solid untuk menjadi dasar perancangan **Formulir Konfigurasi Memori** (di mana *Creator* dapat memetakan sumber data mana yang boleh dijadikan konteks, dan siapa yang berwenang mengesahkannya)? Atau ada skenario *edge-case* lain (misalnya: apa yang terjadi jika dokumen yang sudah dirujuk chatbot tiba-tiba dibatalkan keberlakunya?) yang perlu kita uji terlebih dahulu?
