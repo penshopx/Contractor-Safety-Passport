@@ -6,9 +6,9 @@ export function BrandLogo({ className = "", scale = 1 }: { className?: string, s
     <motion.div 
       className={`flex items-center gap-[1vw] select-none ${className}`}
       style={{ scale }}
-      initial={{ opacity: 0, scale: 0.9 }}
-      animate={{ opacity: 1, scale: 1 }}
-      transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+      initial={{ opacity: 0.5, scale: 0.95, y: 15 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
     >
       <div className="relative flex-shrink-0 flex items-center justify-center">
         {/* Outer glow */}

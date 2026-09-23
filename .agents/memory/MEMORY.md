@@ -9,3 +9,4 @@
 - [Migrasi produksi Replit](replit-production-migrations.md) — perubahan schema dikelola alur Publish; proses build dan startup aplikasi tidak boleh menjalankan DDL atau db push.
 - [Kunci bukti lintas storage dan database](evidence-link-cleanup-lock.md) — tautan foto dan cleanup harus berbagi advisory transaction lock yang tetap ditahan sampai commit atau delete selesai.
 - [Klaim visual pemasaran](marketing-visual-claims.md) — audit teks di dalam gambar dan angka contoh pada animasi; keduanya dapat menyiratkan hasil produk yang tidak terbukti.
+- [Bingkai pertama animasi](animation-first-frame.md) — komposisi akhir yang penuh tidak cukup; tiap adegan perlu fokus yang terlihat segera agar tidak tampak kosong saat mulai.
