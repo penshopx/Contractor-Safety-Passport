@@ -20,19 +20,19 @@ import { useSceneControls } from './useSceneControls';
 
 const SCENE_DETAILS: Record<string, { title: string; filePath: string }> = {
   intro: {
-    title: 'Masalah Industri',
+    title: 'Kesiapan Operasional',
     filePath: 'src/components/video/video_scenes/Scene1.tsx',
   },
-  solution: {
-    title: 'Solusi Terintegrasi',
+  csms_fit: {
+    title: 'Kualifikasi Proyek',
     filePath: 'src/components/video/video_scenes/Scene2.tsx',
   },
-  field: {
-    title: 'Aktivitas Lapangan',
+  boq: {
+    title: 'Perencanaan BOQ',
     filePath: 'src/components/video/video_scenes/Scene3.tsx',
   },
-  analytics: {
-    title: 'Data dan Analitik',
+  offline: {
+    title: 'Bukti Lapangan',
     filePath: 'src/components/video/video_scenes/Scene4.tsx',
   },
   outro: {
@@ -144,9 +144,11 @@ function PlaybackStatus({
 export default function VideoWithControls() {
   const isIframed =
     typeof window !== 'undefined' && window.self !== window.top;
+  const isEmbed = 
+    typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('embed') === '1';
 
   const controls = useSceneControls(SCENE_DURATIONS);
-  const [muted, setMuted] = useState(false);
+  const [muted, setMuted] = useState(isEmbed ? true : false);
   const [collapsed, setCollapsed] = useState(false);
   const [hovering, setHovering] = useState(false);
   const sensorRef = useRef<HTMLDivElement | null>(null);
@@ -174,6 +176,24 @@ export default function VideoWithControls() {
   const handlePointerLeave = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.pointerType === 'mouse') setHovering(false);
   };
+
+  if (isEmbed) {
+    return (
+      <div className="relative h-screen w-full overflow-hidden bg-black flex items-center justify-center">
+        <VideoTemplate muted={muted} />
+        <div className="absolute bottom-4 right-4 z-50 flex gap-2">
+          <button 
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-black/40 text-white/80 backdrop-blur-md transition-colors hover:bg-black/60 hover:text-white"
+            onClick={() => setMuted((m) => !m)}
+            aria-label={muted ? 'Aktifkan suara' : 'Bisukan'}
+            title={muted ? 'Aktifkan suara' : 'Bisukan'}
+          >
+            {muted ? <VolumeX size={20} /> : <Volume2 size={20} />}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (!isIframed) return <VideoTemplate />;
 

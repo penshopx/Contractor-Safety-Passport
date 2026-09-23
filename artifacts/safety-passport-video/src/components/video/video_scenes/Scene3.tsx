@@ -1,102 +1,101 @@
 import { motion } from 'framer-motion';
+import { SceneLayout, SafeFrame, VideoText } from '@/lib/video';
+import { Calculator } from 'lucide-react';
 
 export function Scene3() {
-  const containerVariants = {
-    hidden: { opacity: 0 },
-    show: {
-      opacity: 1,
-      transition: {
-        staggerChildren: 0.15,
-        delayChildren: 0.3,
-      }
-    },
-    exit: { 
-      opacity: 0,
-      scale: 0.9,
-      transition: { duration: 0.8, ease: [0.16, 1, 0.3, 1] }
-    }
-  };
-
-  const textVariants = {
-    hidden: { opacity: 0, y: 30 },
-    show: { 
-      opacity: 1, 
-      y: 0, 
-      transition: { 
-        duration: 1, 
-        ease: [0.16, 1, 0.3, 1]
-      }
-    }
-  };
-
   return (
-    <motion.div 
-      className="absolute inset-0 flex items-center justify-center bg-[hsl(var(--color-bg-dark))] overflow-hidden"
-      initial="hidden"
-      animate="show"
-      exit="exit"
-      variants={containerVariants}
-    >
-      {/* Background */}
-      <motion.div 
-        className="absolute inset-0 opacity-40 mix-blend-screen"
-        initial={{ scale: 1.05, y: '5%' }}
-        animate={{ scale: 1, y: '0%' }}
-        transition={{ duration: 4.5, ease: 'easeOut' }}
-      >
-        <img 
-          src={`${import.meta.env.BASE_URL}images/bg_tablet.jpg`}
-          alt="Engineer with tablet"
-          className="w-full h-full object-cover"
-        />
-        <div className="absolute inset-0 bg-[hsl(var(--color-bg-dark))]/60" />
-      </motion.div>
-
-      {/* Grid Overlay */}
-      <div className="absolute inset-0" style={{
-        backgroundImage: 'linear-gradient(to right, hsl(var(--color-text-muted)/0.1) 1px, transparent 1px), linear-gradient(to bottom, hsl(var(--color-text-muted)/0.1) 1px, transparent 1px)',
-        backgroundSize: '4rem 4rem',
-        maskImage: 'radial-gradient(ellipse at center, black 20%, transparent 80%)'
-      }} />
-
-      {/* Frame Elements */}
-      <motion.div 
-        className="absolute inset-12 border border-[hsl(var(--color-primary))/40] rounded-3xl"
-        initial={{ opacity: 0, scale: 1.1 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 1.5, ease: "circOut" }}
-      >
-        <div className="absolute top-0 left-12 w-24 h-px bg-[hsl(var(--color-primary))] -translate-y-px" />
-        <div className="absolute bottom-0 right-12 w-24 h-px bg-[hsl(var(--color-primary))] translate-y-px" />
-      </motion.div>
-
-      {/* Content */}
-      <div className="relative z-10 max-w-5xl text-center flex flex-col items-center">
+    <SceneLayout>
+      <SafeFrame>
+        {/* Background Layer */}
         <motion.div 
-          className="w-20 h-20 mb-8 rounded-2xl bg-gradient-to-br from-[hsl(var(--color-accent))] to-[hsl(var(--color-primary))] flex items-center justify-center shadow-[0_0_40px_hsl(var(--color-primary))/40]"
-          variants={textVariants}
-        >
-          <svg className="w-10 h-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
-          </svg>
-        </motion.div>
+          className="absolute inset-0 z-0"
+          initial={{ opacity: 0, scale: 1.2 }}
+          animate={{ opacity: 0.25, scale: 1 }}
+          exit={{ opacity: 0, y: -50 }}
+          transition={{ duration: 4.5, ease: "easeOut" }}
+          style={{
+            backgroundImage: `url(${import.meta.env.BASE_URL}images/bg_intro.jpg)`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+          }}
+        />
+        
+        <div className="absolute inset-0 z-0 bg-gradient-to-br from-[hsl(var(--color-bg-dark))] via-[hsl(var(--color-bg-dark))/70] to-transparent" />
 
-        <motion.h2 
-          className="font-display text-6xl md:text-8xl font-bold leading-tight mb-6 text-white"
-          variants={textVariants}
-        >
-          Dirancang Untuk <br/>
-          <span className="text-gradient-orange">Lapangan.</span>
-        </motion.h2>
+        <div className="relative z-10 flex h-full w-full flex-col justify-center px-[10vw]">
+          <div className="max-w-[80vw] mx-auto text-center flex flex-col items-center">
+            
+            <motion.div
+              initial={{ opacity: 0, y: -30 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              transition={{ duration: 0.8, delay: 0.3, ease: [0.16, 1, 0.3, 1] }}
+              className="inline-flex items-center gap-[0.5vw] rounded-full border border-[hsl(var(--color-accent))/30] bg-[hsl(var(--color-accent))/10] px-[2vw] py-[1vw] mb-[3vw]"
+            >
+              <Calculator className="h-[2.5vw] w-[2.5vw] text-[hsl(var(--color-accent))]" />
+              <VideoText className="text-[1.8vw] font-medium text-[hsl(var(--color-accent))]">
+                Perencanaan Terpadu
+              </VideoText>
+            </motion.div>
 
-        <motion.div className="flex gap-4 justify-center" variants={textVariants}>
-          {["Mode Offline", "Sinkronisasi Otomatis", "Unggah Foto"].map((tag, i) => (
-            <div key={i} className="px-6 py-3 rounded-full bg-white/5 border border-white/10 backdrop-blur-md text-[hsl(var(--color-text-main))] text-xl font-medium">
-              {tag}
-            </div>
-          ))}
-        </motion.div>
-      </div>
-    </motion.div>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 1, delay: 0.6, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <VideoText className="text-[4.5vw] font-bold leading-tight text-white mb-[4vw]">
+                Penyusunan BOQ SMKK <br />
+                <span className="text-gradient-primary">Kolaboratif</span>
+              </VideoText>
+            </motion.div>
+
+            {/* BOQ Table UI abstraction */}
+            <motion.div 
+              className="w-[60vw] rounded-2xl border border-white/10 bg-[#101010]/80 p-[2vw] backdrop-blur-md shadow-2xl relative overflow-hidden"
+              initial={{ opacity: 0, y: 50, rotateX: -20 }}
+              animate={{ opacity: 1, y: 0, rotateX: 0 }}
+              exit={{ opacity: 0, y: 50 }}
+              transition={{ duration: 1.2, delay: 1, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <div className="grid grid-cols-4 gap-[1vw] text-[1.2vw] font-medium text-white/50 pb-[1vw] border-b border-white/10">
+                <div className="col-span-2 text-left">Item Pekerjaan</div>
+                <div className="text-right">Volume</div>
+                <div className="text-right">Estimasi</div>
+              </div>
+              
+              {[
+                { name: "Alat Pelindung Diri (APD)", vol: "—", total: "Draf" },
+                { name: "Fasilitas Kesehatan", vol: "—", total: "Draf" },
+                { name: "Rambu & Barikade", vol: "—", total: "Draf" },
+              ].map((item, i) => (
+                <motion.div 
+                  key={i} 
+                  className="grid grid-cols-4 gap-[1vw] text-[1.4vw] py-[1vw] border-b border-white/5"
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.6, delay: 1.5 + (i * 0.2) }}
+                >
+                  <div className="col-span-2 text-left flex items-center gap-[0.5vw]">
+                    <div className="w-[1vw] h-[1vw] rounded-full bg-[hsl(var(--color-primary))]"></div>
+                    <span className="text-white/90">{item.name}</span>
+                  </div>
+                  <div className="text-right text-white/70">{item.vol}</div>
+                  <div className="text-right font-medium text-[hsl(var(--color-accent))]">{item.total}</div>
+                </motion.div>
+              ))}
+
+              <motion.div 
+                className="absolute top-0 right-0 bottom-0 w-1 bg-gradient-to-b from-[hsl(var(--color-primary))] to-[hsl(var(--color-accent))]"
+                initial={{ height: 0 }}
+                animate={{ height: "100%" }}
+                transition={{ duration: 2, delay: 1.2 }}
+              />
+            </motion.div>
+
+          </div>
+        </div>
+      </SafeFrame>
+    </SceneLayout>
   );
 }

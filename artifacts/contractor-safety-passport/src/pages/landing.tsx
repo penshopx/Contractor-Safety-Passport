@@ -14,15 +14,22 @@ import {
   GitMerge,
   FileBarChart,
   HardHat,
-  ArrowDown
+  PlayCircle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/logo";
 
+const getImageUrl = (path: string) => {
+  const base = import.meta.env.BASE_URL || '/';
+  const cleanBase = base.endsWith('/') ? base.slice(0, -1) : base;
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  return `${cleanBase}${cleanPath}`;
+};
+
 export default function LandingPage() {
   return (
     <div className="min-h-[100dvh] flex flex-col bg-background selection:bg-primary selection:text-primary-foreground">
-      <header className="px-6 h-20 flex items-center border-b border-border/50 bg-card/30 backdrop-blur shrink-0 justify-between relative z-10 sticky top-0">
+      <header className="px-6 h-20 flex items-center border-b border-border/50 bg-card/30 backdrop-blur shrink-0 justify-between relative z-50 sticky top-0">
         <Logo />
         <div className="flex items-center gap-4">
            <Button variant="ghost" asChild className="hidden sm:inline-flex text-muted-foreground hover:text-foreground">
@@ -40,7 +47,7 @@ export default function LandingPage() {
         <div className="absolute top-0 w-full h-[1px] bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
 
         {/* 1. ATTENTION (Hero) */}
-        <section className="w-full px-6 py-24 md:py-32 flex flex-col items-center text-center relative z-10 border-b border-border/20">
+        <section className="w-full px-6 py-24 md:py-32 flex flex-col items-center text-center relative z-10">
           <div className="max-w-4xl mx-auto flex flex-col items-center space-y-8">
             <div className="inline-flex items-center rounded-full border border-primary/30 bg-primary/10 px-4 py-1.5 text-sm text-primary shadow-sm">
               <ShieldCheck className="mr-2 h-4 w-4" />
@@ -69,12 +76,47 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* 2. INTEREST (The Problem & Connected Workflow) */}
+        {/* 2. VIDEO INTRODUCTION */}
+        <section className="w-full px-6 pb-24 border-b border-border/20 relative z-10">
+          <div className="max-w-5xl mx-auto space-y-10">
+            <div className="text-center max-w-2xl mx-auto space-y-4">
+              <h2 className="text-2xl md:text-3xl font-bold text-foreground">Sekilas Tentang Sistem</h2>
+              <p className="text-muted-foreground">
+                Lihat bagaimana platform kami menyederhanakan dokumentasi keselamatan dari kantor hingga ke lapangan.
+              </p>
+            </div>
+            
+            <div className="flex flex-col items-center gap-6">
+              <div className="w-full max-w-4xl mx-auto aspect-video relative rounded-2xl overflow-hidden border border-border/50 shadow-2xl bg-card/30">
+                <div className="absolute inset-0 flex items-center justify-center bg-card/50 -z-10">
+                   <PlayCircle className="w-12 h-12 text-muted-foreground/30 animate-pulse" />
+                </div>
+                <iframe 
+                  src="/safety-passport-video/?embed=1"
+                  title="Video Pengantar Contractor Safety Passport"
+                  className="absolute inset-0 w-full h-full"
+                  loading="lazy"
+                  allow="autoplay; fullscreen"
+                />
+              </div>
+              <a 
+                href="/safety-passport-video/" 
+                className="inline-flex items-center text-sm font-medium text-primary hover:text-primary/80 transition-colors"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Buka video di pemutar penuh <ArrowRight className="ml-1 w-4 h-4" />
+              </a>
+            </div>
+          </div>
+        </section>
+
+        {/* 3. INTEREST (The Problem & Connected Workflow) */}
         <section className="w-full px-6 py-24 bg-card/10 border-b border-border/20 relative z-10">
-          <div className="max-w-5xl mx-auto space-y-24">
+          <div className="max-w-5xl mx-auto space-y-32">
             
             {/* The Problem */}
-            <div className="flex flex-col md:flex-row items-center gap-16">
+            <div className="flex flex-col md:flex-row items-center gap-12 md:gap-16">
               <div className="flex-1 space-y-6">
                 <h2 className="text-3xl md:text-4xl font-bold text-foreground">Koordinasi Terhambat oleh Data yang Tersebar</h2>
                 <div className="space-y-4 text-muted-foreground leading-relaxed">
@@ -89,30 +131,22 @@ export default function LandingPage() {
                   </p>
                 </div>
               </div>
-              <div className="flex-1 w-full max-w-md bg-card/50 border border-border/50 rounded-2xl p-6 shadow-xl relative overflow-hidden backdrop-blur-sm">
-                <div className="absolute top-0 right-0 p-4 opacity-10 pointer-events-none">
-                  <Activity className="w-48 h-48" />
-                </div>
-                <div className="space-y-4 relative z-10">
-                  <div className="flex items-start gap-3 p-3 rounded-lg bg-background/50 border border-border/50">
-                    <CheckCircle className="w-5 h-5 text-primary shrink-0 mt-0.5" />
-                    <div>
-                      <div className="font-medium text-foreground text-sm">Dokumen Terkonsolidasi</div>
-                      <div className="text-xs text-muted-foreground mt-1">Akses persyaratan administratif dari satu titik.</div>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-3 p-3 rounded-lg bg-background/50 border border-border/50">
-                    <CheckCircle className="w-5 h-5 text-primary shrink-0 mt-0.5" />
-                    <div>
-                      <div className="font-medium text-foreground text-sm">Visibilitas Kolaboratif</div>
-                      <div className="text-xs text-muted-foreground mt-1">Anggota berwenang bekerja dari draf dan status yang sama.</div>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-3 p-3 rounded-lg bg-background/50 border border-border/50">
-                    <CheckCircle className="w-5 h-5 text-primary shrink-0 mt-0.5" />
-                    <div>
-                      <div className="font-medium text-foreground text-sm">Rekam Jejak Tersusun</div>
-                      <div className="text-xs text-muted-foreground mt-1">Riwayat aktivitas yang dapat ditelusuri per proyek.</div>
+              <div className="flex-1 w-full relative">
+                <div className="relative rounded-2xl overflow-hidden border border-border/50 shadow-xl group">
+                  <img 
+                    src={getImageUrl('/images/safety-site.jpg')} 
+                    alt="Pekerjaan konstruksi industri yang kompleks"
+                    className="w-full h-auto aspect-square md:aspect-[4/3] object-cover transition-transform duration-700 group-hover:scale-105"
+                    loading="lazy"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-background/90 via-background/10 to-transparent pointer-events-none" />
+                  <div className="absolute bottom-0 left-0 right-0 p-6">
+                    <div className="flex items-start gap-3 p-4 rounded-xl bg-card/80 backdrop-blur-md border border-border/50 shadow-sm">
+                      <ShieldCheck className="w-6 h-6 text-primary shrink-0 mt-0.5" />
+                      <div>
+                        <div className="font-semibold text-foreground text-sm">Menjembatani Jarak</div>
+                        <div className="text-xs text-muted-foreground mt-1">Satu acuan data untuk pengawas lapangan dan perencana administrasi.</div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -120,7 +154,7 @@ export default function LandingPage() {
             </div>
 
             {/* How the workflow connects */}
-            <div className="space-y-12 pt-8 border-t border-border/20">
+            <div className="space-y-12">
               <div className="text-center max-w-2xl mx-auto space-y-4">
                 <h2 className="text-2xl md:text-3xl font-bold text-foreground">Alur Kerja Keselamatan yang Terhubung</h2>
                 <p className="text-muted-foreground">
@@ -128,59 +162,71 @@ export default function LandingPage() {
                 </p>
               </div>
 
-              <div className="relative">
-                {/* Connecting Line (Desktop) */}
-                <div className="hidden md:block absolute top-1/2 left-0 w-full h-[2px] bg-border/50 -translate-y-1/2 z-0" />
-                
-                <div className="grid md:grid-cols-4 gap-8 relative z-10">
-                  <div className="bg-card border border-border/50 rounded-xl p-6 shadow-sm flex flex-col items-center text-center space-y-4 relative">
-                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center border border-primary/20">
-                      <FileText className="w-5 h-5 text-primary" />
-                    </div>
-                    <h3 className="font-semibold text-foreground">1. Persyaratan Proyek</h3>
-                    <p className="text-sm text-muted-foreground">Penerimaan dan analisis syarat awal dokumen tender dan kualifikasi.</p>
-                  </div>
-                  <div className="hidden md:flex absolute top-1/2 left-[25%] -translate-x-1/2 -translate-y-1/2 z-20 text-muted-foreground/30">
-                    <ArrowRight className="w-6 h-6" />
-                  </div>
+              <div className="relative w-full rounded-3xl overflow-hidden border border-border/50 shadow-2xl bg-card">
+                 <div className="absolute inset-0 z-0 pointer-events-none">
+                    <img 
+                      src={getImageUrl('/images/connected-workflow.jpg')} 
+                      alt="Ilustrasi jaringan data yang saling terhubung"
+                      className="w-full h-full object-cover opacity-20"
+                      loading="lazy"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-b from-background/40 via-background/80 to-background/40" />
+                 </div>
+                 
+                 <div className="relative z-10 p-6 py-12 md:p-12">
+                   <div className="grid md:grid-cols-4 gap-6">
+                      <div className="bg-card/60 backdrop-blur-md border border-border/50 rounded-xl p-6 shadow-sm flex flex-col items-center text-center space-y-4 relative">
+                        <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center border border-primary/20">
+                          <FileText className="w-5 h-5 text-primary" />
+                        </div>
+                        <h3 className="font-semibold text-foreground">1. Persyaratan Proyek</h3>
+                        <p className="text-sm text-muted-foreground">Penerimaan dan analisis syarat awal dokumen tender dan kualifikasi.</p>
+                      </div>
+                      
+                      <div className="hidden md:flex absolute top-1/2 left-[25%] -translate-x-1/2 -translate-y-1/2 z-20 text-primary/50">
+                        <ArrowRight className="w-6 h-6" />
+                      </div>
 
-                  <div className="bg-card border border-border/50 rounded-xl p-6 shadow-sm flex flex-col items-center text-center space-y-4 relative">
-                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center border border-primary/20">
-                      <ClipboardList className="w-5 h-5 text-primary" />
-                    </div>
-                    <h3 className="font-semibold text-foreground">2. Kesiapan & BOQ</h3>
-                    <p className="text-sm text-muted-foreground">Penyusunan ruang kerja CSMS dan perencanaan anggaran SMKK.</p>
-                  </div>
-                  <div className="hidden md:flex absolute top-1/2 left-[50%] -translate-x-1/2 -translate-y-1/2 z-20 text-muted-foreground/30">
-                    <ArrowRight className="w-6 h-6" />
-                  </div>
+                      <div className="bg-card/60 backdrop-blur-md border border-border/50 rounded-xl p-6 shadow-sm flex flex-col items-center text-center space-y-4 relative">
+                        <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center border border-primary/20">
+                          <ClipboardList className="w-5 h-5 text-primary" />
+                        </div>
+                        <h3 className="font-semibold text-foreground">2. Kesiapan & BOQ</h3>
+                        <p className="text-sm text-muted-foreground">Penyusunan ruang kerja CSMS dan perencanaan anggaran SMKK.</p>
+                      </div>
+                      
+                      <div className="hidden md:flex absolute top-1/2 left-[50%] -translate-x-1/2 -translate-y-1/2 z-20 text-primary/50">
+                        <ArrowRight className="w-6 h-6" />
+                      </div>
 
-                  <div className="bg-card border border-border/50 rounded-xl p-6 shadow-sm flex flex-col items-center text-center space-y-4 relative">
-                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center border border-primary/20">
-                      <HardHat className="w-5 h-5 text-primary" />
-                    </div>
-                    <h3 className="font-semibold text-foreground">3. Bukti Lapangan</h3>
-                    <p className="text-sm text-muted-foreground">Pencatatan kegiatan pengawasan, inspeksi, dan temuan lokasi.</p>
-                  </div>
-                  <div className="hidden md:flex absolute top-1/2 left-[75%] -translate-x-1/2 -translate-y-1/2 z-20 text-muted-foreground/30">
-                    <ArrowRight className="w-6 h-6" />
-                  </div>
+                      <div className="bg-card/60 backdrop-blur-md border border-border/50 rounded-xl p-6 shadow-sm flex flex-col items-center text-center space-y-4 relative">
+                        <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center border border-primary/20">
+                          <HardHat className="w-5 h-5 text-primary" />
+                        </div>
+                        <h3 className="font-semibold text-foreground">3. Bukti Lapangan</h3>
+                        <p className="text-sm text-muted-foreground">Pencatatan kegiatan pengawasan, inspeksi, dan temuan lokasi.</p>
+                      </div>
+                      
+                      <div className="hidden md:flex absolute top-1/2 left-[75%] -translate-x-1/2 -translate-y-1/2 z-20 text-primary/50">
+                        <ArrowRight className="w-6 h-6" />
+                      </div>
 
-                  <div className="bg-card border border-border/50 rounded-xl p-6 shadow-sm flex flex-col items-center text-center space-y-4 relative">
-                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center border border-primary/20">
-                      <FileBarChart className="w-5 h-5 text-primary" />
-                    </div>
-                    <h3 className="font-semibold text-foreground">4. Pelaporan & Tinjauan</h3>
-                    <p className="text-sm text-muted-foreground">Penggabungan catatan lapangan ke dalam struktur laporan evaluasi.</p>
-                  </div>
-                </div>
+                      <div className="bg-card/60 backdrop-blur-md border border-border/50 rounded-xl p-6 shadow-sm flex flex-col items-center text-center space-y-4 relative">
+                        <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center border border-primary/20">
+                          <FileBarChart className="w-5 h-5 text-primary" />
+                        </div>
+                        <h3 className="font-semibold text-foreground">4. Pelaporan & Tinjauan</h3>
+                        <p className="text-sm text-muted-foreground">Penggabungan catatan lapangan ke dalam struktur laporan evaluasi.</p>
+                      </div>
+                   </div>
+                 </div>
               </div>
             </div>
 
           </div>
         </section>
 
-        {/* 3. DESIRE (Flagship Capabilities) */}
+        {/* 4. DESIRE (Flagship Capabilities) */}
         <section className="w-full px-6 py-24 border-b border-border/20 relative z-10">
           <div className="max-w-5xl mx-auto space-y-32">
             
@@ -258,8 +304,8 @@ export default function LandingPage() {
                 </div>
                 <div className="space-y-3">
                   <div className="flex gap-4">
-                    <div className="flex-1 p-3 bg-background rounded-lg border border-border/50 text-xs">Klasifikasi Risiko Tinggi</div>
-                    <div className="flex-1 p-3 bg-primary/10 rounded-lg border border-primary/20 text-xs text-primary flex justify-between">Risiko Tinggi <CheckCircle className="w-4 h-4"/></div>
+                    <div className="flex-1 p-3 bg-background rounded-lg border border-border/50 text-xs">Klasifikasi Bangunan Sipil</div>
+                    <div className="flex-1 p-3 bg-primary/10 rounded-lg border border-primary/20 text-xs text-primary flex justify-between">Klaim Klasifikasi <CheckCircle className="w-4 h-4"/></div>
                   </div>
                   <div className="flex gap-4">
                     <div className="flex-1 p-3 bg-background rounded-lg border border-border/50 text-xs">Tenaga Ahli K3 Sesuai Syarat</div>
@@ -321,37 +367,39 @@ export default function LandingPage() {
                 <h3 className="text-2xl md:text-3xl font-bold text-foreground">Pengumpulan Bukti Lapangan Luring</h3>
                 <div className="space-y-4 text-muted-foreground">
                   <p>
-                    <strong className="text-foreground">Tantangan:</strong> Pengawas lapangan kesulitan melaporkan inspeksi, temuan, atau aktivitas toolbox meeting karena tidak ada koneksi internet di lokasi proyek.
+                    <strong className="text-foreground">Tantangan:</strong> Pengawas lapangan kesulitan melaporkan inspeksi atau temuan karena ketiadaan koneksi internet di lokasi proyek.
                   </p>
                   <p>
-                    <strong className="text-foreground">Pendekatan Kami:</strong> Perekaman aktivitas via perangkat bergerak tetap berjalan luring. Sistem menyerap foto, data konteks lokasi, dan tanda tangan pelaksana, lalu menyimpannya dalam antrean.
+                    <strong className="text-foreground">Pendekatan Kami:</strong> Perekaman aktivitas via perangkat bergerak tetap berjalan luring. Catatan, foto, konteks lokasi, dan tanda tangan pelaksana disimpan dalam antrean perangkat.
                   </p>
                   <p>
-                    <strong className="text-foreground">Nilai Praktis:</strong> Pengguna dapat melakukan sinkronisasi ulang saat koneksi tersedia kembali, menjaga alur komunikasi informasi lapangan ke tim manajemen proyek di kantor.
+                    <strong className="text-foreground">Nilai Praktis:</strong> Saat koneksi kembali, aplikasi mencoba mengirim ulang antrean agar catatan lapangan dapat dilihat oleh tim di kantor.
                   </p>
                 </div>
               </div>
-              <div className="flex-1 w-full flex justify-center">
-                <div className="relative w-48 h-80 bg-background border-[4px] border-border rounded-[2rem] shadow-xl overflow-hidden flex flex-col">
-                  <div className="h-6 bg-card flex justify-center items-center gap-1 border-b border-border/50">
-                     <div className="w-10 h-1 bg-border rounded-full"></div>
-                  </div>
-                  <div className="p-4 flex-1 flex flex-col gap-3">
-                    <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
-                      <span>Toolbox Meeting</span>
-                      <WifiOff className="w-3 h-3 text-destructive" />
-                    </div>
-                    <div className="h-20 bg-muted/30 rounded-lg border border-border/50 flex items-center justify-center">
-                      <div className="w-8 h-8 rounded bg-muted"></div>
-                    </div>
-                    <div className="space-y-2 mt-2">
-                      <div className="h-2 bg-muted rounded w-3/4"></div>
-                      <div className="h-2 bg-muted rounded w-1/2"></div>
-                      <div className="h-2 bg-muted rounded w-full"></div>
-                    </div>
-                    <div className="mt-auto h-8 bg-primary/50 rounded-md border border-primary/20 flex items-center justify-center text-[10px] text-foreground font-medium">
-                      Simpan ke Antrean
-                    </div>
+              <div className="flex-1 w-full relative">
+                <div className="relative rounded-2xl overflow-hidden border border-border/50 shadow-xl group">
+                  <img 
+                    src={getImageUrl('/images/field-supervisor.jpg')} 
+                    alt="Pengawas lapangan menggunakan tablet industri untuk inspeksi keselamatan"
+                    className="w-full h-auto aspect-[4/3] object-cover transition-transform duration-700 group-hover:scale-105"
+                    loading="lazy"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-background/90 via-background/20 to-transparent pointer-events-none" />
+                  
+                  <div className="absolute bottom-6 left-6 right-6 bg-card/90 backdrop-blur-md border border-border/50 rounded-xl p-4 shadow-lg flex items-center justify-between">
+                     <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-destructive/10 flex items-center justify-center border border-destructive/20">
+                           <WifiOff className="w-5 h-5 text-destructive" />
+                        </div>
+                        <div>
+                           <p className="text-sm font-semibold text-foreground">Koneksi Terputus</p>
+                           <p className="text-xs text-muted-foreground">Menyimpan ke antrean lokal</p>
+                        </div>
+                     </div>
+                     <div className="px-3 py-1 bg-primary/10 border border-primary/20 text-primary text-[11px] font-semibold rounded-full uppercase tracking-wider">
+                        Siap Sinkron
+                     </div>
                   </div>
                 </div>
               </div>
@@ -360,7 +408,7 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* 4. SUPPORTING CAPABILITIES */}
+        {/* 5. SUPPORTING CAPABILITIES */}
         <section className="w-full px-6 py-24 bg-card/5 border-b border-border/20 relative z-10">
            <div className="max-w-5xl mx-auto space-y-12">
               <div className="text-center max-w-2xl mx-auto space-y-4">
@@ -410,7 +458,7 @@ export default function LandingPage() {
            </div>
         </section>
 
-        {/* 5. ACTION (Final CTA) */}
+        {/* 6. ACTION (Final CTA) */}
         <section className="w-full px-6 py-24 md:py-32 bg-card/20 relative z-10 flex flex-col items-center text-center">
           <div className="max-w-3xl mx-auto space-y-8">
             <h2 className="text-4xl md:text-5xl font-bold text-foreground">Siap Membangun Lingkungan Kerja yang Lebih Terstruktur?</h2>

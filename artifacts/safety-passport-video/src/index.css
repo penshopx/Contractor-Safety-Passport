@@ -1,19 +1,24 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 @import "tailwindcss";
+
+@theme {
+  --font-sans: 'Plus Jakarta Sans', sans-serif;
+  --font-display: 'Plus Jakarta Sans', sans-serif;
+}
 
 @layer base {
   :root {
-    --color-bg-dark: 222 47% 11%;     /* Deep navy/slate */
-    --color-bg-light: 210 40% 96%;    /* Off-white */
+    --color-bg-dark: 0 0% 6%;         /* Charcoal #101010 */
+    --color-bg-light: 0 0% 15%;       /* Slightly lighter charcoal */
     
-    --color-primary: 34 100% 50%;     /* Safety Orange */
-    --color-accent: 217 91% 60%;      /* Tech Blue */
+    --color-primary: 45 93% 47%;      /* Amber #fbbf24 */
+    --color-accent: 199 89% 48%;      /* Bright Blue #0ea5e9 */
     
-    --color-text-main: 0 0% 100%;
-    --color-text-muted: 215 20.2% 65.1%;
+    --color-text-main: 0 0% 98%;      /* White #fafafa */
+    --color-text-muted: 0 0% 60%;     /* Muted grey */
 
-    --font-display: 'Outfit', sans-serif;
-    --font-body: 'Inter', sans-serif;
+    --font-display: 'Plus Jakarta Sans', sans-serif;
+    --font-body: 'Plus Jakarta Sans', sans-serif;
   }
 }
 
@@ -30,18 +35,14 @@ body {
   font-family: var(--font-display);
 }
 
-.clip-diagonal {
-  clip-path: polygon(0 0, 100% 0, 100% 100%, 0 85%);
-}
-
 .text-gradient {
   background: linear-gradient(to right, hsl(var(--color-text-main)), hsl(var(--color-text-muted)));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
-.text-gradient-orange {
-  background: linear-gradient(to right, hsl(var(--color-primary)), #ff8c00);
+.text-gradient-primary {
+  background: linear-gradient(to right, #fbbf24, #f59e0b);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }

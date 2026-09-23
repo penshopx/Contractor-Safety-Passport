@@ -15,9 +15,9 @@ import { Scene5 } from './video_scenes/Scene5';
 
 export const SCENE_DURATIONS = {
   intro: 3500,
-  solution: 4000,
-  field: 4000,
-  analytics: 4000,
+  csms_fit: 4500,
+  boq: 4500,
+  offline: 4500,
   outro: 3500,
 };
 
@@ -25,9 +25,9 @@ const VIDEO_ASPECT_RATIO: VideoAspectRatio = '16:9';
 
 const SCENE_COMPONENTS = {
   intro: Scene1,
-  solution: Scene2,
-  field: Scene3,
-  analytics: Scene4,
+  csms_fit: Scene2,
+  boq: Scene3,
+  offline: Scene4,
   outro: Scene5,
 } as const;
 
@@ -94,18 +94,32 @@ export default function VideoTemplate({
         style={{ backgroundColor: 'hsl(var(--color-bg-dark))' }}
       >
         <motion.div 
-          className="pointer-events-none absolute inset-0 opacity-20"
+          className="pointer-events-none absolute inset-0 opacity-10"
           style={{
             backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=%220 0 200 200%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22noiseFilter%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%220.65%22 numOctaves=%223%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23noiseFilter)%22/%3E%3C/svg%3E")',
             mixBlendMode: 'overlay'
           }}
         />
         <motion.div
-          className="absolute left-0 top-0 z-50 h-2 bg-[hsl(var(--color-primary))]"
+          className="absolute left-0 top-0 z-50 h-1.5 bg-[hsl(var(--color-primary))]"
           initial={{ width: 0 }}
           animate={{ width: `${(Math.max(0, sceneIndex) / 4) * 100}%` }}
           transition={{ duration: 0.8, ease: "circOut" }}
         />
+        
+        {/* Persistent background elements for continuity */}
+        <motion.div 
+          className="absolute rounded-full blur-[100px] opacity-20 pointer-events-none"
+          animate={{
+            width: sceneIndex === 2 ? '80vw' : '40vw',
+            height: sceneIndex === 2 ? '80vw' : '40vw',
+            x: sceneIndex % 2 === 0 ? '60vw' : '-10vw',
+            y: sceneIndex === 1 ? '10vh' : '-20vh',
+            backgroundColor: sceneIndex === 3 ? 'hsl(var(--color-accent))' : 'hsl(var(--color-primary))'
+          }}
+          transition={{ duration: 2, ease: "easeInOut" }}
+        />
+
         <AnimatePresence mode="popLayout">
           {SceneComponent && (
             <SceneComponent key={currentSceneKey} />
