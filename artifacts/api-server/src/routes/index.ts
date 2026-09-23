@@ -3,12 +3,14 @@ import healthRouter from "./health";
 import safetyRouter from "./safety";
 import organizationsRouter from "./organizations";
 import storageRouter from "./storage";
+import fieldDraftRouter from "./fieldDraft";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
 router.use(organizationsRouter);
 router.use(storageRouter);
+router.use(fieldDraftRouter);
 router.use(safetyRouter);
 
 export default router;

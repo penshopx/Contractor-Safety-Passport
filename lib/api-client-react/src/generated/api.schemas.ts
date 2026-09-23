@@ -851,6 +851,38 @@ export interface FieldActivityInput {
   occurredAt: string;
 }
 
+export type FieldActivityDraftInputType = typeof FieldActivityDraftInputType[keyof typeof FieldActivityDraftInputType];
+
+
+export const FieldActivityDraftInputType = {
+  Toolbox: 'Toolbox',
+  Inspection: 'Inspection',
+  Near_miss: 'Near miss',
+  Permit_to_work: 'Permit to work',
+} as const;
+
+export interface FieldActivityDraftInput {
+  type: FieldActivityDraftInputType;
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  title: string;
+  /**
+     * @minLength 10
+     * @maxLength 2000
+     */
+  notes: string;
+}
+
+export interface FieldActivityDraft {
+  /**
+     * @minLength 1
+     * @maxLength 4000
+     */
+  draft: string;
+}
+
 export type MonthlyReportStatus = typeof MonthlyReportStatus[keyof typeof MonthlyReportStatus];
 
 

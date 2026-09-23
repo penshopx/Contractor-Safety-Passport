@@ -1494,6 +1494,32 @@ export const CreateFieldActivityResponse = zod.object({
 
 
 /**
+ * Optional online writing aid. Does not save or approve a report.
+ * @summary Suggest an editable field report draft from user-provided notes
+ */
+export const draftFieldActivityNotesBodyTitleMax = 200;
+
+export const draftFieldActivityNotesBodyNotesMin = 10;
+export const draftFieldActivityNotesBodyNotesMax = 2000;
+
+
+
+export const DraftFieldActivityNotesBody = zod.object({
+  "type": zod.enum(['Toolbox', 'Inspection', 'Near miss', 'Permit to work']),
+  "title": zod.string().min(1).max(draftFieldActivityNotesBodyTitleMax),
+  "notes": zod.string().min(draftFieldActivityNotesBodyNotesMin).max(draftFieldActivityNotesBodyNotesMax)
+})
+
+export const draftFieldActivityNotesResponseDraftMax = 4000;
+
+
+
+export const DraftFieldActivityNotesResponse = zod.object({
+  "draft": zod.string().min(1).max(draftFieldActivityNotesResponseDraftMax)
+})
+
+
+/**
  * @summary List saved monthly SMKK reports
  */
 export const listMonthlyReportsResponsePeriodRegExp = new RegExp('^[0-9]{4}-(0[1-9]|1[0-2])$');

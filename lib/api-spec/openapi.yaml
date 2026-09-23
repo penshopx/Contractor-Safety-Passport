@@ -884,6 +884,31 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/FieldActivity"
+  /field-activities/draft:
+    post:
+      operationId: draftFieldActivityNotes
+      tags: [field-activities]
+      summary: Suggest an editable field report draft from user-provided notes
+      description: Optional online writing aid. Does not save or approve a report.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FieldActivityDraftInput"
+      responses:
+        "200":
+          description: Suggested text for human review
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FieldActivityDraft"
+        "400":
+          description: Insufficient or invalid input
+        "429":
+          description: Too many requests
+        "502":
+          description: AI service unavailable
   /monthly-reports:
     get:
       operationId: listMonthlyReports
@@ -1498,6 +1523,19 @@ components:
         signatureSvg: { type: string, maxLength: 100000 }
         occurredAt: { type: string, format: date-time }
       required: [clientId, projectId, type, title, project, actor, status, occurredAt]
+    FieldActivityDraftInput:
+      type: object
+      additionalProperties: false
+      properties:
+        type: { type: string, enum: [Toolbox, Inspection, "Near miss", "Permit to work"] }
+        title: { type: string, minLength: 1, maxLength: 200 }
+        notes: { type: string, minLength: 10, maxLength: 2000 }
+      required: [type, title, notes]
+    FieldActivityDraft:
+      type: object
+      properties:
+        draft: { type: string, minLength: 1, maxLength: 4000 }
+      required: [draft]
     MonthlyReport:
       type: object
       properties:
