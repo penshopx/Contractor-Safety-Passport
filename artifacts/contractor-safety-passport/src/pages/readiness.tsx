@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EvidenceSuggestions } from "@/components/readiness/evidence-suggestions";
 
 type ItemKind = "question" | "evidence" | "validation";
 
@@ -185,6 +186,8 @@ export default function ReadinessPage() {
             <ScoreCard title="Perlu tindak lanjut" value={String(readiness.followUp)} icon={<AlertCircle className="h-5 w-5 text-amber-400" />} />
             <ScoreCard title="Tahap CSMS" value={String(readiness.stages.length)} icon={<Circle className="h-5 w-5 text-muted-foreground" />} />
           </div>
+
+          <EvidenceSuggestions key={projectId} readiness={readiness} />
 
           <Card className="border-border/50 bg-card/40 backdrop-blur-sm">
             <CardHeader>

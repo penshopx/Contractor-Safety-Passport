@@ -25,6 +25,7 @@ import type {
   CertificateInput,
   ConflictResponse,
   ConstructionClassification,
+  CsmsEvidenceSuggestions,
   CsmsProfile,
   CsmsProfileArchiveUpdate,
   CsmsProfileInput,
@@ -2449,6 +2450,80 @@ export const useUpdateProjectCsmsReadiness = <TError = ErrorType<ForbiddenRespon
         TContext
       > => {
       return useMutation(getUpdateProjectCsmsReadinessMutationOptions(options));
+    }
+
+export const getSuggestProjectCsmsEvidenceUrl = (projectId: number,) => {
+
+
+
+
+  return `/api/projects/${projectId}/csms-readiness/suggestions`
+}
+
+/**
+ * @summary Suggest read-only next steps for unreviewed project CSMS evidence
+ */
+export const suggestProjectCsmsEvidence = async (projectId: number, options?: Parameters<typeof customFetch>[1]): Promise<CsmsEvidenceSuggestions> => {
+
+  return customFetch<CsmsEvidenceSuggestions>(getSuggestProjectCsmsEvidenceUrl(projectId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getSuggestProjectCsmsEvidenceMutationKey = () => ['suggestProjectCsmsEvidence'] as const;
+
+export const getSuggestProjectCsmsEvidenceMutationOptions = <TError = ErrorType<NotFoundResponse | void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof suggestProjectCsmsEvidence>>, TError,SuggestProjectCsmsEvidenceMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof suggestProjectCsmsEvidence>>, TError,SuggestProjectCsmsEvidenceMutationVariables, TContext> => {
+
+const mutationKey = getSuggestProjectCsmsEvidenceMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof suggestProjectCsmsEvidence>>, SuggestProjectCsmsEvidenceMutationVariables> = (props) => {
+          const {projectId} = props ?? {};
+
+          return  suggestProjectCsmsEvidence(projectId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SuggestProjectCsmsEvidenceMutationResult = NonNullable<Awaited<ReturnType<typeof suggestProjectCsmsEvidence>>>
+
+    export type SuggestProjectCsmsEvidenceMutationError = ErrorType<NotFoundResponse | void>
+    export type SuggestProjectCsmsEvidenceMutationVariables = {projectId: number}
+
+    /**
+ * @summary Suggest read-only next steps for unreviewed project CSMS evidence
+ */
+export const useSuggestProjectCsmsEvidence = <TError = ErrorType<NotFoundResponse | void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof suggestProjectCsmsEvidence>>, TError,SuggestProjectCsmsEvidenceMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof suggestProjectCsmsEvidence>>,
+        TError,
+        SuggestProjectCsmsEvidenceMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSuggestProjectCsmsEvidenceMutationOptions(options));
     }
 
 export const getGetProjectUrl = (id: number,) => {

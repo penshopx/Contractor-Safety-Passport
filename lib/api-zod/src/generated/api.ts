@@ -919,6 +919,38 @@ export const UpdateProjectCsmsReadinessResponse = zod.object({
 
 
 /**
+ * @summary Suggest read-only next steps for unreviewed project CSMS evidence
+ */
+
+
+
+export const SuggestProjectCsmsEvidenceParams = zod.object({
+  "projectId": zod.coerce.number().int().min(1)
+})
+
+export const suggestProjectCsmsEvidenceResponseRevisionMin = 0;
+
+
+
+export const SuggestProjectCsmsEvidenceResponse = zod.object({
+  "projectId": zod.number().int(),
+  "profileId": zod.string(),
+  "issuer": zod.string(),
+  "version": zod.string(),
+  "revision": zod.number().int().min(suggestProjectCsmsEvidenceResponseRevisionMin),
+  "updatedAt": zod.coerce.date().nullable(),
+  "suggestions": zod.array(zod.object({
+  "key": zod.string(),
+  "stageCode": zod.string(),
+  "stageName": zod.string(),
+  "evidence": zod.string(),
+  "status": zod.enum(['unreviewed', 'follow_up']),
+  "nextStep": zod.string()
+}))
+})
+
+
+/**
  * @summary Get a project
  */
 

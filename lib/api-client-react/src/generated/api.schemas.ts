@@ -632,6 +632,35 @@ export interface ProjectCsmsReadinessUpdate {
   itemStatuses: CsmsReadinessItemStatus[];
 }
 
+export type CsmsEvidenceSuggestionStatus = typeof CsmsEvidenceSuggestionStatus[keyof typeof CsmsEvidenceSuggestionStatus];
+
+
+export const CsmsEvidenceSuggestionStatus = {
+  unreviewed: 'unreviewed',
+  follow_up: 'follow_up',
+} as const;
+
+export interface CsmsEvidenceSuggestion {
+  key: string;
+  stageCode: string;
+  stageName: string;
+  evidence: string;
+  status: CsmsEvidenceSuggestionStatus;
+  nextStep: string;
+}
+
+export interface CsmsEvidenceSuggestions {
+  projectId: number;
+  profileId: string;
+  issuer: string;
+  version: string;
+  /** @minimum 0 */
+  revision: number;
+  /** @nullable */
+  updatedAt: string | null;
+  suggestions: CsmsEvidenceSuggestion[];
+}
+
 export type GeneratedDocumentInputTemplate = typeof GeneratedDocumentInputTemplate[keyof typeof GeneratedDocumentInputTemplate];
 
 

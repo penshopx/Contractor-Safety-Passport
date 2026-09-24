@@ -576,6 +576,29 @@ paths:
                 $ref: "#/components/schemas/ProjectCsmsReadiness"
         "404":
           $ref: "#/components/responses/NotFound"
+  /projects/{projectId}/csms-readiness/suggestions:
+    post:
+      operationId: suggestProjectCsmsEvidence
+      tags: [projects]
+      summary: Suggest read-only next steps for unreviewed project CSMS evidence
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        "200":
+          description: Suggestions grounded in the current CSMS profile and saved evidence statuses
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CsmsEvidenceSuggestions"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          description: Too many suggestion requests
+        "502":
+          description: AI suggestions unavailable
   /projects/{id}:
     get:
       operationId: getProject
@@ -1405,6 +1428,30 @@ components:
           items:
             $ref: "#/components/schemas/CsmsReadinessItemStatus"
       required: [profileId, revision, itemStatuses]
+    CsmsEvidenceSuggestion:
+      type: object
+      properties:
+        key: { type: string }
+        stageCode: { type: string }
+        stageName: { type: string }
+        evidence: { type: string }
+        status: { type: string, enum: [unreviewed, follow_up] }
+        nextStep: { type: string }
+      required: [key, stageCode, stageName, evidence, status, nextStep]
+    CsmsEvidenceSuggestions:
+      type: object
+      properties:
+        projectId: { type: integer }
+        profileId: { type: string }
+        issuer: { type: string }
+        version: { type: string }
+        revision: { type: integer, minimum: 0 }
+        updatedAt: { type: ["string", "null"], format: date-time }
+        suggestions:
+          type: array
+          items:
+            $ref: "#/components/schemas/CsmsEvidenceSuggestion"
+      required: [projectId, profileId, issuer, version, revision, updatedAt, suggestions]
     GeneratedDocumentInput:
       type: object
       properties:
