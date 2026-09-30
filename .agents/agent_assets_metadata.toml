@@ -7,6 +7,7 @@ uri = "file://artifacts/safety-passport-video/public/audio/bg_music.mp3"
 type = "audio"
 title = "musik latar Safety Passport"
 description = "Generated music: Driving cinematic electronic instrumental background music scoring an industrial safety technology product video. Tight electronic percussion, warm analog synth pulse, subtle metalli…"
+logical_id = "6947438f-5dd1-4f8b-aaea-9e94bab915c4"
 
 [[outputs]]
 id = "GX7or0JB_av9tIWZ0yLqU"
@@ -14,3 +15,18 @@ uri = "file://docs/contractor-safety-passport-blueprint.md"
 type = "text"
 title = "Blueprint Contractor Safety Passport"
 description = "Blueprint produk berbasis klasifikasi usaha, subklasifikasi proyek, kompetensi profesi, risiko, readiness, dan assurance lapangan."
+logical_id = "e8a3791d-6b85-42eb-88c0-7b3c65b15f47"
+
+[[outputs]]
+id = "n6FFEpwrs8IloeFJ6Qph_"
+uri = "file://docs/gaia-siap-ai-safety-passport-proposal.md"
+type = "text"
+title = "Usulan kontrak AI Gustafta dari Safety Passport"
+description = "Draf revisi baca-saja untuk ditinjau pemilik API Gustafta; bukan kontrak yang sudah berlaku."
+logical_id = "ebc47249-5cd9-49ce-a265-f5c51b17f01c"
+content_hash = "sha256:ef4792c4d374e502936a7848a6785c10a575a032b987ba8f2a299347f7537a79"
+size = 12472
+mtime_ms = 1790741655739
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:42da7141-1fdb-494c-a2a2-6119f9298149/ebc47249-5cd9-49ce-a265-f5c51b17f01c/a279d77a-8f32-4c04-b8e9-bc087537a205"
+storage_version_token = "1790741680096826"
+content_type = "text/markdown"
