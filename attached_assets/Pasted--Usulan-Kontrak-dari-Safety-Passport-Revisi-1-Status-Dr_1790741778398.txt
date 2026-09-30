@@ -1,0 +1,315 @@
+# Usulan Kontrak dari Safety Passport (Revisi 1)
+
+**Status**: Draf untuk ditinjau pemilik API Gustafta. Bukan dokumentasi API Gustafta yang berlaku.  
+**Tujuan**: Menetapkan kontrak minimum agar Safety Passport dapat memanggil Gustafta sebagai penasihat baca-saja, tanpa mengubah pilot yang sudah berjalan.  
+**Prasyarat integrasi**: Kontrak ini harus dikonfirmasi oleh pemilik API Gustafta sebelum kode integrasi ditulis.
+
+---
+
+## 1. Prinsip Desain
+
+1. **Baca-saja (read-only)**: Safety Passport hanya mengirim konteks dan menerima saran. Gustafta tidak boleh memodifikasi data Safety Passport.
+2. **Payload minimum**: Hanya data yang relevan dengan pertanyaan pengguna yang dikirim, bukan seluruh riwayat atau seluruh dokumen proyek.
+3. **Server-ke-server**: Panggilan dilakukan dari backend Safety Passport ke backend Gustafta. Tidak ada keterlibatan browser pengguna dalam jalur ini.
+4. **Isolasi organisasi dan proyek**: Setiap panggilan terikat pada satu organisasi dan satu proyek. Gustafta tidak boleh mencampur konteks lintas organisasi.
+5. **Rujukan yang dapat ditelusuri**: Setiap saran dari Gustafta harus menyertakan rujukan ke sumber data (dokumen, versi, tanggal) agar Safety Passport dapat memverifikasi dan menampilkan sitasi kepada pengguna.
+6. **Privasi sebagai default**: Tidak ada data sensitif yang dikirim kecuali eksplisit diizinkan oleh aturan akses pengguna yang bertanya.
+7. **Server Safety Passport sebagai sumber kebenaran**: Identitas organisasi, proyek, pengguna, peran, dan daftar dokumen yang dikirim ke Gustafta **ditetapkan dan diverifikasi oleh server Safety Passport**, bukan dipercaya dari browser pengguna.
+
+---
+
+## 2. Autentikasi Server-ke-Server
+
+### Usulan Safety Passport
+
+- Safety Passport menyajikan **token bearer** pada header `Authorization` setiap panggilan.
+- Token diterbitkan oleh Gustafta kepada Safety Passport sebagai identitas aplikasi (bukan identitas pengguna akhir).
+- Token memiliki scope terbatas: hanya boleh memanggil endpoint yang disepakati.
+
+### Perlu konfirmasi dari pemilik API Gustafta
+
+- [ ] Mekanisme penerbitan token (API key, OAuth client credentials, atau lainnya).
+- [ ] Format header yang diterima (`Authorization: Bearer ...` atau skema lain).
+- [ ] Rotasi token dan prosedur pencabutan jika terjadi kebocoran.
+- [ ] Apakah Gustafta membedakan identitas aplikasi pengirim dari identitas pengguna akhir, atau hanya menerima satu token.
+
+---
+
+## 3. Pembatasan Organisasi dan Proyek
+
+Setiap panggilan harus membawa konteks organisasi dan proyek secara eksplisit. Gustafta tidak boleh menyimpulkan konteks dari data lain.
+
+### Usulan payload
+
+Setiap request menyertakan field-field berikut (semua nilai ditetapkan oleh server Safety Passport, bukan dipercaya dari browser):
+
+- `organization_id`: identitas organisasi pemilik data.
+- `project_id`: identitas proyek yang menjadi cakupan pertanyaan.
+- `asker_user_id`: identitas pengguna yang bertanya (untuk evaluasi izin dan audit).
+- `asker_roles`: peran pengguna dalam organisasi/proyek tersebut. Nilai yang dikenali Safety Passport saat ini: `owner`, `safety_expert`, `field_officer`, `viewer`.
+
+### Perlu konfirmasi dari pemilik API Gustafta
+
+- [ ] Apakah Gustafta menerima dan memvalidasi `organization_id` dan `project_id`, atau Safety Passport harus melakukan filter sebelum mengirim.
+- [ ] Apakah Gustafta menyimpan data per-tenant secara terpisah, atau mengandalkan filter dari pemanggil.
+- [ ] Bagaimana Gustafta menangani kasus `project_id` tidak ditemukan atau tidak aktif.
+- [ ] Apakah Gustafta mengenali peran-peran di atas atau memerlukan pemetaan berbeda.
+
+---
+
+## 4. Endpoint yang Diusulkan
+
+### `POST /api/v1/ai/assist`
+
+Endpoint utama untuk meminta saran berbasis konteks. Path ini mengikuti catatan API yang tersedia; detail payload di bawah ini adalah **usulan Safety Passport** dan belum dikonfirmasi sebagai format yang didukung Gustafta.
+
+### Fase 1 — Panggilan Awal (Tanpa Riwayat, Tanpa Isi Dokumen)
+
+Untuk meminimalkan permukaan kebocoran pada iterasi pertama, panggilan awal hanya mengirim pertanyaan dan metadata konteks. Riwayat percakapan dan isi dokumen akan ditambahkan pada fase terpisah setelah izin, batas ukuran, retensi, dan pencabutan disepakati.
+
+**Usulan request fase 1** (semua field adalah usulan, bukan format yang sudah didukung Gustafta):
+
+```json
+{
+  "organization_id": "uuid-organization",
+  "project_id": "uuid-project",
+  "asker_user_id": "uuid-user",
+  "asker_roles": ["safety_expert"],
+  "question": "string bebas dari pengguna",
+  "requested_at": "2026-09-30T10:00:00Z"
+}
+```
+
+**Catatan penting**:
+- Tidak ada `conversation_context` pada fase 1.
+- Tidak ada `candidate_documents` (isi dokumen) pada fase 1.
+- Gustafta pada fase 1 hanya dapat menjawab berdasarkan pengetahuan umum dan metadata proyek yang disepakati, bukan berdasarkan isi dokumen Safety Passport.
+- Pengiriman cuplikan dokumen (`candidate_documents`) adalah **tahap terpisah** yang baru diusulkan setelah izin mengirim isi dokumen, batas ukuran payload, kebijakan retensi, dan aturan pencabutan disepakati secara eksplisit.
+
+**Usulan response fase 1** (semua field adalah usulan):
+
+```json
+{
+  "answer": "string",
+  "citations": [
+    {
+      "source_type": "string",
+      "reference": "string",
+      "version": "string"
+    }
+  ],
+  "confidence": "high",
+  "limitations": ["string"],
+  "metadata": {
+    "model": "string",
+    "processed_at": "2026-09-30T10:00:01Z"
+  }
+}
+```
+
+### Fase 2 — Pengiriman Cuplikan Dokumen (Tahap Terpisah)
+
+Setelah fase 1 berjalan stabil dan kebijakan berikut disepakati, Safety Passport akan mengusulkan penambahan pengiriman cuplikan dokumen:
+
+- Izin eksplisit untuk mengirim isi dokumen ke layanan pihak ketiga (berbeda dari izin melihat dokumen).
+- Batas ukuran payload per panggilan.
+- Kebijakan retensi di sisi Gustafta.
+- Aturan pencabutan akses (lihat bagian 5).
+- Perlakuan terhadap versi historis: dokumen versi lama yang dipakai pada keputusan terdahulu **tidak otomatis digantikan** oleh versi terbaru.
+
+### Perlu konfirmasi dari pemilik API Gustafta
+
+- [ ] Apakah path `/api/v1/ai/assist` adalah endpoint yang benar.
+- [ ] Format request dan response aktual yang didukung Gustafta.
+- [ ] Batas ukuran payload (token, byte).
+- [ ] Apakah Gustafta mengembalikan `citations` terstruktur atau hanya teks.
+- [ ] Kesiapan Gustafta untuk iterasi dua fase (fase 1 tanpa isi dokumen, fase 2 dengan isi dokumen setelah kebijakan disepakati).
+
+---
+
+## 5. Aturan Pencabutan Akses
+
+Empat aturan berikut harus ditegakkan bersama antara Safety Passport dan Gustafta. Jika salah satu pihak tidak dapat menegakkan, integrasi tidak boleh dilanjutkan.
+
+### Aturan 1 — Pre-retrieval check
+
+Sebelum isi dokumen masuk ke konteks AI, Safety Passport memeriksa:
+- Izin pengguna (`asker_user_id` + `asker_roles`) terhadap dokumen.
+- Status keberlakuan dokumen (`Approved` saja tidak cukup; harus sesuai scope penggunaan).
+- Versi dokumen (hanya versi yang disetujui untuk cakupan penggunaan tertentu).
+- Cakupan penggunaan (chatbot internal vs publik, proyek tertentu vs lintas proyek).
+
+**Status**: **Belum diimplementasikan pada pilot saat ini.** Pilot saat ini hanya memakai label butir bukti dan status kesiapan CSMS; ia belum mengambil isi dokumen, belum memeriksa izin per dokumen, dan belum menjalankan pre-retrieval check. Ini adalah **prasyarat yang harus diselesaikan di Safety Passport sebelum cuplikan dokumen dapat dikirim ke Gustafta**.
+
+**Perlu konfirmasi**: Apakah Gustafta bersedia menerima dokumen yang sudah difilter, atau Gustafta ingin melakukan validasi tambahan di sisi Gustafta.
+
+### Aturan 2 — Pre-response revalidation
+
+Tepat sebelum jawaban disampaikan kepada pengguna, Safety Passport memeriksa ulang:
+- Izin pengguna terhadap setiap dokumen yang dirujuk dalam jawaban.
+- Status keberlakuan dokumen (jika dicabut di tengah proses, dokumen tidak boleh disajikan sebagai rujukan yang masih berlaku).
+- **Validasi bahwa setiap sitasi benar-benar merujuk cuplikan dan versi yang dikirim**, bukan versi lain atau dokumen yang tidak pernah dikirim.
+
+Jika satu sumber tidak lagi diizinkan antara retrieval dan penyajian jawaban:
+- **Tahan seluruh jawaban** dan tampilkan respons fallback generik.
+- Jangan menyajikan "sisanya" (situsi yang dicabut saja) kecuali jawaban **dibuat ulang** dari sumber yang masih sah.
+- Alasan: jawaban AI dapat tetap memuat isi dokumen yang baru dicabut meskipun sitasinya dihapus; menghapus sitasi saja tidak cukup untuk menjamin isi tidak bocor.
+
+**Status**: Akan ditegakkan oleh Safety Passport di lapisan presentasi, setelah Gustafta mengembalikan jawaban.
+
+**Perlu konfirmasi**: Apakah Gustafta bersedia mengembalikan jawaban dalam bentuk terstruktur (dengan `citations` terpisah dari `answer`) sehingga Safety Passport dapat melakukan validasi sitasi terhadap cuplikan yang dikirim. Jika Gustafta mengembalikan jawaban sebagai teks polos tanpa sitasi terpisah, Aturan 2 sulit ditegakkan.
+
+### Aturan 3 — Cache dan riwayat percakapan
+
+- Cache retrieval (embedding, vektor indeks, cache jawaban) harus di-invalidate segera saat akses dicabut.
+- Riwayat percakapan yang sudah ditampilkan kepada pengguna tidak dapat ditarik kembali, tetapi **tidak boleh dipakai ulang sebagai sumber fakta terkini**.
+- Saat membangun konteks dari riwayat untuk pertanyaan lanjutan, setiap dokumen yang dirujuk dalam riwayat harus difilter ulang berdasarkan izin dan status terkini.
+
+**Status**: Akan ditegakkan oleh Safety Passport. Gustafta tidak perlu mengetahui detail cache Safety Passport.
+
+**Perlu konfirmasi**: Apakah Gustafta menyimpan cache di sisi Gustafta yang perlu di-invalidate saat akses dicabut di Safety Passport. Jika ya, diperlukan mekanisme notifikasi atau TTL cache yang pendek. **Prompt engineering saja tidak menjamin dokumen rahasia tidak disebut**; diperlukan jawaban nyata tentang cache dan retensi di sisi Gustafta.
+
+### Aturan 4 — Tidak mengonfirmasi keberadaan dokumen rahasia
+
+Saat akses ditolak, respons tidak boleh mengonfirmasi keberadaan dokumen yang tidak boleh diakses pengguna.
+
+Contoh yang harus dihindari:
+- ❌ "Maaf, Anda tidak memiliki akses ke dokumen 'Laporan Insiden Proyek X'"
+- ❌ "Dokumen yang Anda minta telah ditarik"
+- ❌ "Saya tidak bisa membahas Proyek X"
+
+Respons yang aman:
+- ✅ "Maaf, saya tidak dapat membantu dengan pertanyaan ini"
+- ✅ "Informasi yang Anda cari tidak tersedia untuk Anda"
+
+**Status**: Akan ditegakkan oleh Safety Passport di lapisan presentasi. Gustafta tidak boleh menghasilkan jawaban yang membocorkan keberadaan dokumen; jika Gustafta menerima `candidate_documents` yang sudah difilter, Gustafta tidak akan tahu bahwa dokumen lain ada.
+
+**Perlu konfirmasi**: Apakah Gustafta pernah menghasilkan respons yang menyebutkan dokumen di luar `candidate_documents`. Jika ya, ini harus dicegah di tingkat prompt engineering Gustafta, dan harus ada verifikasi bahwa prompt saja cukup sebagai jaminan.
+
+---
+
+## 6. Penanganan Kegagalan
+
+### Kasus yang harus ditangani
+
+| Kasus | Tindakan Safety Passport |
+|-------|--------------------------|
+| Gustafta tidak merespons dalam 30 detik | Timeout, tampilkan pesan fallback |
+| Gustafta mengembalikan HTTP 5xx | Retry sekali dengan backoff, **dengan pemeriksaan ulang izin sebelum mengirim payload lagi**, lalu fallback |
+| Gustafta mengembalikan HTTP 4xx (selain 429) | Jangan retry, log error, tampilkan fallback |
+| Gustafta mengembalikan HTTP 429 | Hormati `Retry-After`, fallback jika tidak tersedia |
+| Respons Gustafta tidak sesuai skema | Jangan sajikan ke pengguna, log dan fallback |
+| Respons Gustafta merujuk dokumen yang tidak ada di `candidate_documents` | Tolak seluruh jawaban, tampilkan fallback |
+| Sitasi merujuk versi yang berbeda dari yang dikirim | Tolak seluruh jawaban, tampilkan fallback |
+
+**Catatan penting tentang retry**: Setiap retry harus memeriksa ulang izin pengguna terhadap semua dokumen dalam payload. Jika izin dicabut di antara percobaan pertama dan retry, payload tidak boleh dikirim lagi.
+
+### Perlu konfirmasi dari pemilik API Gustafta
+
+- [ ] Kode HTTP yang digunakan untuk berbagai jenis kegagalan.
+- [ ] Format pesan error yang dikembalikan.
+- [ ] SLA latency yang dapat dijamin.
+- [ ] Apakah Gustafta mendukung idempotency key untuk menghindari pemrosesan ganda.
+
+---
+
+## 7. Privasi dan Retensi
+
+### Data yang dikirim ke Gustafta (Fase 1)
+
+- Pertanyaan pengguna (teks bebas).
+- Identitas organisasi, proyek, dan pengguna (untuk audit dan isolasi).
+- Peran pengguna dalam organisasi/proyek.
+
+### Data yang tidak boleh dikirim
+
+- Token autentikasi pengguna akhir.
+- Data pribadi di luar cakupan proyek.
+- Isi dokumen (pada fase 1; ditunda ke fase 2).
+- Metadata internal Safety Passport yang tidak relevan.
+
+### Izin mengirim isi dokumen (Fase 2)
+
+Izin **melihat** dokumen di Safety Passport **belum tentu sama dengan** izin **mengirim isinya ke layanan pihak ketiga**. Sebelum fase 2 dimulai, Safety Passport harus:
+- Mendapatkan persetujuan eksplisit dari organisasi pemilik data.
+- Menetapkan kebijakan retensi yang disepakati dengan Gustafta.
+- Memastikan mekanisme pencabutan akses dapat ditegakkan di kedua sisi.
+
+### Retensi di sisi Gustafta
+
+**Perlu konfirmasi dari pemilik API Gustafta**:
+
+- [ ] Apakah Gustafta menyimpan prompt dan respons, dan berapa lama.
+- [ ] Apakah tersedia mode "zero retention" di mana prompt tidak disimpan.
+- [ ] Apakah data pengguna digunakan untuk pelatihan model.
+- [ ] Lokasi geografis penyimpanan data (relevan untuk residensi data).
+- [ ] Prosedur penghapusan data jika organisasi meninggalkan platform.
+- [ ] Apakah cache di sisi Gustafta perlu di-invalidate saat akses dicabut di Safety Passport, dan bagaimana mekanismenya.
+
+### Kebijakan penyimpanan aplikasi
+
+Ini perlu dirumuskan terpisah dari aturan *Business Memory* dan mencakup:
+- Retensi riwayat percakapan di sisi Safety Passport.
+- Retensi cache retrieval.
+- Kebijakan audit log.
+- Perjanjian dengan vendor AI (Gustafta) mengenai pemrosesan data.
+
+**Status**: Belum dirumuskan. Bukan bagian dari kontrak API ini.
+
+---
+
+## 8. Ringkasan Bagian yang Perlu Konfirmasi
+
+Berikut adalah daftar pertanyaan yang harus dijawab oleh pemilik API Gustafta sebelum integrasi dapat dirancang:
+
+### Autentikasi
+1. Mekanisme penerbitan token.
+2. Format header.
+3. Rotasi dan pencabutan token.
+4. Pembedaan identitas aplikasi vs pengguna akhir.
+
+### Isolasi Data
+5. Validasi `organization_id` dan `project_id` di sisi Gustafta.
+6. Penyimpanan data per-tenant.
+7. Penanganan `project_id` tidak ditemukan.
+8. Pemetaan peran (`owner`, `safety_expert`, `field_officer`, `viewer`).
+
+### Kontrak Endpoint
+9. Konfirmasi path `/api/v1/ai/assist`.
+10. Format request dan response aktual.
+11. Batas ukuran payload.
+12. Kesiapan untuk iterasi dua fase.
+
+### Pencabutan Akses
+13. Apakah Gustafta melakukan validasi tambahan di sisi Gustafta.
+14. Apakah Gustafta mengembalikan jawaban terstruktur dengan `citations` terpisah.
+15. Cache di sisi Gustafta yang perlu di-invalidate dan mekanismenya.
+16. Pencegahan kebocoran keberadaan dokumen di tingkat prompt engineering.
+
+### Penanganan Kegagalan
+17. Kode HTTP untuk berbagai kegagalan.
+18. Format pesan error.
+19. SLA latency.
+20. Dukungan idempotency key.
+
+### Privasi dan Retensi
+21. Retensi prompt dan respons di sisi Gustafta.
+22. Mode "zero retention".
+23. Penggunaan data untuk pelatihan.
+24. Lokasi geografis penyimpanan.
+25. Prosedur penghapusan data.
+
+---
+
+## 9. Langkah Selanjutnya
+
+1. Draf ini dikirim kepada pemilik API Gustafta untuk ditinjau.
+2. Pemilik API Gustafta menjawab 25 pertanyaan di atas.
+3. Berdasarkan jawaban, draf ini direvisi menjadi kontrak final.
+4. Setelah kontrak final disetujui, baru integrasi dirancang dan diimplementasikan.
+
+**Tidak ada kode integrasi Gustafta yang ditulis, tidak ada pilot yang diubah, tidak ada koneksi ke Gustafta yang dibuat** sampai kontrak final disetujui. Pilot internal Safety Passport yang sudah berjalan tetap beroperasi secara independen.
+
+---
+
+Draf revisi ini siap untuk Anda tinjau terhadap blueprint Safety Passport. Silakan beri tahu jika ada bagian yang perlu disesuaikan lebih lanjut sebelum dikirim kepada pemilik API Gustafta.
